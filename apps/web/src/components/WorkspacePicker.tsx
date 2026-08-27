@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { browseDir, type FsEntry } from "../lib/api.ts";
+import { folderName } from "../lib/path.ts";
 
 interface Props {
   open: boolean;
@@ -56,7 +57,7 @@ export function WorkspacePicker({
         {launchDir ? (
           <button type="button" className="dir-btn launch-btn" onClick={() => onSelect(launchDir)}>
             실행한 폴더 열기{launchName ? ` · ${launchName}` : ""}
-            <span className="bot-role">{launchDir}</span>
+            <span className="row-meta">{launchDir}</span>
           </button>
         ) : null}
         {recents.length > 0 ? (
@@ -64,7 +65,7 @@ export function WorkspacePicker({
             {recents.map((item) => (
               <button key={item} type="button" className="dir-btn" onClick={() => onSelect(item)}>
                 {folderName(item)}
-                <span className="bot-role">{item}</span>
+                <span className="row-meta">{item}</span>
               </button>
             ))}
           </div>
@@ -110,9 +111,4 @@ export function WorkspacePicker({
       </div>
     </div>
   );
-}
-
-function folderName(path: string): string {
-  const parts = path.split(/[/\\]/).filter((part) => part.length > 0);
-  return parts.at(-1) ?? path;
 }

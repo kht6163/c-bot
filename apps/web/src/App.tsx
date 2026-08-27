@@ -11,6 +11,7 @@ import {
 import { Composer } from "./components/Composer.tsx";
 import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
+import { Sidebar } from "./components/Sidebar.tsx";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
   createBot,
@@ -29,11 +30,9 @@ import {
 } from "./lib/api.ts";
 import { visibleRows } from "./lib/rows.ts";
 
-type Tab = "sessions" | "bots";
 type LinkState = "connecting" | "ok" | "down";
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("sessions");
   const [link, setLink] = useState<LinkState>("connecting");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [bots, setBots] = useState<BotView[]>([]);
@@ -162,9 +161,6 @@ export function App() {
   }, [events]);
 
   const rows = useMemo(() => visibleRows(events), [events]);
-  const emptyLabel = tab === "sessions"
-    ? (project?.current ? "이 프로젝트에 세션이 없습니다" : "프로젝트를 먼저 여세요")
-    : "봇이 없습니다";
   const composerReady = Boolean(
     selectedId && (selected?.kind === "bot-chat" || selected?.workspace),
   );
@@ -195,112 +191,34 @@ export function App() {
   return (
     <>
     <div className="app" {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}>
-      <aside className="rail">
-        <div className="brand-row">
-          <div className="brand">c-bot</div>
-          <button type="button" className="icon-btn" onClick={() => setSettingsOpen(true)}>
-            설정
-          </button>
-        </div>
-        <button
-          type="button"
-          className="project-btn"
-          onClick={() => setWorkspaceOpen(true)}
-        >
-          {project?.name ?? "프로젝트 열기"}
-          {project?.current ? <span className="bot-role">{project.current}</span> : null}
-        </button>
-        <div className="tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "sessions"}
-            className={tab === "sessions" ? "tab active" : "tab"}
-            onClick={() => setTab("sessions")}
-          >
-            세션
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "bots"}
-            className={tab === "bots" ? "tab active" : "tab"}
-            onClick={() => setTab("bots")}
-          >
-            봇
-          </button>
-        </div>
-        {tab === "sessions" ? (
-          <div className="list">
-            <button
-              type="button"
-              className="new-btn"
-              onClick={() => {
-                if (!project?.current) {
-                  setWorkspaceOpen(true);
-                  return;
-                }
-                void (async () => {
-                  const session = await createSession();
-                  setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
-                  await openSession(session.id);
-                })();
-              }}
-            >
-              새 세션
-            </button>
-            {sessions.length === 0 ? (
-              <p className="empty">{emptyLabel}</p>
-            ) : (
-              <ul>
-                {sessions.map((session) => (
-                  <li key={session.id}>
-                    <button
-                      type="button"
-                      className={session.id === selectedId ? "session-btn active" : "session-btn"}
-                      onClick={() => {
-                        void openSession(session.id);
-                      }}
-                    >
-                      {session.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : (
-          <div className="list">
-            <button type="button" className="new-btn" onClick={() => setNewBotOpen(true)}>
-              새 봇
-            </button>
-            {bots.length === 0 ? (
-              <p className="empty">{emptyLabel}</p>
-            ) : (
-              <ul>
-                {bots.map((bot) => (
-                  <li key={bot.id}>
-                    <button
-                      type="button"
-                      className={bot.sessionId === selectedId ? "session-btn active" : "session-btn"}
-                      onClick={() => {
-                        void openSession(asSessionId(bot.sessionId));
-                      }}
-                    >
-                      @{bot.handle}
-                      <span className="bot-role">{bot.title}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-        <p className={`status status-${link}`}>
-          {link === "ok" ? "서버 연결됨" : link === "down" ? "서버 없음" : "연결 중…"}
-          {hasApiKey ? " · API 키 있음" : " · API 키 없음"}
-        </p>
-      </aside>
+      <Sidebar
+        project={project}
+        sessions={sessions}
+        bots={bots}
+        selectedId={selectedId}
+        link={link}
+        hasApiKey={hasApiKey}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenProjectPicker={() => setWorkspaceOpen(true)}
+        onSelectProject={(path) => {
+          void switchProject(path);
+        }}
+        onNewSession={() => {
+          if (!project?.current) {
+            setWorkspaceOpen(true);
+            return;
+          }
+          void (async () => {
+            const session = await createSession();
+            setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
+            await openSession(session.id);
+          })();
+        }}
+        onOpenSession={(id) => {
+          void openSession(id);
+        }}
+        onNewBot={() => setNewBotOpen(true)}
+      />
       <section className="main">
         {selectedId ? (
           <>
@@ -400,7 +318,6 @@ export function App() {
           setBots((current) => [...current, bot].sort((a, b) => a.handle.localeCompare(b.handle)));
           setNewBotOpen(false);
           await openSession(asSessionId(bot.sessionId));
-          setTab("bots");
         }}
       />
       <WorkspacePicker
