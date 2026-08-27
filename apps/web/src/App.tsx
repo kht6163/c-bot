@@ -200,19 +200,30 @@ export function App() {
 
   const handleSend = useCallback(
     (text: string) => {
-      const id = selectedRef.current;
-      if (!id) {
-        return;
-      }
-      sendSeqRef.current = maxSeq(eventsRef.current);
-      setPendingSend(true);
-      void sendMessage(id, text)
-        .then(() => loadList())
-        .catch(() => {
+      void (async () => {
+        let id = selectedRef.current;
+        if (!id) {
+          const workspace = projectRef.current?.current;
+          if (!workspace) {
+            setWorkspaceOpen(true);
+            return;
+          }
+          const session = await createSession(workspace);
+          setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
+          await openSession(session.id);
+          id = session.id;
+        }
+        sendSeqRef.current = maxSeq(eventsRef.current);
+        setPendingSend(true);
+        try {
+          await sendMessage(id, text);
+          await loadList();
+        } catch {
           setPendingSend(false);
-        });
+        }
+      })();
     },
-    [loadList],
+    [loadList, openSession],
   );
 
   const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
@@ -247,17 +258,14 @@ export function App() {
       />
       <section className="main">
         {selectedId ? (
-          <>
-            <div className="log" ref={logRef}>
+          <div className="log" ref={logRef}>
             {log.length === 0 ? (
               <p className="empty-log">메시지를 보내면 대화가 시작됩니다.</p>
             ) : (
               log.map((row) =>
                 row.kind === "status" ? (
                   <div key={row.key} className="scaffold" role="status" aria-live="polite">
-                    <span className="scaffold-pulse" aria-hidden="true">
-                      ···
-                    </span>
+                    <span className="scaffold-pulse" aria-hidden="true" />
                     {row.text}
                   </div>
                 ) : row.kind === "tool" ? (
@@ -290,55 +298,54 @@ export function App() {
                     key={row.key}
                     className={`bubble ${row.kind}${row.live ? " live" : ""}`}
                   >
-                    <span className="who">
-                      {row.kind === "user" ? "나" : row.kind === "peer" ? `@${row.handle}` : "c-bot"}
-                    </span>
+                    {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
                     <pre>{row.text}</pre>
                   </article>
                 ),
               )
             )}
-            </div>
-          </>
+          </div>
         ) : (
           <div className="hero">
             <h1>c-bot</h1>
             {project?.current ? (
-              <p>
-                <strong>{project.name}</strong>이 열려 있습니다. 새 세션을 만들면 이 폴더에서
-                작업합니다.
+              <p className="hero-chip">
+                <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
+                  {project.name}
+                </button>
               </p>
             ) : (
-              <p>프로젝트를 열면 그 폴더에 세션이 묶이고, 파일 도구가 그 안에서만 동작합니다.</p>
-            )}
-            <p>
-              {project?.current ? null : (
+              <p className="hero-chip">
                 <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
                   프로젝트 열기
                 </button>
-              )}
-              {hasApiKey ? null : (
-                <button type="button" className="ghost" onClick={() => setSettingsOpen(true)}>
-                  LLM API 연결
-                </button>
-              )}
-            </p>
+                {hasApiKey ? null : (
+                  <button type="button" className="ghost" onClick={() => setSettingsOpen(true)}>
+                    LLM 연결
+                  </button>
+                )}
+              </p>
+            )}
+            <Composer
+              busy={busy}
+              blocked={!project?.current}
+              resetKey={selectedId ?? "home"}
+              variant="hero"
+              placeholder="무엇을 만들지 적어 보세요"
+              onSend={handleSend}
+            />
           </div>
         )}
-        <Composer
-          disabled={!composerReady || busy}
-          resetKey={selectedId ?? ""}
-          placeholder={
-            busy
-              ? "생각 중"
-              : composerReady
-                ? "메시지를 입력하세요"
-                : !project?.current
-                  ? "프로젝트를 먼저 여세요"
-                  : "새 세션을 만들면 메시지를 보낼 수 있습니다"
-          }
-          onSend={handleSend}
-        />
+        {selectedId ? (
+          <Composer
+            busy={busy}
+            blocked={!composerReady}
+            resetKey={selectedId}
+            variant="dock"
+            placeholder={busy ? "생각 중" : "에이전트에게 메시지"}
+            onSend={handleSend}
+          />
+        ) : null}
       </section>
     </div>
       <SettingsDialog

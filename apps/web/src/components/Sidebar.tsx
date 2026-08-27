@@ -41,10 +41,20 @@ export function Sidebar({
     <aside className="rail">
       <div className="brand-row">
         <div className="brand">c-bot</div>
-        <button type="button" className="text-btn" onClick={onOpenSettings}>
-          설정
-        </button>
       </div>
+      <button
+        type="button"
+        className="new-session"
+        onClick={() => {
+          if (!project?.current) {
+            onOpenProjectPicker();
+            return;
+          }
+          onNewSession(project.current);
+        }}
+      >
+        새 세션
+      </button>
 
       <div className="rail-body">
         <section className="rail-section">
@@ -148,10 +158,15 @@ export function Sidebar({
         </section>
       </div>
 
-      <p className={`status status-${link}`}>
-        {link === "ok" ? "서버 연결됨" : link === "down" ? "서버 없음" : "연결 중"}
-        {hasApiKey ? " · API 키 있음" : " · API 키 없음"}
-      </p>
+      <div className="rail-foot">
+        <p className={`status status-${link}`}>
+          {link === "ok" ? "서버 연결됨" : link === "down" ? "서버 없음" : "연결 중"}
+          {hasApiKey ? " · API 키 있음" : " · API 키 없음"}
+        </p>
+        <button type="button" className="settings-btn" onClick={onOpenSettings}>
+          설정
+        </button>
+      </div>
     </aside>
   );
 }
