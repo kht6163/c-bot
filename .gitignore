@@ -120,3 +120,6 @@ dist
 
 # Vite
 apps/web/.vite
+
+# Local agent contract — do not publish
+/AGENTS.md
