@@ -3,6 +3,12 @@ import type { BotId, SessionId, ToolCallId } from "./ids.ts";
 
 export const PROTOCOL_VERSION = 0 as const;
 
+export interface ProjectView {
+  current: string | null;
+  recents: string[];
+  name: string | null;
+}
+
 export interface SessionSummary {
   id: SessionId;
   title: string;

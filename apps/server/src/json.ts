@@ -33,6 +33,7 @@ export function jsonError(err: unknown): Response {
     message === "unknown session" ||
     message === "empty message" ||
     message === "workspace required" ||
+    message === "project required" ||
     message.startsWith("handle")
       ? 400
       : 500;

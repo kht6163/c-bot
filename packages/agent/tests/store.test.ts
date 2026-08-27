@@ -36,6 +36,15 @@ describe("SessionStore", () => {
     expect(types).toEqual(["user/message"]);
     store.close();
   });
+
+  test("list can filter coding sessions by workspace", async () => {
+    const store = await SessionStore.open(":memory:");
+    store.create({ title: "a", workspace: "/tmp/alpha" });
+    store.create({ title: "b", workspace: "/tmp/beta" });
+    const onlyAlpha = store.list({ kind: "coding", workspace: "/tmp/alpha" });
+    expect(onlyAlpha.map((s) => s.title)).toEqual(["a"]);
+    store.close();
+  });
 });
 
 describe("deriveMessages", () => {

@@ -46,6 +46,7 @@ export {
   PROTOCOL_VERSION,
   type ClientFrame,
   type HealthResponse,
+  type ProjectView,
   type ServerFrame,
   type SessionSummary,
 } from "./protocol.ts";

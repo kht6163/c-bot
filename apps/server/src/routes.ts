@@ -1,7 +1,16 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { loadConfig, loadSecrets, probeLlm, saveConfig, saveXaiApiKey } from "@cbot/agent";
+import {
+  loadConfig,
+  loadSecrets,
+  probeLlm,
+  projectName,
+  rememberProject,
+  saveConfig,
+  saveXaiApiKey,
+} from "@cbot/agent";
+import type { ProjectView } from "@cbot/shared";
 import { createBot, listBots } from "@cbot/bot";
 import { asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
@@ -10,9 +19,33 @@ import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
 export async function handleApi(req: Request, runtime: Runtime): Promise<Response> {
   const url = new URL(req.url);
   try {
+    if (url.pathname === "/api/project" && req.method === "GET") {
+      const config = await loadConfig(runtime.env.home);
+      return Response.json(toProjectView(config.project.current, config.project.recents));
+    }
+    if (url.pathname === "/api/project" && req.method === "PUT") {
+      const body = await readJson(req);
+      if (!isRecord(body) || typeof body.path !== "string" || body.path.trim().length === 0) {
+        throw new HttpError(400, "project required");
+      }
+      const path = resolve(body.path.trim());
+      const info = await stat(path).catch(() => null);
+      if (!info?.isDirectory()) {
+        throw new HttpError(400, "project is not a directory");
+      }
+      const config = await loadConfig(runtime.env.home);
+      await saveConfig(runtime.env.home, rememberProject(config, path));
+      const updated = await loadConfig(runtime.env.home);
+      return Response.json(toProjectView(updated.project.current, updated.project.recents));
+    }
     if (url.pathname === "/api/sessions" && req.method === "GET") {
+      const config = await loadConfig(runtime.env.home);
+      const current = config.project.current;
+      if (!current) {
+        return Response.json({ sessions: [] });
+      }
       return Response.json({
-        sessions: runtime.store.list().filter((session) => session.kind === "coding"),
+        sessions: runtime.store.list({ kind: "coding", workspace: current }),
       });
     }
     if (url.pathname === "/api/bots" && req.method === "GET") {
@@ -23,22 +56,27 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!isRecord(body) || typeof body.handle !== "string") {
         throw new HttpError(400, "handle required");
       }
+      const config = await loadConfig(runtime.env.home);
       const bot = await createBot(runtime.env.home, runtime.store, {
         handle: body.handle,
         title: typeof body.title === "string" ? body.title : body.handle,
         description: typeof body.description === "string" ? body.description : "",
         ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
+        workspace: config.project.current,
       });
       return Response.json({ bot }, { status: 201 });
     }
     if (url.pathname === "/api/sessions" && req.method === "POST") {
+      const config = await loadConfig(runtime.env.home);
+      const current = config.project.current;
+      if (!current) {
+        throw new HttpError(400, "project required");
+      }
       const body = await readJson(req);
       const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
-      const workspace =
-        isRecord(body) && typeof body.workspace === "string" ? body.workspace : null;
       const session = runtime.store.create({
         ...(title !== undefined ? { title } : {}),
-        workspace,
+        workspace: current,
       });
       return Response.json({ session }, { status: 201 });
     }
@@ -151,6 +189,10 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   } catch (err) {
     return jsonError(err);
   }
+}
+
+function toProjectView(current: string | null, recents: string[]): ProjectView {
+  return { current, recents, name: projectName(current) };
 }
 
 async function browseDir(raw: string | null): Promise<{

@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_CONFIG, loadConfig, saveConfig } from "../src/config.ts";
+import { DEFAULT_CONFIG, loadConfig, projectName, rememberProject, saveConfig } from "../src/config.ts";
 import { applyEnvFile, loadSecrets, saveXaiApiKey } from "../src/secrets.ts";
 
 describe("config", () => {
@@ -16,6 +16,18 @@ describe("config", () => {
     expect(yaml).toContain("grok-4.6");
     const loaded = await loadConfig(home);
     expect(loaded.llm.model).toBe("grok-4.6");
+  });
+
+  test("rememberProject stores current and recents", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-project-"));
+    const first = await loadConfig(home);
+    expect(first.project.current).toBeNull();
+    const next = rememberProject(first, "/tmp/demo-app");
+    await saveConfig(home, next);
+    const loaded = await loadConfig(home);
+    expect(loaded.project.current).toBe("/tmp/demo-app");
+    expect(loaded.project.recents).toEqual(["/tmp/demo-app"]);
+    expect(projectName(loaded.project.current)).toBe("demo-app");
   });
 });
 

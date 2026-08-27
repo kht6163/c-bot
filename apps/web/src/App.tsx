@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PROTOCOL_VERSION,
   asSessionId,
+  type ProjectView,
   type ServerFrame,
   type SessionEvent,
   type SessionId,
@@ -15,13 +16,14 @@ import {
   createSession,
   fetchBots,
   fetchHealth,
+  fetchProject,
   fetchSession,
   fetchSessions,
   fetchSettings,
   openEvents,
+  openProject,
   sendApproval,
   sendMessage,
-  setWorkspace,
   type BotView,
 } from "./lib/api.ts";
 import { visibleRows } from "./lib/rows.ts";
@@ -42,6 +44,7 @@ export function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [project, setProject] = useState<ProjectView | undefined>();
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
@@ -58,9 +61,14 @@ export function App() {
   }, []);
 
   const loadList = useCallback(async () => {
-    const [nextSessions, nextBots] = await Promise.all([fetchSessions(), fetchBots()]);
+    const [nextSessions, nextBots, nextProject] = await Promise.all([
+      fetchSessions(),
+      fetchBots(),
+      fetchProject(),
+    ]);
     setSessions(nextSessions);
     setBots(nextBots);
+    setProject(nextProject);
   }, []);
 
   const openSession = useCallback(async (id: SessionId) => {
@@ -154,11 +162,25 @@ export function App() {
   }, [events]);
 
   const rows = useMemo(() => visibleRows(events), [events]);
-  const emptyLabel = tab === "sessions" ? "세션이 없습니다" : "봇이 없습니다";
-  const workspace = selected?.workspace ?? null;
+  const emptyLabel = tab === "sessions"
+    ? (project?.current ? "이 프로젝트에 세션이 없습니다" : "프로젝트를 먼저 여세요")
+    : "봇이 없습니다";
   const composerReady = Boolean(
-    selectedId && (selected?.kind === "bot-chat" || workspace),
+    selectedId && (selected?.kind === "bot-chat" || selected?.workspace),
   );
+
+  async function switchProject(path: string) {
+    const next = await openProject(path);
+    setProject(next);
+    setWorkspaceOpen(false);
+    const list = await fetchSessions();
+    setSessions(list);
+    if (selected?.kind === "coding" && selected.workspace !== next.current) {
+      setSelectedId(undefined);
+      setSelected(undefined);
+      setEvents([]);
+    }
+  }
 
   const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
 
@@ -172,6 +194,14 @@ export function App() {
             설정
           </button>
         </div>
+        <button
+          type="button"
+          className="project-btn"
+          onClick={() => setWorkspaceOpen(true)}
+        >
+          {project?.name ?? "프로젝트 열기"}
+          {project?.current ? <span className="bot-role">{project.current}</span> : null}
+        </button>
         <div className="tabs" role="tablist">
           <button
             type="button"
@@ -198,6 +228,10 @@ export function App() {
               type="button"
               className="new-btn"
               onClick={() => {
+                if (!project?.current) {
+                  setWorkspaceOpen(true);
+                  return;
+                }
                 void (async () => {
                   const session = await createSession();
                   setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
@@ -262,18 +296,9 @@ export function App() {
       <section className="main">
         {selectedId ? (
           <>
-            <div className="workspace-bar">
-              <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
-                {workspace ?? "워크스페이스를 선택하세요"}
-              </button>
-            </div>
             <div className="log" ref={logRef}>
             {rows.length === 0 ? (
-              <p className="empty-log">
-                {workspace || selected?.kind === "bot-chat"
-                  ? "메시지를 보내면 대화가 시작됩니다."
-                  : "코딩 턴을 시작하려면 워크스페이스를 고르세요."}
-              </p>
+              <p className="empty-log">메시지를 보내면 대화가 시작됩니다.</p>
             ) : (
               rows.map((row) =>
                 row.kind === "tool" ? (
@@ -316,14 +341,26 @@ export function App() {
         ) : (
           <div className="hero">
             <h1>c-bot</h1>
-            <p>세션을 만들고 워크스페이스를 고른 뒤 메시지를 보내세요.</p>
-            {hasApiKey ? null : (
+            {project?.current ? (
               <p>
+                <strong>{project.name}</strong>이 열려 있습니다. 새 세션을 만들면 이 폴더에서
+                작업합니다.
+              </p>
+            ) : (
+              <p>프로젝트를 열면 그 폴더에 세션이 묶이고, 파일 도구가 그 안에서만 동작합니다.</p>
+            )}
+            <p>
+              {project?.current ? null : (
+                <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
+                  프로젝트 열기
+                </button>
+              )}
+              {hasApiKey ? null : (
                 <button type="button" className="ghost" onClick={() => setSettingsOpen(true)}>
                   LLM API 연결
                 </button>
-              </p>
-            )}
+              )}
+            </p>
           </div>
         )}
         <form
@@ -345,8 +382,8 @@ export function App() {
             placeholder={
               composerReady
                 ? "메시지를 입력하세요"
-                : selectedId
-                  ? "워크스페이스를 선택하면 메시지를 보낼 수 있습니다"
+                : !project?.current
+                  ? "프로젝트를 먼저 여세요"
                   : "새 세션을 만들면 메시지를 보낼 수 있습니다"
             }
             onChange={(e) => setDraft(e.target.value)}
@@ -383,19 +420,11 @@ export function App() {
       />
       <WorkspacePicker
         open={workspaceOpen}
-        current={workspace}
+        current={project?.current ?? null}
+        recents={project?.recents ?? []}
         onClose={() => setWorkspaceOpen(false)}
         onSelect={(path) => {
-          if (!selectedId) {
-            return;
-          }
-          void setWorkspace(selectedId, path).then((session) => {
-            setSelected(session);
-            if (session.kind === "coding") {
-              setSessions((current) => current.map((s) => (s.id === session.id ? session : s)));
-            }
-            setWorkspaceOpen(false);
-          });
+          void switchProject(path);
         }}
       />
     </>

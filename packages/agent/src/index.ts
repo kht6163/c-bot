@@ -1,4 +1,16 @@
-export { DEFAULT_CONFIG, configPath, ensureHome, loadConfig, saveConfig, secretsPath, sessionsDbPath, type AppConfig } from "./config.ts";
+export {
+  DEFAULT_CONFIG,
+  MAX_PROJECT_RECENTS,
+  configPath,
+  ensureHome,
+  loadConfig,
+  projectName,
+  rememberProject,
+  saveConfig,
+  secretsPath,
+  sessionsDbPath,
+  type AppConfig,
+} from "./config.ts";
 export { applyEnvFile, loadSecrets, saveXaiApiKey, type Secrets } from "./secrets.ts";
 export { SessionStore, type CreateSessionInput } from "./session/store.ts";
 export { deriveMessages, type ChatMessage } from "./session/derive.ts";

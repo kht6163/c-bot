@@ -152,7 +152,7 @@ export class SessionStore {
     return row ? toSummary(row) : undefined;
   }
 
-  list(): SessionSummary[] {
+  list(filter?: { kind?: SessionKind; workspace?: string }): SessionSummary[] {
     const rows = this.db
       .query(
         `SELECT id, title, kind, bot_id, workspace, updated_at
@@ -166,7 +166,17 @@ export class SessionStore {
       workspace: string | null;
       updated_at: string;
     }[];
-    return rows.map(toSummary);
+    return rows
+      .map(toSummary)
+      .filter((session) => {
+        if (filter?.kind && session.kind !== filter.kind) {
+          return false;
+        }
+        if (filter?.workspace !== undefined && session.workspace !== filter.workspace) {
+          return false;
+        }
+        return true;
+      });
   }
 
   setTitle(id: SessionId, title: string): void {

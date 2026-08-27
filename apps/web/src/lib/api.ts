@@ -1,4 +1,11 @@
-import type { HealthResponse, SessionEvent, SessionId, SessionSummary, ToolCallId } from "@cbot/shared";
+import type {
+  HealthResponse,
+  ProjectView,
+  SessionEvent,
+  SessionId,
+  SessionSummary,
+  ToolCallId,
+} from "@cbot/shared";
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
@@ -41,6 +48,26 @@ export async function createBot(input: {
   }
   const body = (await res.json()) as { bot: BotView };
   return body.bot;
+}
+
+export async function fetchProject(): Promise<ProjectView> {
+  const res = await fetch("/api/project");
+  if (!res.ok) {
+    throw new Error(`project ${res.status}`);
+  }
+  return (await res.json()) as ProjectView;
+}
+
+export async function openProject(path: string): Promise<ProjectView> {
+  const res = await fetch("/api/project", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!res.ok) {
+    throw new Error(`project ${res.status}`);
+  }
+  return (await res.json()) as ProjectView;
 }
 
 export async function fetchSessions(): Promise<SessionSummary[]> {

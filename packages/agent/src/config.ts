@@ -12,6 +12,10 @@ export interface AppConfig {
   botMode: {
     protocol: boolean;
   };
+  project: {
+    current: string | null;
+    recents: string[];
+  };
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -25,7 +29,13 @@ export const DEFAULT_CONFIG: AppConfig = {
   botMode: {
     protocol: true,
   },
+  project: {
+    current: null,
+    recents: [],
+  },
 };
+
+export const MAX_PROJECT_RECENTS = 8;
 
 export function configPath(home: string): string {
   return join(home, "config.yaml");
@@ -73,7 +83,11 @@ export function mergeConfig(parsed: unknown): AppConfig {
   const llm = isRecord(obj.llm) ? obj.llm : {};
   const approval = isRecord(obj.approval) ? obj.approval : {};
   const botMode = isRecord(obj.botMode) ? obj.botMode : {};
+  const project = isRecord(obj.project) ? obj.project : {};
   const mode = approval.mode === "allow" ? "allow" : "prompt";
+  const recents = Array.isArray(project.recents)
+    ? project.recents.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
   return {
     llm: {
       baseURL: str(llm.baseURL, DEFAULT_CONFIG.llm.baseURL),
@@ -83,7 +97,27 @@ export function mergeConfig(parsed: unknown): AppConfig {
     botMode: {
       protocol: botMode.protocol === false ? false : true,
     },
+    project: {
+      current: typeof project.current === "string" && project.current.trim() ? project.current.trim() : null,
+      recents,
+    },
   };
+}
+
+export function rememberProject(config: AppConfig, path: string): AppConfig {
+  const recents = [path, ...config.project.recents.filter((item) => item !== path)].slice(
+    0,
+    MAX_PROJECT_RECENTS,
+  );
+  return { ...config, project: { current: path, recents } };
+}
+
+export function projectName(path: string | null): string | null {
+  if (!path) {
+    return null;
+  }
+  const parts = path.split(/[/\\]/).filter((part) => part.length > 0);
+  return parts.at(-1) ?? path;
 }
 
 function serializeConfig(config: AppConfig): string {
@@ -95,6 +129,11 @@ function serializeConfig(config: AppConfig): string {
     `  mode: ${config.approval.mode}`,
     "botMode:",
     `  protocol: ${config.botMode.protocol}`,
+    "project:",
+    `  current: ${config.project.current ? yamlScalar(config.project.current) : "null"}`,
+    ...(config.project.recents.length === 0
+      ? ["  recents: []"]
+      : ["  recents:", ...config.project.recents.map((item) => `    - ${yamlScalar(item)}`)]),
     "",
   ].join("\n");
 }

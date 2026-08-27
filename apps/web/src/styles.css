@@ -195,6 +195,42 @@ textarea {
   color: var(--muted);
 }
 
+.project-btn {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.project-btn .bot-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.hero p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
 .new-btn {
   width: 100%;
   padding: 8px;

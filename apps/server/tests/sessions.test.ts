@@ -41,6 +41,17 @@ describe("sessions API", () => {
     );
     const opts = { web: "none" as const, distDir: "/tmp", runtime };
 
+    const opened = await handleHttp(
+      new Request("http://127.0.0.1/api/project", {
+        method: "PUT",
+        body: JSON.stringify({ path: home }),
+      }),
+      opts,
+    );
+    expect(opened.status).toBe(200);
+    const project = (await opened.json()) as { current: string };
+    expect(project.current).toBe(home);
+
     const created = await handleHttp(
       new Request("http://127.0.0.1/api/sessions", {
         method: "POST",
@@ -49,16 +60,8 @@ describe("sessions API", () => {
       opts,
     );
     expect(created.status).toBe(201);
-    const { session } = (await created.json()) as { session: { id: string } };
-
-    const workspaceRes = await handleHttp(
-      new Request(`http://127.0.0.1/api/sessions/${session.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ workspace: home }),
-      }),
-      opts,
-    );
-    expect(workspaceRes.status).toBe(200);
+    const { session } = (await created.json()) as { session: { id: string; workspace: string } };
+    expect(session.workspace).toBe(home);
 
     const sent = await handleHttp(
       new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
@@ -82,6 +85,18 @@ describe("sessions API", () => {
     expect(body.session.title).toBe("ping");
     const assistant = body.events.find((e) => e.type === "assistant/message");
     expect(assistant?.text).toBe("hello");
+    runtime.store.close();
+  });
+
+  test("creating a session without an open project is 400", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-noproj-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const res = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", { method: "POST", body: "{}" }),
+      { web: "none", distDir: "/tmp", runtime },
+    );
+    expect(res.status).toBe(400);
     runtime.store.close();
   });
 });
