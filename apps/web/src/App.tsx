@@ -28,7 +28,7 @@ import {
   sendMessage,
   type BotView,
 } from "./lib/api.ts";
-import { visibleRows } from "./lib/rows.ts";
+import { visibleRows, type ChatRow } from "./lib/rows.ts";
 
 type LinkState = "connecting" | "ok" | "down";
 
@@ -44,11 +44,17 @@ export function App() {
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
+  const [pendingSend, setPendingSend] = useState(false);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
+  const eventsRef = useRef<SessionEvent[]>([]);
+  const projectRef = useRef<ProjectView | undefined>(undefined);
+  const sendSeqRef = useRef(0);
   const logRef = useRef<HTMLDivElement>(null);
 
   selectedRef.current = selectedId;
+  eventsRef.current = events;
+  projectRef.current = project;
 
   const mergeEvent = useCallback((event: SessionEvent) => {
     setEvents((current) => {
@@ -72,6 +78,7 @@ export function App() {
 
   const openSession = useCallback(async (id: SessionId) => {
     setSelectedId(id);
+    setPendingSend(false);
     const detail = await fetchSession(id);
     setSelected(detail.session);
     setEvents(detail.events);
@@ -80,6 +87,11 @@ export function App() {
         const others = current.filter((s) => s.id !== id);
         return [detail.session, ...others];
       });
+      const workspace = detail.session.workspace;
+      if (workspace && workspace !== projectRef.current?.current) {
+        const next = await openProject(workspace);
+        setProject(next);
+      }
     }
     socketRef.current?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
   }, []);
@@ -160,7 +172,20 @@ export function App() {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [events]);
 
+  useEffect(() => {
+    if (!pendingSend) {
+      return;
+    }
+    const after = sendSeqRef.current;
+    const started = events.some((event) => event.type === "turn/start" && event.seq > after);
+    if (started || turnSettledAfter(events, after)) {
+      setPendingSend(false);
+    }
+  }, [events, pendingSend]);
+
   const rows = useMemo(() => visibleRows(events), [events]);
+  const busy = pendingSend || hasOpenTurn(events);
+  const log = useMemo(() => withThinking(rows, busy), [rows, busy]);
   const composerReady = Boolean(
     selectedId && (selected?.kind === "bot-chat" || selected?.workspace),
   );
@@ -171,20 +196,24 @@ export function App() {
     setWorkspaceOpen(false);
     const list = await fetchSessions();
     setSessions(list);
-    if (selected?.kind === "coding" && selected.workspace !== next.current) {
-      setSelectedId(undefined);
-      setSelected(undefined);
-      setEvents([]);
-    }
   }
 
-  const handleSend = useCallback((text: string) => {
-    const id = selectedRef.current;
-    if (!id) {
-      return;
-    }
-    void sendMessage(id, text).then(() => loadList());
-  }, [loadList]);
+  const handleSend = useCallback(
+    (text: string) => {
+      const id = selectedRef.current;
+      if (!id) {
+        return;
+      }
+      sendSeqRef.current = maxSeq(eventsRef.current);
+      setPendingSend(true);
+      void sendMessage(id, text)
+        .then(() => loadList())
+        .catch(() => {
+          setPendingSend(false);
+        });
+    },
+    [loadList],
+  );
 
   const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
 
@@ -203,14 +232,11 @@ export function App() {
         onSelectProject={(path) => {
           void switchProject(path);
         }}
-        onNewSession={() => {
-          if (!project?.current) {
-            setWorkspaceOpen(true);
-            return;
-          }
+        onNewSession={(path) => {
           void (async () => {
-            const session = await createSession();
+            const session = await createSession(path);
             setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
+            setProject(await fetchProject());
             await openSession(session.id);
           })();
         }}
@@ -223,12 +249,22 @@ export function App() {
         {selectedId ? (
           <>
             <div className="log" ref={logRef}>
-            {rows.length === 0 ? (
+            {log.length === 0 ? (
               <p className="empty-log">메시지를 보내면 대화가 시작됩니다.</p>
             ) : (
-              rows.map((row) =>
-                row.kind === "tool" ? (
-                  <article key={row.key} className={`tool-card ui-${row.ui}`}>
+              log.map((row) =>
+                row.kind === "status" ? (
+                  <div key={row.key} className="scaffold" role="status" aria-live="polite">
+                    <span className="scaffold-pulse" aria-hidden="true">
+                      ···
+                    </span>
+                    {row.text}
+                  </div>
+                ) : row.kind === "tool" ? (
+                  <article
+                    key={row.key}
+                    className={`tool-card ui-${row.ui}${row.live ? " live" : ""}`}
+                  >
                     <span className="who">{row.name}</span>
                     <pre>{row.content || row.arguments}</pre>
                     {row.pendingApproval && selectedId ? (
@@ -290,14 +326,16 @@ export function App() {
           </div>
         )}
         <Composer
-          disabled={!composerReady}
+          disabled={!composerReady || busy}
           resetKey={selectedId ?? ""}
           placeholder={
-            composerReady
-              ? "메시지를 입력하세요"
-              : !project?.current
-                ? "프로젝트를 먼저 여세요"
-                : "새 세션을 만들면 메시지를 보낼 수 있습니다"
+            busy
+              ? "생각 중"
+              : composerReady
+                ? "메시지를 입력하세요"
+                : !project?.current
+                  ? "프로젝트를 먼저 여세요"
+                  : "새 세션을 만들면 메시지를 보낼 수 있습니다"
           }
           onSend={handleSend}
         />
@@ -333,4 +371,66 @@ export function App() {
       />
     </>
   );
+}
+
+function maxSeq(events: readonly SessionEvent[]): number {
+  let max = 0;
+  for (const event of events) {
+    if (event.seq > max) {
+      max = event.seq;
+    }
+  }
+  return max;
+}
+
+function hasOpenTurn(events: readonly SessionEvent[]): boolean {
+  const open = new Set<string>();
+  for (const event of events) {
+    if (event.type === "turn/start") {
+      open.add(event.turnId);
+    }
+    if (event.type === "turn/end") {
+      open.delete(event.turnId);
+    }
+  }
+  return open.size > 0;
+}
+
+function turnSettledAfter(events: readonly SessionEvent[], afterSeq: number): boolean {
+  const open = new Set<string>();
+  let saw = false;
+  for (const event of events) {
+    if (event.seq <= afterSeq) {
+      continue;
+    }
+    if (event.type === "turn/start") {
+      saw = true;
+      open.add(event.turnId);
+    }
+    if (event.type === "turn/end") {
+      saw = true;
+      open.delete(event.turnId);
+    }
+  }
+  return saw && open.size === 0;
+}
+
+function isLiveWork(row: ChatRow): boolean {
+  if (row.kind === "status") {
+    return true;
+  }
+  if (row.kind === "assistant") {
+    return row.live;
+  }
+  if (row.kind === "tool") {
+    return row.live || row.pendingApproval;
+  }
+  return false;
+}
+
+function withThinking(rows: ChatRow[], busy: boolean): ChatRow[] {
+  if (!busy || rows.some(isLiveWork)) {
+    return rows;
+  }
+  return [...rows, { key: "thinking", kind: "status", text: "생각 중", live: true }];
 }

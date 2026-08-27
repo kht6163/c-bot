@@ -79,8 +79,12 @@ export async function fetchSessions(): Promise<SessionSummary[]> {
   return body.sessions;
 }
 
-export async function createSession(): Promise<SessionSummary> {
-  const res = await fetch("/api/sessions", { method: "POST", body: "{}" });
+export async function createSession(workspace?: string): Promise<SessionSummary> {
+  const res = await fetch("/api/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(workspace !== undefined ? { workspace } : {}),
+  });
   if (!res.ok) {
     throw new Error(`create ${res.status}`);
   }

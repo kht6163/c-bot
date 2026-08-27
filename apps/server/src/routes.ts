@@ -42,13 +42,8 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       );
     }
     if (url.pathname === "/api/sessions" && req.method === "GET") {
-      const config = await loadConfig(runtime.env.home);
-      const current = config.project.current;
-      if (!current) {
-        return Response.json({ sessions: [] });
-      }
       return Response.json({
-        sessions: runtime.store.list({ kind: "coding", workspace: current }),
+        sessions: runtime.store.list({ kind: "coding" }),
       });
     }
     if (url.pathname === "/api/bots" && req.method === "GET") {
@@ -70,16 +65,31 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       return Response.json({ bot }, { status: 201 });
     }
     if (url.pathname === "/api/sessions" && req.method === "POST") {
-      const config = await loadConfig(runtime.env.home);
-      const current = config.project.current;
-      if (!current) {
-        throw new HttpError(400, "project required");
-      }
       const body = await readJson(req);
       const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
+      const requested =
+        isRecord(body) && typeof body.workspace === "string" && body.workspace.trim().length > 0
+          ? resolve(body.workspace.trim())
+          : null;
+      let workspace: string;
+      if (requested) {
+        const info = await stat(requested).catch(() => null);
+        if (!info?.isDirectory()) {
+          throw new HttpError(400, "workspace is not a directory");
+        }
+        const config = await loadConfig(runtime.env.home);
+        await saveConfig(runtime.env.home, rememberProject(config, requested));
+        workspace = requested;
+      } else {
+        const config = await loadConfig(runtime.env.home);
+        if (!config.project.current) {
+          throw new HttpError(400, "project required");
+        }
+        workspace = config.project.current;
+      }
       const session = runtime.store.create({
         ...(title !== undefined ? { title } : {}),
-        workspace: current,
+        workspace,
       });
       return Response.json({ session }, { status: 201 });
     }

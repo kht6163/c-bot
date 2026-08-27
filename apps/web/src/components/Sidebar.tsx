@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { asSessionId, type ProjectView, type SessionId, type SessionSummary } from "@cbot/shared";
 import type { BotView } from "../lib/api.ts";
-import { folderName, projectPaths, timeAgo } from "../lib/path.ts";
+import { projectTree, timeAgo } from "../lib/path.ts";
 
 type LinkState = "connecting" | "ok" | "down";
 
@@ -14,7 +15,7 @@ interface Props {
   onOpenSettings: () => void;
   onOpenProjectPicker: () => void;
   onSelectProject: (path: string) => void;
-  onNewSession: () => void;
+  onNewSession: (path: string) => void;
   onOpenSession: (id: SessionId) => void;
   onNewBot: () => void;
 }
@@ -33,7 +34,8 @@ export function Sidebar({
   onOpenSession,
   onNewBot,
 }: Props) {
-  const projects = project ? projectPaths(project) : [];
+  const tree = project ? projectTree(project, sessions) : [];
+  const [folded, setFolded] = useState<Record<string, boolean>>({});
 
   return (
     <aside className="rail">
@@ -47,49 +49,77 @@ export function Sidebar({
       <div className="rail-body">
         <section className="rail-section">
           <SectionHead label="프로젝트" addLabel="프로젝트 열기" onAdd={onOpenProjectPicker} />
-          {projects.length === 0 ? null : (
+          {tree.length === 0 ? null : (
             <ul className="row-list">
-              {projects.map((path) => (
-                <li key={path}>
-                  <button
-                    type="button"
-                    className={path === project?.current ? "row active" : "row"}
-                    aria-current={path === project?.current ? "true" : undefined}
-                    onClick={() => {
-                      if (path !== project?.current) {
-                        onSelectProject(path);
-                      }
-                    }}
-                  >
-                    <span className="row-title">{folderName(path)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="rail-section">
-          <SectionHead label="세션" addLabel="새 세션" onAdd={onNewSession} />
-          {sessions.length === 0 ? (
-            <p className="empty">
-              {project?.current ? "이 프로젝트에 세션이 없습니다" : "프로젝트를 먼저 여세요"}
-            </p>
-          ) : (
-            <ul className="row-list">
-              {sessions.map((session) => (
-                <li key={session.id}>
-                  <button
-                    type="button"
-                    className={session.id === selectedId ? "row active" : "row"}
-                    aria-current={session.id === selectedId ? "true" : undefined}
-                    onClick={() => onOpenSession(session.id)}
-                  >
-                    <span className="row-title">{session.title}</span>
-                    <span className="row-meta">{timeAgo(session.updatedAt)}</span>
-                  </button>
-                </li>
-              ))}
+              {tree.map((branch) => {
+                const expanded = folded[branch.path] !== true;
+                const current = branch.path === project?.current;
+                return (
+                  <li key={branch.path} className="tree-branch">
+                    <div className="tree-parent">
+                      {branch.sessions.length > 0 ? (
+                        <button
+                          type="button"
+                          className="caret"
+                          aria-expanded={expanded}
+                          aria-label={expanded ? "세션 접기" : "세션 펼치기"}
+                          onClick={() => {
+                            setFolded((currentFold) => ({
+                              ...currentFold,
+                              [branch.path]: expanded,
+                            }));
+                          }}
+                        >
+                          {expanded ? "▾" : "▸"}
+                        </button>
+                      ) : (
+                        <span className="caret-slot" />
+                      )}
+                      <button
+                        type="button"
+                        className={current ? "row current" : "row"}
+                        aria-current={current ? "true" : undefined}
+                        onClick={() => {
+                          setFolded((currentFold) => ({
+                            ...currentFold,
+                            [branch.path]: false,
+                          }));
+                          if (!current) {
+                            onSelectProject(branch.path);
+                          }
+                        }}
+                      >
+                        <span className="row-title">{branch.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="add-btn"
+                        aria-label="새 세션"
+                        onClick={() => onNewSession(branch.path)}
+                      >
+                        +
+                      </button>
+                    </div>
+                    {expanded && branch.sessions.length > 0 ? (
+                      <ul className="row-list row-nest">
+                        {branch.sessions.map((session) => (
+                          <li key={session.id}>
+                            <button
+                              type="button"
+                              className={session.id === selectedId ? "row active" : "row"}
+                              aria-current={session.id === selectedId ? "true" : undefined}
+                              onClick={() => onOpenSession(session.id)}
+                            >
+                              <span className="row-title">{session.title}</span>
+                              <span className="row-meta">{timeAgo(session.updatedAt)}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

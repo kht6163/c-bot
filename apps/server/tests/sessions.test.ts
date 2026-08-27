@@ -92,11 +92,74 @@ describe("sessions API", () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-noproj-"));
     const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
     const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
     const res = await handleHttp(
       new Request("http://127.0.0.1/api/sessions", { method: "POST", body: "{}" }),
-      { web: "none", distDir: "/tmp", runtime },
+      opts,
     );
     expect(res.status).toBe(400);
+    const listed = await handleHttp(new Request("http://127.0.0.1/api/sessions"), opts);
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as { sessions: unknown[] };
+    expect(body.sessions).toEqual([]);
+    runtime.store.close();
+  });
+
+  test("GET lists coding sessions from every workspace", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-allws-"));
+    const wsA = await mkdtemp(join(tmpdir(), "cbot-ws-a-"));
+    const wsB = await mkdtemp(join(tmpdir(), "cbot-ws-b-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+
+    const createdA = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: wsA, title: "alpha" }),
+      }),
+      opts,
+    );
+    expect(createdA.status).toBe(201);
+    const createdB = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: wsB, title: "beta" }),
+      }),
+      opts,
+    );
+    expect(createdB.status).toBe(201);
+
+    const listed = await handleHttp(new Request("http://127.0.0.1/api/sessions"), opts);
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as { sessions: { title: string; workspace: string }[] };
+    expect(body.sessions.map((session) => session.workspace).sort()).toEqual([wsA, wsB].sort());
+    expect(body.sessions.map((session) => session.title).sort()).toEqual(["alpha", "beta"]);
+    runtime.store.close();
+  });
+
+  test("POST with a workspace path creates a session there", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-postws-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-target-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace }),
+      }),
+      opts,
+    );
+    expect(created.status).toBe(201);
+    const { session } = (await created.json()) as { session: { workspace: string } };
+    expect(session.workspace).toBe(resolve(workspace));
+
+    const projectRes = await handleHttp(new Request("http://127.0.0.1/api/project"), opts);
+    const project = (await projectRes.json()) as { current: string | null; recents: string[] };
+    expect(project.current).toBe(resolve(workspace));
+    expect(project.recents).toContain(resolve(workspace));
     runtime.store.close();
   });
 

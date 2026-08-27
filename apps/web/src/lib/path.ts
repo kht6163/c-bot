@@ -11,6 +11,33 @@ export function projectPaths(input: {
   return input.current ? [input.current, ...rest] : rest;
 }
 
+export function projectTree<T extends { workspace: string | null; updatedAt: string }>(
+  project: { current: string | null; recents: string[] },
+  sessions: readonly T[],
+): { path: string; name: string; sessions: T[] }[] {
+  const listed = new Set<string>();
+  const paths: string[] = [];
+  for (const path of projectPaths(project)) {
+    listed.add(path);
+    paths.push(path);
+  }
+  for (const session of sessions) {
+    const path = session.workspace;
+    if (!path || listed.has(path)) {
+      continue;
+    }
+    listed.add(path);
+    paths.push(path);
+  }
+  return paths.map((path) => ({
+    path,
+    name: folderName(path),
+    sessions: sessions
+      .filter((session) => session.workspace === path)
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
+  }));
+}
+
 export function timeAgo(iso: string, now = Date.now()): string {
   const then = Date.parse(iso);
   if (!Number.isFinite(then)) {

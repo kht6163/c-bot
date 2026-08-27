@@ -2,13 +2,20 @@
   color-scheme: dark;
   --bg: #041c1c;
   --bg-rail: #041c1c;
-  --bg-raised: color-mix(in srgb, #ffe6cb 6%, #041c1c);
-  --mid: #ffe6cb;
-  --border: color-mix(in srgb, #ffe6cb 15%, transparent);
-  --text: #ffe6cb;
-  --muted: color-mix(in srgb, #ffe6cb 70%, transparent);
-  --quiet: color-mix(in srgb, #ffe6cb 45%, transparent);
-  --accent: #ffe6cb;
+  --ui-base: #ffe6cb;
+  --ui-text-primary: color-mix(in srgb, var(--ui-base) 94%, transparent);
+  --ui-text-secondary: color-mix(in srgb, var(--ui-base) 74%, transparent);
+  --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 54%, transparent);
+  --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 36%, transparent);
+  --ui-row-hover-background: color-mix(in srgb, var(--ui-base) 5%, transparent);
+  --ui-row-active-background: color-mix(in srgb, var(--ui-base) 5%, transparent);
+  --conversation-scaffold-text: color-mix(in srgb, var(--ui-base) 64%, transparent);
+  --bg-raised: color-mix(in srgb, var(--ui-base) 6%, var(--bg));
+  --border: color-mix(in srgb, var(--ui-base) 15%, transparent);
+  --text: var(--ui-text-primary);
+  --muted: var(--ui-text-secondary);
+  --quiet: var(--ui-text-tertiary);
+  --accent: var(--ui-base);
   --danger: #fb2c36;
   --ok: #4ade80;
   --font: system-ui, -apple-system, "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
@@ -98,11 +105,11 @@ button {
 .section-label {
   margin: 0;
   padding-left: 6px;
-  font-size: 0.64rem;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ui-text-tertiary);
 }
 
 .add-btn,
@@ -139,34 +146,86 @@ button {
   gap: 1px;
 }
 
-.row {
+.tree-branch {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 1px;
+}
+
+.tree-parent {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 26px;
+  padding-right: 4px;
+}
+
+.tree-parent .add-btn {
+  opacity: 0;
+}
+
+.tree-parent:hover .add-btn,
+.tree-parent:focus-within .add-btn {
+  opacity: 1;
+}
+
+.caret,
+.caret-slot {
+  width: 16px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 24px;
+  padding: 0;
+}
+
+.caret:hover {
+  color: var(--ui-text-primary);
+}
+
+.row-nest {
+  padding: 0 0 4px 24px;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+  min-height: 26px;
   text-align: left;
   border: 0;
-  border-left: 2px solid transparent;
-  border-radius: 0;
+  border-radius: 6px;
   background: transparent;
-  color: var(--muted);
-  padding: 6px 10px;
+  color: var(--ui-text-secondary);
+  padding: 2px 8px;
 }
 
 .row:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--mid) 5%, transparent);
+  color: var(--ui-text-primary);
+  background: var(--ui-row-hover-background);
+}
+
+.row.current {
+  color: var(--ui-text-primary);
+  background: transparent;
+}
+
+.row.current .row-title {
+  font-weight: 600;
 }
 
 .row.active {
-  color: var(--text);
-  background: color-mix(in srgb, var(--mid) 10%, transparent);
-  border-left-color: var(--mid);
+  color: var(--ui-text-primary);
+  background: var(--ui-row-active-background);
 }
 
 .row-title {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -176,12 +235,13 @@ button {
 }
 
 .row-meta {
-  width: 100%;
+  flex: 0 1 auto;
+  max-width: 42%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--quiet);
+  color: var(--ui-text-quaternary);
   font-weight: 400;
 }
 
@@ -251,17 +311,15 @@ button {
 .composer textarea {
   width: 100%;
   resize: none;
-  border-radius: 0;
+  border-radius: 6px;
   border: 0;
-  border-bottom: 1px solid var(--border);
-  background: transparent;
+  background: var(--bg-raised);
   color: var(--text);
-  padding: 8px 2px;
+  padding: 10px 12px;
 }
 
 .composer textarea:focus {
   outline: none;
-  border-bottom-color: var(--mid);
 }
 
 .composer button[type="submit"] {
@@ -328,7 +386,7 @@ button {
   align-self: flex-end;
   max-width: 72%;
   background: var(--bg-raised);
-  padding: 8px 12px 10px;
+  padding: 10px 14px 12px;
 }
 
 .bubble.assistant,
@@ -337,8 +395,58 @@ button {
   max-width: 80%;
 }
 
+.bubble.assistant .who {
+  display: none;
+}
+
+.bubble.assistant pre {
+  margin: 0;
+}
+
 .bubble.live pre {
   color: var(--muted);
+}
+
+.bubble.live pre::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: live-caret 1s step-end infinite;
+}
+
+.scaffold {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--conversation-scaffold-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scaffold-pulse {
+  letter-spacing: 0.04em;
+  animation: scaffold-pulse 1s ease-in-out infinite;
+}
+
+@keyframes scaffold-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes live-caret {
+  50% {
+    opacity: 0;
+  }
 }
 
 .modal-backdrop {
@@ -387,7 +495,7 @@ button {
 
 .modal input:focus {
   outline: none;
-  border-bottom-color: var(--mid);
+  border-bottom-color: var(--ui-base);
 }
 
 .modal-actions {
@@ -430,8 +538,12 @@ button {
 
 .tool-card {
   align-self: stretch;
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
+  padding: 4px 0;
+  color: var(--conversation-scaffold-text);
+}
+
+.tool-card.live .who {
+  animation: scaffold-pulse 1s ease-in-out infinite;
 }
 
 .tool-card pre {
@@ -487,7 +599,7 @@ button {
 }
 
 .dir-btn:hover {
-  background: color-mix(in srgb, var(--mid) 5%, transparent);
+  background: var(--ui-row-hover-background);
 }
 
 .dir-btn .row-meta {
@@ -506,7 +618,7 @@ button {
 
 .launch-btn:hover {
   text-decoration: none;
-  background: color-mix(in srgb, var(--mid) 5%, transparent);
+  background: var(--ui-row-hover-background);
 }
 
 @media (max-width: 720px) {
@@ -529,5 +641,10 @@ button {
   .text-btn,
   .ghost {
     transition: none;
+  }
+
+  .scaffold-pulse,
+  .bubble.live pre::after {
+    animation: none;
   }
 }
