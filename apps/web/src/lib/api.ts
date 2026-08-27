@@ -107,6 +107,29 @@ export async function saveSettings(input: { model: string; baseURL: string }): P
   }
 }
 
+export interface LlmProbeView {
+  ok: boolean;
+  message: string;
+  model: string;
+  reason?: string;
+}
+
+export async function testLlmConnection(input: {
+  apiKey?: string;
+  model: string;
+  baseURL: string;
+}): Promise<LlmProbeView> {
+  const res = await fetch("/api/llm/test", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`llm test ${res.status}`);
+  }
+  return (await res.json()) as LlmProbeView;
+}
+
 export async function saveApiKey(xaiApiKey: string): Promise<void> {
   const res = await fetch("/api/secrets", {
     method: "PUT",

@@ -349,6 +349,18 @@ textarea {
   color: var(--ok);
 }
 
+.hint-static {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.hint-static code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
 .hint.danger {
   color: var(--danger);
 }

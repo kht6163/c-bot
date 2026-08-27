@@ -1,7 +1,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { loadConfig, loadSecrets, saveConfig, saveXaiApiKey } from "@cbot/agent";
+import { loadConfig, loadSecrets, probeLlm, saveConfig, saveXaiApiKey } from "@cbot/agent";
 import { createBot, listBots } from "@cbot/bot";
 import { asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
@@ -113,6 +113,31 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         typeof body.baseURL === "string" && body.baseURL.trim() ? body.baseURL.trim() : config.llm.baseURL;
       await saveConfig(runtime.env.home, { ...config, llm: { model, baseURL } });
       return Response.json({ model, baseURL });
+    }
+    if (url.pathname === "/api/llm/test" && req.method === "POST") {
+      const body = await readJson(req);
+      const config = await loadConfig(runtime.env.home);
+      const secrets = await loadSecrets(runtime.env.home);
+      const fromBody = isRecord(body) ? body : {};
+      const apiKey = Object.prototype.hasOwnProperty.call(fromBody, "apiKey")
+        ? typeof fromBody.apiKey === "string"
+          ? fromBody.apiKey.trim()
+          : ""
+        : (secrets.xaiApiKey ?? "");
+      const model =
+        typeof fromBody.model === "string" && fromBody.model.trim().length > 0
+          ? fromBody.model.trim()
+          : config.llm.model;
+      const baseURL =
+        typeof fromBody.baseURL === "string" && fromBody.baseURL.trim().length > 0
+          ? fromBody.baseURL.trim()
+          : config.llm.baseURL;
+      const result = await probeLlm({
+        apiKey: apiKey ?? "",
+        model,
+        baseURL,
+      });
+      return Response.json(result);
     }
     if (url.pathname === "/api/secrets" && req.method === "PUT") {
       const body = await readJson(req);

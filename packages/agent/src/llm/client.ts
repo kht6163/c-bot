@@ -235,3 +235,76 @@ async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
+
+export interface LlmProbeInput {
+  baseURL: string;
+  apiKey: string;
+  model: string;
+}
+
+export interface LlmProbeResult {
+  ok: boolean;
+  message: string;
+  model: string;
+  reason?: DeliveryReason;
+}
+
+/**
+ * Checks that the OpenAI-compatible endpoint accepts this key.
+ * Prefers GET /models; falls back to a tiny chat completion.
+ */
+export async function probeLlm(
+  input: LlmProbeInput,
+  fetchFn: FetchLike = fetch,
+): Promise<LlmProbeResult> {
+  const key = input.apiKey.trim();
+  const model = input.model.trim();
+  const baseURL = trimSlash(input.baseURL.trim());
+  if (key.length === 0) {
+    return { ok: false, message: "API 키가 없습니다.", model, reason: "missing_config" };
+  }
+  if (baseURL.length === 0 || model.length === 0) {
+    return { ok: false, message: "모델과 Base URL이 필요합니다.", model, reason: "missing_config" };
+  }
+  try {
+    const modelsRes = await fetchFn(`${baseURL}/models`, {
+      headers: { authorization: `Bearer ${key}` },
+    });
+    if (modelsRes.ok) {
+      return { ok: true, message: "엔드포인트가 API 키를 수락했습니다.", model };
+    }
+    if (modelsRes.status === 401 || modelsRes.status === 403) {
+      return {
+        ok: false,
+        message: "API 키가 거부되었습니다.",
+        model,
+        reason: "provider_auth_or_access",
+      };
+    }
+    const chatRes = await fetchFn(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        max_tokens: 8,
+        messages: [{ role: "user", content: "ping" }],
+      }),
+    });
+    if (chatRes.ok) {
+      return { ok: true, message: "채팅 엔드포인트가 응답했습니다.", model };
+    }
+    const body = await chatRes.text().catch(() => chatRes.statusText);
+    return {
+      ok: false,
+      message: body || chatRes.statusText,
+      model,
+      reason: statusReason(chatRes.status),
+    };
+  } catch (err) {
+    return { ok: false, message: String(err), model, reason: "runtime_offline" };
+  }
+}

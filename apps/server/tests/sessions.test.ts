@@ -85,3 +85,23 @@ describe("sessions API", () => {
     runtime.store.close();
   });
 });
+
+describe("llm probe API", () => {
+  test("POST /api/llm/test with an empty key returns missing_config", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-probe-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const res = await handleHttp(
+      new Request("http://127.0.0.1/api/llm/test", {
+        method: "POST",
+        body: JSON.stringify({ apiKey: "" }),
+      }),
+      { web: "none", distDir: "/tmp", runtime },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; reason?: string };
+    expect(body.ok).toBe(false);
+    expect(body.reason).toBe("missing_config");
+    runtime.store.close();
+  });
+});

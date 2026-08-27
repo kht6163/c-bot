@@ -1,10 +1,15 @@
+import { join } from "node:path";
+import { applyEnvFile } from "@cbot/agent";
 import { loadProcessEnv } from "./env.ts";
 import { handleHttp, type WebMode } from "./http.ts";
 import { createRuntime } from "./runtime.ts";
 import { startVite, viteWebRoot, webDistDir } from "./vite-child.ts";
 import { onWsMessage, onWsOpen } from "./ws.ts";
 
+const repoRoot = join(import.meta.dir, "../../..");
+await applyEnvFile(join(repoRoot, ".env"));
 const env = loadProcessEnv();
+await applyEnvFile(join(env.home, ".env"));
 const production = process.env.NODE_ENV === "production";
 const web: WebMode = production ? "static" : "vite";
 const runtime = await createRuntime(env);

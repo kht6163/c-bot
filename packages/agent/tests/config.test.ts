@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG, loadConfig, saveConfig } from "../src/config.ts";
-import { loadSecrets, saveXaiApiKey } from "../src/secrets.ts";
+import { applyEnvFile, loadSecrets, saveXaiApiKey } from "../src/secrets.ts";
 
 describe("config", () => {
   test("writes defaults then round-trips a model change", async () => {
@@ -27,5 +27,15 @@ describe("secrets", () => {
     expect(secrets.xaiApiKey).toBe("from-process");
     const fileOnly = await loadSecrets(home, {});
     expect(fileOnly.xaiApiKey).toBe("from-file");
+  });
+
+  test("applyEnvFile fills only empty keys", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-envfile-"));
+    const path = join(home, ".env");
+    await Bun.write(path, "XAI_API_KEY=from-file\nCBOT_PORT=4090\n");
+    const target: Record<string, string | undefined> = { XAI_API_KEY: "already", CBOT_PORT: "" };
+    await applyEnvFile(path, target);
+    expect(target.XAI_API_KEY).toBe("already");
+    expect(target.CBOT_PORT).toBe("4090");
   });
 });

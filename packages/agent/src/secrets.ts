@@ -14,6 +14,20 @@ export async function loadSecrets(
   return { xaiApiKey };
 }
 
+/** Fill empty keys on `target` from a dotenv file. Existing non-empty values win. */
+export async function applyEnvFile(
+  path: string,
+  target: Record<string, string | undefined> = process.env,
+): Promise<void> {
+  const values = await readEnvFile(path);
+  for (const [key, value] of Object.entries(values)) {
+    const current = target[key];
+    if (!current || current.trim().length === 0) {
+      target[key] = value;
+    }
+  }
+}
+
 export async function saveXaiApiKey(home: string, key: string): Promise<void> {
   const path = secretsPath(home);
   const current = await readEnvFile(path);

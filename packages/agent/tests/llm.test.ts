@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LlmError, OpenAiCompatClient } from "../src/llm/client.ts";
+import { LlmError, OpenAiCompatClient, probeLlm } from "../src/llm/client.ts";
 
 describe("OpenAiCompatClient", () => {
   test("parses SSE content deltas", async () => {
@@ -41,5 +41,55 @@ describe("OpenAiCompatClient", () => {
       expect(err).toBeInstanceOf(LlmError);
       expect((err as LlmError).reason).toBe("provider_auth_or_access");
     }
+  });
+});
+
+describe("probeLlm", () => {
+  test("treats an empty key as missing_config without fetching", async () => {
+    let called = false;
+    const result = await probeLlm(
+      { baseURL: "https://api.x.ai/v1", apiKey: "", model: "grok-4.6" },
+      async () => {
+        called = true;
+        return new Response("no", { status: 500 });
+      },
+    );
+    expect(called).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("missing_config");
+  });
+
+  test("succeeds when GET /models accepts the key", async () => {
+    const result = await probeLlm(
+      { baseURL: "https://api.x.ai/v1", apiKey: "k", model: "grok-4.6" },
+      async (url) => {
+        expect(url).toBe("https://api.x.ai/v1/models");
+        return new Response("{}", { status: 200 });
+      },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.model).toBe("grok-4.6");
+  });
+
+  test("maps 401 from /models to provider_auth_or_access", async () => {
+    const result = await probeLlm(
+      { baseURL: "https://api.x.ai/v1", apiKey: "bad", model: "grok-4.6" },
+      async () => new Response("no", { status: 401 }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("provider_auth_or_access");
+  });
+
+  test("falls back to chat completions when /models is missing", async () => {
+    const result = await probeLlm(
+      { baseURL: "https://api.example.com/v1", apiKey: "k", model: "local" },
+      async (url) => {
+        if (String(url).endsWith("/models")) {
+          return new Response("no", { status: 404 });
+        }
+        return new Response("{}", { status: 200 });
+      },
+    );
+    expect(result.ok).toBe(true);
   });
 });

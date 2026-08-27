@@ -17,6 +17,7 @@ import {
   fetchHealth,
   fetchSession,
   fetchSessions,
+  fetchSettings,
   openEvents,
   sendApproval,
   sendMessage,
@@ -40,6 +41,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [newBotOpen, setNewBotOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
@@ -92,6 +94,15 @@ export function App() {
       });
 
     void loadList();
+    void fetchSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setHasApiKey(settings.hasApiKey);
+        }
+      })
+      .catch(() => {
+        /* settings are optional at first paint */
+      });
 
     try {
       socket = openEvents();
@@ -242,6 +253,7 @@ export function App() {
         )}
         <p className={`status status-${link}`}>
           {link === "ok" ? "서버 연결됨" : link === "down" ? "서버 없음" : "연결 중…"}
+          {hasApiKey ? " · API 키 있음" : " · API 키 없음"}
         </p>
       </aside>
       <section className="main">
@@ -302,6 +314,13 @@ export function App() {
           <div className="hero">
             <h1>c-bot</h1>
             <p>세션을 만들고 워크스페이스를 고른 뒤 메시지를 보내세요.</p>
+            {hasApiKey ? null : (
+              <p>
+                <button type="button" className="ghost" onClick={() => setSettingsOpen(true)}>
+                  LLM API 연결
+                </button>
+              </p>
+            )}
           </div>
         )}
         <form
@@ -340,7 +359,13 @@ export function App() {
           </button>
         </form>
       </section>
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onChanged={() => {
+          void fetchSettings().then((settings) => setHasApiKey(settings.hasApiKey));
+        }}
+      />
       <NewBotDialog
         open={newBotOpen}
         onClose={() => setNewBotOpen(false)}
