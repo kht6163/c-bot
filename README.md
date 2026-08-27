@@ -13,7 +13,8 @@
 - 도구: `read_file`, `write_file`, `edit_file`, `list_dir`, `grep`, `glob`, `bash`, `todo_write`
 - `bash`는 기본 승인 대기. 허용/거절은 대화 카드에서 한다
 
-봇 간 메시지는 아직 없습니다.
+- 봇 로스터: 핸들/역할이 있는 프로필과 정규 Bot Chat
+- 봇은 `message_agent`로 서로 메시지를 보낸다. 전달은 fire-and-forget이고 attribution은 서버가 붙인다
 
 ## 요구 사항
 

@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { loadConfig, loadSecrets, saveConfig, saveXaiApiKey } from "@cbot/agent";
+import { createBot, listBots } from "@cbot/bot";
 import { asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
 import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
@@ -10,7 +11,25 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   const url = new URL(req.url);
   try {
     if (url.pathname === "/api/sessions" && req.method === "GET") {
-      return Response.json({ sessions: runtime.store.list() });
+      return Response.json({
+        sessions: runtime.store.list().filter((session) => session.kind === "coding"),
+      });
+    }
+    if (url.pathname === "/api/bots" && req.method === "GET") {
+      return Response.json({ bots: await listBots(runtime.env.home) });
+    }
+    if (url.pathname === "/api/bots" && req.method === "POST") {
+      const body = await readJson(req);
+      if (!isRecord(body) || typeof body.handle !== "string") {
+        throw new HttpError(400, "handle required");
+      }
+      const bot = await createBot(runtime.env.home, runtime.store, {
+        handle: body.handle,
+        title: typeof body.title === "string" ? body.title : body.handle,
+        description: typeof body.description === "string" ? body.description : "",
+        ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
+      });
+      return Response.json({ bot }, { status: 201 });
     }
     if (url.pathname === "/api/sessions" && req.method === "POST") {
       const body = await readJson(req);

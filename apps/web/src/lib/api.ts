@@ -8,6 +8,41 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return (await res.json()) as HealthResponse;
 }
 
+export interface BotView {
+  id: string;
+  handle: string;
+  title: string;
+  description: string;
+  sessionId: string;
+  hidden: boolean;
+}
+
+export async function fetchBots(): Promise<BotView[]> {
+  const res = await fetch("/api/bots");
+  if (!res.ok) {
+    throw new Error(`bots ${res.status}`);
+  }
+  const body = (await res.json()) as { bots: BotView[] };
+  return body.bots;
+}
+
+export async function createBot(input: {
+  handle: string;
+  title: string;
+  description: string;
+}): Promise<BotView> {
+  const res = await fetch("/api/bots", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`create bot ${res.status}`);
+  }
+  const body = (await res.json()) as { bot: BotView };
+  return body.bot;
+}
+
 export async function fetchSessions(): Promise<SessionSummary[]> {
   const res = await fetch("/api/sessions");
   if (!res.ok) {

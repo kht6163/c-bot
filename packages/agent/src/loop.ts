@@ -13,7 +13,7 @@ import { codingSystemPrompt } from "./prompt.ts";
 import { deriveMessages } from "./session/derive.ts";
 import type { SessionStore } from "./session/store.ts";
 import { findTool, codingToolSchemas } from "./tools/registry.ts";
-import type { ToolContext, ToolSchema } from "./tools/types.ts";
+import { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 
 const CHUNK_FLUSH_MS = 40;
 const MAX_STEPS = 40;
@@ -27,6 +27,7 @@ export interface TurnContext {
   workspace: string | null;
   approvalMode: "prompt" | "allow";
   approvals: ApprovalGate;
+  extraTools?: ToolDefinition[];
   systemPrompt?: string;
 }
 
@@ -43,11 +44,15 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
     ctx.store.append(sessionId, { type: "turn/end", turnId });
     return;
   }
-  const tools = ctx.workspace ? codingToolSchemas() : [];
+  const extraTools = ctx.extraTools ?? [];
+  const tools = [
+    ...(ctx.workspace ? codingToolSchemas() : []),
+    ...extraTools.map(schemaOf),
+  ];
   const system = ctx.systemPrompt ?? codingSystemPrompt(ctx.workspace);
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      const outcome = await runStep(sessionId, turnId, ctx, system, tools);
+      const outcome = await runStep(sessionId, turnId, ctx, system, tools, extraTools);
       if (outcome === "stop") {
         ctx.store.append(sessionId, { type: "turn/end", turnId });
         return;
@@ -78,6 +83,7 @@ async function runStep(
   ctx: TurnContext,
   system: string,
   tools: ToolSchema[],
+  extraTools: readonly ToolDefinition[],
 ): Promise<"stop" | "continue"> {
   const history = deriveMessages(ctx.store.events(sessionId));
   let full = "";
@@ -109,7 +115,7 @@ async function runStep(
       pending += event.text;
       flush(false);
     } else if (event.type === "tool_call") {
-      const tool = findTool(event.name);
+      const tool = extraTools.find((item) => item.name === event.name) ?? findTool(event.name);
       toolCalls.push({
         id: event.id ? asToolCallId(event.id) : newToolCallId(),
         name: event.name,
@@ -133,17 +139,29 @@ async function runStep(
     : undefined;
   for (const call of toolCalls) {
     ctx.store.append(sessionId, { type: "tool/call", turnId, call });
-    const tool = findTool(call.name);
-    if (!tool || !toolCtx) {
+    const tool = extraTools.find((item) => item.name === call.name) ?? findTool(call.name);
+    const extra = extraTools.some((item) => item.name === call.name);
+    if (!tool) {
       ctx.store.append(sessionId, {
         type: "tool/result",
         turnId,
         callId: call.id,
         ok: false,
-        content: tool ? "workspace is required" : `unknown tool ${call.name}`,
+        content: `unknown tool ${call.name}`,
       });
       continue;
     }
+    if (!extra && !toolCtx) {
+      ctx.store.append(sessionId, {
+        type: "tool/result",
+        turnId,
+        callId: call.id,
+        ok: false,
+        content: "workspace is required",
+      });
+      continue;
+    }
+    const execCtx: ToolContext = toolCtx ?? { workspace: "", approvalMode: ctx.approvalMode };
     let args: Record<string, unknown> = {};
     try {
       args = parseArgs(call.arguments);
@@ -157,7 +175,7 @@ async function runStep(
       });
       continue;
     }
-    if (tool.needsApproval(args, toolCtx)) {
+    if (tool.needsApproval(args, execCtx)) {
       ctx.store.append(sessionId, {
         type: "tool/result",
         turnId,
@@ -179,7 +197,7 @@ async function runStep(
       }
     }
     try {
-      const content = await tool.execute(args, toolCtx);
+      const content = await tool.execute(args, execCtx);
       ctx.store.append(sessionId, {
         type: "tool/result",
         turnId,

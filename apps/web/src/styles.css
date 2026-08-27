@@ -222,6 +222,13 @@ textarea {
   background: var(--bg-raised);
 }
 
+.bot-role {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .log {
   flex: 1;
   min-height: 0;
@@ -262,7 +269,8 @@ textarea {
   padding: 8px 12px 10px;
 }
 
-.bubble.assistant {
+.bubble.assistant,
+.bubble.peer {
   align-self: flex-start;
   max-width: 80%;
 }

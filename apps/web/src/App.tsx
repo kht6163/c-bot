@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PROTOCOL_VERSION,
+  asSessionId,
   type ServerFrame,
   type SessionEvent,
   type SessionId,
   type SessionSummary,
 } from "@cbot/shared";
+import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
+  createBot,
   createSession,
+  fetchBots,
   fetchHealth,
   fetchSession,
   fetchSessions,
@@ -17,6 +21,7 @@ import {
   sendApproval,
   sendMessage,
   setWorkspace,
+  type BotView,
 } from "./lib/api.ts";
 import { visibleRows } from "./lib/rows.ts";
 
@@ -27,11 +32,14 @@ export function App() {
   const [tab, setTab] = useState<Tab>("sessions");
   const [link, setLink] = useState<LinkState>("connecting");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [bots, setBots] = useState<BotView[]>([]);
   const [selectedId, setSelectedId] = useState<SessionId | undefined>();
+  const [selected, setSelected] = useState<SessionSummary | undefined>();
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [draft, setDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [newBotOpen, setNewBotOpen] = useState(false);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
@@ -48,22 +56,24 @@ export function App() {
   }, []);
 
   const loadList = useCallback(async () => {
-    setSessions(await fetchSessions());
+    const [nextSessions, nextBots] = await Promise.all([fetchSessions(), fetchBots()]);
+    setSessions(nextSessions);
+    setBots(nextBots);
   }, []);
 
-  const openSession = useCallback(
-    async (id: SessionId) => {
-      setSelectedId(id);
-      const detail = await fetchSession(id);
-      setEvents(detail.events);
+  const openSession = useCallback(async (id: SessionId) => {
+    setSelectedId(id);
+    const detail = await fetchSession(id);
+    setSelected(detail.session);
+    setEvents(detail.events);
+    if (detail.session.kind === "coding") {
       setSessions((current) => {
         const others = current.filter((s) => s.id !== id);
         return [detail.session, ...others];
       });
-      socketRef.current?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
-    },
-    [],
-  );
+    }
+    socketRef.current?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,9 +144,10 @@ export function App() {
 
   const rows = useMemo(() => visibleRows(events), [events]);
   const emptyLabel = tab === "sessions" ? "세션이 없습니다" : "봇이 없습니다";
-  const selected = sessions.find((s) => s.id === selectedId);
   const workspace = selected?.workspace ?? null;
-  const composerReady = Boolean(selectedId && workspace);
+  const composerReady = Boolean(
+    selectedId && (selected?.kind === "bot-chat" || workspace),
+  );
 
   return (
     <div className="app">
@@ -204,7 +215,29 @@ export function App() {
           </div>
         ) : (
           <div className="list">
-            <p className="empty">{emptyLabel}</p>
+            <button type="button" className="new-btn" onClick={() => setNewBotOpen(true)}>
+              새 봇
+            </button>
+            {bots.length === 0 ? (
+              <p className="empty">{emptyLabel}</p>
+            ) : (
+              <ul>
+                {bots.map((bot) => (
+                  <li key={bot.id}>
+                    <button
+                      type="button"
+                      className={bot.sessionId === selectedId ? "session-btn active" : "session-btn"}
+                      onClick={() => {
+                        void openSession(asSessionId(bot.sessionId));
+                      }}
+                    >
+                      @{bot.handle}
+                      <span className="bot-role">{bot.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         <p className={`status status-${link}`}>
@@ -222,7 +255,7 @@ export function App() {
             <div className="log" ref={logRef}>
             {rows.length === 0 ? (
               <p className="empty-log">
-                {workspace
+                {workspace || selected?.kind === "bot-chat"
                   ? "메시지를 보내면 대화가 시작됩니다."
                   : "코딩 턴을 시작하려면 워크스페이스를 고르세요."}
               </p>
@@ -255,7 +288,9 @@ export function App() {
                     key={row.key}
                     className={`bubble ${row.kind}${row.live ? " live" : ""}`}
                   >
-                    <span className="who">{row.kind === "user" ? "나" : "c-bot"}</span>
+                    <span className="who">
+                      {row.kind === "user" ? "나" : row.kind === "peer" ? `@${row.handle}` : "c-bot"}
+                    </span>
                     <pre>{row.text}</pre>
                   </article>
                 ),
@@ -306,6 +341,17 @@ export function App() {
         </form>
       </section>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <NewBotDialog
+        open={newBotOpen}
+        onClose={() => setNewBotOpen(false)}
+        onCreate={async (input) => {
+          const bot = await createBot(input);
+          setBots((current) => [...current, bot].sort((a, b) => a.handle.localeCompare(b.handle)));
+          setNewBotOpen(false);
+          await openSession(asSessionId(bot.sessionId));
+          setTab("bots");
+        }}
+      />
       <WorkspacePicker
         open={workspaceOpen}
         current={workspace}
@@ -315,7 +361,10 @@ export function App() {
             return;
           }
           void setWorkspace(selectedId, path).then((session) => {
-            setSessions((current) => current.map((s) => (s.id === session.id ? session : s)));
+            setSelected(session);
+            if (session.kind === "coding") {
+              setSessions((current) => current.map((s) => (s.id === session.id ? session : s)));
+            }
             setWorkspaceOpen(false);
           });
         }}

@@ -30,7 +30,10 @@ export function jsonError(err: unknown): Response {
   }
   const message = err instanceof Error ? err.message : "internal error";
   const status =
-    message === "unknown session" || message === "empty message" || message === "workspace required"
+    message === "unknown session" ||
+    message === "empty message" ||
+    message === "workspace required" ||
+    message.startsWith("handle")
       ? 400
       : 500;
   return Response.json({ error: message }, { status });

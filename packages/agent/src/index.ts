@@ -7,4 +7,5 @@ export { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "./lo
 export { CODING_SYSTEM_PROMPT, codingSystemPrompt } from "./prompt.ts";
 export { ApprovalGate } from "./approval.ts";
 export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";
+export { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";

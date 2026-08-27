@@ -3,6 +3,7 @@ import type { SessionEvent, ToolCallId, ToolUiKind } from "@cbot/shared";
 export type ChatRow =
   | { key: string; kind: "user"; text: string; live: false }
   | { key: string; kind: "assistant"; text: string; live: boolean }
+  | { key: string; kind: "peer"; text: string; live: false; handle: string }
   | {
       key: string;
       kind: "tool";
@@ -28,6 +29,14 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
   for (const event of events) {
     if (event.type === "user/message") {
       rows.push({ key: `u-${event.seq}`, kind: "user", text: event.text, live: false });
+    } else if (event.type === "bot/message") {
+      rows.push({
+        key: `p-${event.seq}`,
+        kind: "peer",
+        text: event.text,
+        live: false,
+        handle: event.fromHandle,
+      });
     } else if (event.type === "assistant/chunk" && !done.has(event.turnId)) {
       liveByTurn.set(event.turnId, (liveByTurn.get(event.turnId) ?? "") + event.text);
     } else if (event.type === "assistant/message") {
