@@ -15,12 +15,12 @@ describe("health", () => {
     expect(body.version).toBe(0);
   });
 
-  test("unknown /api path is 404", async () => {
+  test("unknown /api path without runtime is 503", async () => {
     const res = await handleHttp(new Request("http://127.0.0.1/api/missing"), {
       web: "none",
       distDir: "/tmp",
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(503);
   });
 });
 

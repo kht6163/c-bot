@@ -6,22 +6,27 @@
 
 ## 기능
 
-- 로컬 웹 서버와 앱 셸: 세션/봇 탭, 서버 연결 상태, 빈 대화 화면
+- 로컬 웹 서버와 앱 셸 (세션/봇 탭, 서버 연결 상태)
+- 세션을 만들고 메시지를 보내면 모델 응답이 스트리밍된다
+- 세션 로그가 대화의 기준이다. 새로고침해도 같은 대화가 복원된다
+- 설정에서 모델, Base URL, `XAI_API_KEY`를 넣는다 (키는 서버만 보관)
 
-코딩 턴, 도구, 봇 간 메시지는 아직 없습니다.
+코딩 도구, 워크스페이스 작업, 봇 간 메시지는 아직 없습니다.
 
 ## 요구 사항
 
 - [Bun](https://bun.sh) 1.4 이상 (`bun --version`)
+- 모델 턴을 쓰려면 SpaceXAI(xAI) API 키
 
 ## 실행
 
 ```sh
 bun install
+cp .env.example .env   # 필요하면 XAI_API_KEY를 채운다
 bun run dev
 ```
 
-브라우저에서 `http://127.0.0.1:3080` 을 엽니다. 호스트와 포트는 환경 변수로 바꿉니다.
+브라우저에서 `http://127.0.0.1:3080` 을 엽니다. 설정에서 키를 넣어도 됩니다. 키는 `$CBOT_HOME/.env`에 저장되며 응답에 다시 실리지 않습니다.
 
 ```sh
 bun test
@@ -32,10 +37,12 @@ bun run typecheck
 
 시크릿과 프로세스 위치만 환경 변수로 둡니다. 값은 `.env`에 넣고 커밋하지 않습니다. 이름은 [`.env.example`](.env.example)과 같습니다.
 
+모델 id와 Base URL은 `$CBOT_HOME/config.yaml`입니다. 기본 모델은 `grok-4.6`, 기본 Base URL은 `https://api.x.ai/v1`입니다.
+
 | 이름 | 기본값 | 의미 |
 |---|---|---|
-| `XAI_API_KEY` | (없음) | SpaceXAI(xAI) API 키. 모델 턴이 생기면 필요합니다. |
-| `CBOT_HOME` | `~/.c-bot` | 런타임 데이터 루트 |
+| `XAI_API_KEY` | (없음) | SpaceXAI(xAI) API 키 |
+| `CBOT_HOME` | `~/.c-bot` | 런타임 데이터 루트 (세션 DB, config.yaml, .env) |
 | `CBOT_HOST` | `127.0.0.1` | 서버 바인드 주소 |
 | `CBOT_PORT` | `3080` | 서버 포트 |
 

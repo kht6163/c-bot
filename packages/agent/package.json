@@ -1,15 +1,15 @@
 {
-  "name": "@cbot/server",
+  "name": "@cbot/agent",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "start": "NODE_ENV=production bun run src/index.ts",
     "typecheck": "tsc --pretty false"
   },
   "dependencies": {
-    "@cbot/agent": "workspace:*",
     "@cbot/shared": "workspace:*"
   }
 }

@@ -1,11 +1,13 @@
 import { loadProcessEnv } from "./env.ts";
 import { handleHttp, type WebMode } from "./http.ts";
+import { createRuntime } from "./runtime.ts";
 import { startVite, viteWebRoot, webDistDir } from "./vite-child.ts";
-import { onWsOpen } from "./ws.ts";
+import { onWsMessage, onWsOpen } from "./ws.ts";
 
 const env = loadProcessEnv();
 const production = process.env.NODE_ENV === "production";
 const web: WebMode = production ? "static" : "vite";
+const runtime = await createRuntime(env);
 
 if (web === "vite") {
   startVite(viteWebRoot());
@@ -22,16 +24,18 @@ const server = Bun.serve({
       }
       return new Response("upgrade failed", { status: 400 });
     }
-    return handleHttp(req, { web, distDir: webDistDir() });
+    return handleHttp(req, { web, distDir: webDistDir(), runtime });
   },
   websocket: {
     open(ws) {
       onWsOpen(ws);
     },
-    message() {
-      // Session subscribe/send land in a later change.
+    message(ws, message) {
+      void onWsMessage(ws, message, runtime);
     },
-    close() {},
+    close(ws) {
+      runtime.hub.remove(ws);
+    },
   },
 });
 

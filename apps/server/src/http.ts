@@ -1,5 +1,7 @@
 import { PROTOCOL_VERSION, type HealthResponse } from "@cbot/shared";
 import { proxyVite } from "./proxy.ts";
+import type { Runtime } from "./runtime.ts";
+import { handleApi } from "./routes.ts";
 import { serveStatic } from "./static.ts";
 
 export type WebMode = "vite" | "static" | "none";
@@ -7,6 +9,7 @@ export type WebMode = "vite" | "static" | "none";
 export interface HttpOptions {
   web: WebMode;
   distDir: string;
+  runtime?: Runtime;
 }
 
 export async function handleHttp(req: Request, opts: HttpOptions): Promise<Response> {
@@ -16,7 +19,10 @@ export async function handleHttp(req: Request, opts: HttpOptions): Promise<Respo
     return Response.json(body);
   }
   if (url.pathname.startsWith("/api/")) {
-    return Response.json({ error: "not found" }, { status: 404 });
+    if (!opts.runtime) {
+      return Response.json({ error: "runtime unavailable" }, { status: 503 });
+    }
+    return handleApi(req, opts.runtime);
   }
   if (opts.web === "none") {
     return new Response("not found", { status: 404 });
