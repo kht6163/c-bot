@@ -422,6 +422,8 @@ export function App() {
         open={workspaceOpen}
         current={project?.current ?? null}
         recents={project?.recents ?? []}
+        launchDir={project?.launchDir ?? null}
+        launchName={project?.launchName ?? null}
         onClose={() => setWorkspaceOpen(false)}
         onSelect={(path) => {
           void switchProject(path);

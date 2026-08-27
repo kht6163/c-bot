@@ -1,6 +1,6 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { saveXaiApiKey, type LlmClient, type LlmStreamEvent } from "@cbot/agent";
 import { handleHttp } from "../src/http.ts";
@@ -97,6 +97,22 @@ describe("sessions API", () => {
       { web: "none", distDir: "/tmp", runtime },
     );
     expect(res.status).toBe(400);
+    runtime.store.close();
+  });
+
+  test("project view and browse default to the launch directory", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-launch-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const launchDir = resolve(home);
+    const runtime = await createRuntime(env, new ScriptedLlm([]), launchDir);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const projectRes = await handleHttp(new Request("http://127.0.0.1/api/project"), opts);
+    const project = (await projectRes.json()) as { launchDir: string; current: string | null };
+    expect(project.launchDir).toBe(launchDir);
+    expect(project.current).toBeNull();
+    const browse = await handleHttp(new Request("http://127.0.0.1/api/fs/browse"), opts);
+    const listing = (await browse.json()) as { path: string };
+    expect(listing.path).toBe(launchDir);
     runtime.store.close();
   });
 });

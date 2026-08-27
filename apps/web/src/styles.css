@@ -215,6 +215,14 @@ textarea {
   white-space: nowrap;
 }
 
+.launch-btn {
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+}
+
 .recent-list {
   display: flex;
   flex-direction: column;

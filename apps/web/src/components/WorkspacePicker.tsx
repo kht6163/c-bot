@@ -5,11 +5,21 @@ interface Props {
   open: boolean;
   current: string | null;
   recents?: string[];
+  launchDir?: string | null;
+  launchName?: string | null;
   onClose: () => void;
   onSelect: (path: string) => void;
 }
 
-export function WorkspacePicker({ open, current, recents = [], onClose, onSelect }: Props) {
+export function WorkspacePicker({
+  open,
+  current,
+  recents = [],
+  launchDir = null,
+  launchName = null,
+  onClose,
+  onSelect,
+}: Props) {
   const [path, setPath] = useState(current ?? "");
   const [parent, setParent] = useState<string | null>(null);
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -19,8 +29,8 @@ export function WorkspacePicker({ open, current, recents = [], onClose, onSelect
     if (!open) {
       return;
     }
-    void load(current ?? undefined);
-  }, [open, current]);
+    void load(current ?? launchDir ?? undefined);
+  }, [open, current, launchDir]);
 
   async function load(next?: string) {
     try {
@@ -42,7 +52,13 @@ export function WorkspacePicker({ open, current, recents = [], onClose, onSelect
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="modal" role="dialog" aria-labelledby="ws-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="ws-title">프로젝트 열기</h2>
-        <p className="hint-static">이 폴더에서 코딩 세션이 진행됩니다.</p>
+        <p className="hint-static">이 폴더에서 코딩 세션이 진행됩니다. 경로는 직접 붙여 넣어도 됩니다.</p>
+        {launchDir ? (
+          <button type="button" className="dir-btn launch-btn" onClick={() => onSelect(launchDir)}>
+            실행한 폴더 열기{launchName ? ` · ${launchName}` : ""}
+            <span className="bot-role">{launchDir}</span>
+          </button>
+        ) : null}
         {recents.length > 0 ? (
           <div className="recent-list">
             {recents.map((item) => (

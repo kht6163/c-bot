@@ -1,5 +1,4 @@
 import { readdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   loadConfig,
@@ -21,7 +20,9 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   try {
     if (url.pathname === "/api/project" && req.method === "GET") {
       const config = await loadConfig(runtime.env.home);
-      return Response.json(toProjectView(config.project.current, config.project.recents));
+      return Response.json(
+        toProjectView(config.project.current, config.project.recents, runtime.launchDir),
+      );
     }
     if (url.pathname === "/api/project" && req.method === "PUT") {
       const body = await readJson(req);
@@ -36,7 +37,9 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const config = await loadConfig(runtime.env.home);
       await saveConfig(runtime.env.home, rememberProject(config, path));
       const updated = await loadConfig(runtime.env.home);
-      return Response.json(toProjectView(updated.project.current, updated.project.recents));
+      return Response.json(
+        toProjectView(updated.project.current, updated.project.recents, runtime.launchDir),
+      );
     }
     if (url.pathname === "/api/sessions" && req.method === "GET") {
       const config = await loadConfig(runtime.env.home);
@@ -81,7 +84,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       return Response.json({ session }, { status: 201 });
     }
     if (url.pathname === "/api/fs/browse" && req.method === "GET") {
-      return Response.json(await browseDir(url.searchParams.get("path")));
+      return Response.json(await browseDir(url.searchParams.get("path"), runtime.launchDir));
     }
     const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
     if (sessionMatch && req.method === "PUT") {
@@ -191,16 +194,25 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   }
 }
 
-function toProjectView(current: string | null, recents: string[]): ProjectView {
-  return { current, recents, name: projectName(current) };
+function toProjectView(current: string | null, recents: string[], launchDir: string): ProjectView {
+  return {
+    current,
+    recents,
+    name: projectName(current),
+    launchDir,
+    launchName: projectName(launchDir),
+  };
 }
 
-async function browseDir(raw: string | null): Promise<{
+async function browseDir(
+  raw: string | null,
+  fallback: string,
+): Promise<{
   path: string;
   parent: string | null;
   entries: { name: string; path: string; type: "dir" | "file" }[];
 }> {
-  const path = resolve(raw && raw.trim().length > 0 ? raw : homedir());
+  const path = resolve(raw && raw.trim().length > 0 ? raw : fallback);
   const info = await stat(path).catch(() => null);
   if (!info?.isDirectory()) {
     throw new HttpError(400, "not a directory");

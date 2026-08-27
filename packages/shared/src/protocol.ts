@@ -7,6 +7,8 @@ export interface ProjectView {
   current: string | null;
   recents: string[];
   name: string | null;
+  launchDir: string;
+  launchName: string | null;
 }
 
 export interface SessionSummary {

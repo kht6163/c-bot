@@ -14,6 +14,7 @@ import {
   type ToolDefinition,
 } from "@cbot/agent";
 import { listBots, loadBot, messageAgentTool, protocolSection, withProtocol } from "@cbot/bot";
+import { resolve } from "node:path";
 import type { SessionId, ToolCallId } from "@cbot/shared";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
@@ -24,18 +25,30 @@ export interface Runtime {
   hub: EventHub;
   llm: LlmClient;
   approvals: ApprovalGate;
+  launchDir: string;
 }
 
 const busy = new Set<string>();
 
-export async function createRuntime(env: ProcessEnv, llm?: LlmClient): Promise<Runtime> {
+export async function createRuntime(
+  env: ProcessEnv,
+  llm?: LlmClient,
+  launchDir: string = resolve(process.cwd()),
+): Promise<Runtime> {
   await ensureHome(env.home);
   const store = await SessionStore.open(sessionsDbPath(env.home));
   const hub = new EventHub();
   store.onAppend((sessionId, event) => {
     hub.emit(sessionId, event);
   });
-  return { env, store, hub, llm: llm ?? new OpenAiCompatClient(), approvals: new ApprovalGate() };
+  return {
+    env,
+    store,
+    hub,
+    llm: llm ?? new OpenAiCompatClient(),
+    approvals: new ApprovalGate(),
+    launchDir: resolve(launchDir),
+  };
 }
 
 export async function acceptUserMessage(
