@@ -41,6 +41,10 @@ textarea {
   height: 100%;
 }
 
+.app[aria-hidden="true"] .main {
+  visibility: hidden;
+}
+
 .rail {
   display: flex;
   flex-direction: column;
@@ -282,15 +286,15 @@ textarea {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(8 10 14 / 62%);
+  background: rgb(8 10 14 / 88%);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 20;
+  z-index: 100;
 }
 
 .modal {
-  width: min(420px, calc(100vw - 24px));
+  width: min(440px, calc(100vw - 32px));
   background: var(--bg-rail);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -298,6 +302,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 45%);
 }
 
 .modal h2 {
@@ -351,14 +356,13 @@ textarea {
 
 .hint-static {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.45;
 }
 
-.hint-static code {
-  font-family: var(--mono);
-  font-size: 11px;
+.hint-static a {
+  color: var(--accent);
 }
 
 .hint.danger {

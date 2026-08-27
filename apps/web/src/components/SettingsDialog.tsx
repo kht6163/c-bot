@@ -66,8 +66,10 @@ export function SettingsDialog({ open, onClose, onChanged }: Props) {
       >
         <h2 id="settings-title">LLM 연결</h2>
         <p className="hint-static">
-          OpenAI 호환 Chat Completions입니다. 기본 엔드포인트는 xAI입니다. 키는 서버에만
-          저장되고 브라우저로 다시 내려오지 않습니다.
+          xAI 콘솔에서 키를 만든 뒤 붙여 넣고 연결 테스트를 누르세요.{" "}
+          <a href="https://console.x.ai" target="_blank" rel="noreferrer">
+            console.x.ai
+          </a>
         </p>
         <label>
           모델

@@ -160,8 +160,11 @@ export function App() {
     selectedId && (selected?.kind === "bot-chat" || workspace),
   );
 
+  const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
+
   return (
-    <div className="app">
+    <>
+    <div className="app" {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}>
       <aside className="rail">
         <div className="brand-row">
           <div className="brand">c-bot</div>
@@ -359,6 +362,7 @@ export function App() {
           </button>
         </form>
       </section>
+    </div>
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -394,6 +398,6 @@ export function App() {
           });
         }}
       />
-    </div>
+    </>
   );
 }
