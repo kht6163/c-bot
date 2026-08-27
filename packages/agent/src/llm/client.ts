@@ -1,5 +1,6 @@
 import type { DeliveryReason } from "@cbot/shared";
 import type { ChatMessage } from "../session/derive.ts";
+import type { ToolSchema } from "../tools/types.ts";
 
 export class LlmError extends Error {
   readonly reason: DeliveryReason;
@@ -13,6 +14,7 @@ export class LlmError extends Error {
 
 export type LlmStreamEvent =
   | { type: "text"; text: string }
+  | { type: "tool_call"; id: string; name: string; arguments: string }
   | { type: "done"; finishReason: string };
 
 export interface LlmRequest {
@@ -21,6 +23,7 @@ export interface LlmRequest {
   model: string;
   system: string;
   messages: readonly ChatMessage[];
+  tools?: readonly ToolSchema[];
 }
 
 export interface LlmClient {
@@ -50,6 +53,18 @@ export class OpenAiCompatClient implements LlmClient {
           model: request.model,
           stream: true,
           messages,
+          ...(request.tools && request.tools.length > 0
+            ? {
+                tools: request.tools.map((tool) => ({
+                  type: "function",
+                  function: {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  },
+                })),
+              }
+            : {}),
         }),
       });
     } catch (err) {
@@ -62,10 +77,11 @@ export class OpenAiCompatClient implements LlmClient {
     if (!res.body) {
       throw new LlmError("empty LLM body", "unknown");
     }
+    const acc = new Map<number, { id: string; name: string; arguments: string }>();
+    let finish = "stop";
     for await (const data of readSse(res.body)) {
       if (data === "[DONE]") {
-        yield { type: "done", finishReason: "stop" };
-        return;
+        break;
       }
       let parsed: unknown;
       try {
@@ -77,13 +93,18 @@ export class OpenAiCompatClient implements LlmClient {
       if (text) {
         yield { type: "text", text };
       }
-      const finish = finishReason(parsed);
-      if (finish) {
-        yield { type: "done", finishReason: finish };
-        return;
+      mergeToolDelta(acc, parsed);
+      const nextFinish = finishReason(parsed);
+      if (nextFinish) {
+        finish = nextFinish;
       }
     }
-    yield { type: "done", finishReason: "stop" };
+    for (const call of [...acc.values()]) {
+      if (call.name.length > 0) {
+        yield { type: "tool_call", id: call.id, name: call.name, arguments: call.arguments };
+      }
+    }
+    yield { type: "done", finishReason: finish };
   }
 }
 
@@ -130,6 +151,37 @@ function statusReason(status: number): DeliveryReason {
 
 function trimSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
+}
+
+function mergeToolDelta(
+  acc: Map<number, { id: string; name: string; arguments: string }>,
+  parsed: unknown,
+): void {
+  if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+    return;
+  }
+  const choice = parsed.choices[0];
+  if (!isRecord(choice) || !isRecord(choice.delta) || !Array.isArray(choice.delta.tool_calls)) {
+    return;
+  }
+  for (const raw of choice.delta.tool_calls) {
+    if (!isRecord(raw) || typeof raw.index !== "number") {
+      continue;
+    }
+    const current = acc.get(raw.index) ?? { id: "", name: "", arguments: "" };
+    if (typeof raw.id === "string") {
+      current.id = raw.id;
+    }
+    if (isRecord(raw.function)) {
+      if (typeof raw.function.name === "string") {
+        current.name += raw.function.name;
+      }
+      if (typeof raw.function.arguments === "string") {
+        current.arguments += raw.function.arguments;
+      }
+    }
+    acc.set(raw.index, current);
+  }
 }
 
 function deltaText(parsed: unknown): string {

@@ -7,13 +7,16 @@ import {
   type SessionSummary,
 } from "@cbot/shared";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
+import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
   createSession,
   fetchHealth,
   fetchSession,
   fetchSessions,
   openEvents,
+  sendApproval,
   sendMessage,
+  setWorkspace,
 } from "./lib/api.ts";
 import { visibleRows } from "./lib/rows.ts";
 
@@ -28,6 +31,7 @@ export function App() {
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [draft, setDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
@@ -130,7 +134,9 @@ export function App() {
 
   const rows = useMemo(() => visibleRows(events), [events]);
   const emptyLabel = tab === "sessions" ? "세션이 없습니다" : "봇이 없습니다";
-  const composerReady = Boolean(selectedId);
+  const selected = sessions.find((s) => s.id === selectedId);
+  const workspace = selected?.workspace ?? null;
+  const composerReady = Boolean(selectedId && workspace);
 
   return (
     <div className="app">
@@ -207,25 +213,60 @@ export function App() {
       </aside>
       <section className="main">
         {selectedId ? (
-          <div className="log" ref={logRef}>
+          <>
+            <div className="workspace-bar">
+              <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
+                {workspace ?? "워크스페이스를 선택하세요"}
+              </button>
+            </div>
+            <div className="log" ref={logRef}>
             {rows.length === 0 ? (
-              <p className="empty-log">메시지를 보내면 대화가 시작됩니다.</p>
+              <p className="empty-log">
+                {workspace
+                  ? "메시지를 보내면 대화가 시작됩니다."
+                  : "코딩 턴을 시작하려면 워크스페이스를 고르세요."}
+              </p>
             ) : (
-              rows.map((row) => (
-                <article
-                  key={row.key}
-                  className={`bubble ${row.kind}${row.live ? " live" : ""}`}
-                >
-                  <span className="who">{row.kind === "user" ? "나" : "c-bot"}</span>
-                  <pre>{row.text}</pre>
-                </article>
-              ))
+              rows.map((row) =>
+                row.kind === "tool" ? (
+                  <article key={row.key} className={`tool-card ui-${row.ui}`}>
+                    <span className="who">{row.name}</span>
+                    <pre>{row.content || row.arguments}</pre>
+                    {row.pendingApproval && selectedId ? (
+                      <div className="approval">
+                        <button
+                          type="button"
+                          onClick={() => void sendApproval(selectedId, row.callId, true)}
+                        >
+                          허용
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => void sendApproval(selectedId, row.callId, false)}
+                        >
+                          거절
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                ) : (
+                  <article
+                    key={row.key}
+                    className={`bubble ${row.kind}${row.live ? " live" : ""}`}
+                  >
+                    <span className="who">{row.kind === "user" ? "나" : "c-bot"}</span>
+                    <pre>{row.text}</pre>
+                  </article>
+                ),
+              )
             )}
-          </div>
+            </div>
+          </>
         ) : (
           <div className="hero">
             <h1>c-bot</h1>
-            <p>세션을 만들고 메시지를 보내세요. 모델 키는 설정에서 넣습니다.</p>
+            <p>세션을 만들고 워크스페이스를 고른 뒤 메시지를 보내세요.</p>
           </div>
         )}
         <form
@@ -247,7 +288,9 @@ export function App() {
             placeholder={
               composerReady
                 ? "메시지를 입력하세요"
-                : "새 세션을 만들면 메시지를 보낼 수 있습니다"
+                : selectedId
+                  ? "워크스페이스를 선택하면 메시지를 보낼 수 있습니다"
+                  : "새 세션을 만들면 메시지를 보낼 수 있습니다"
             }
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -263,6 +306,20 @@ export function App() {
         </form>
       </section>
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <WorkspacePicker
+        open={workspaceOpen}
+        current={workspace}
+        onClose={() => setWorkspaceOpen(false)}
+        onSelect={(path) => {
+          if (!selectedId) {
+            return;
+          }
+          void setWorkspace(selectedId, path).then((session) => {
+            setSessions((current) => current.map((s) => (s.id === session.id ? session : s)));
+            setWorkspaceOpen(false);
+          });
+        }}
+      />
     </div>
   );
 }

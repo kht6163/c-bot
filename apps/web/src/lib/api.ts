@@ -1,4 +1,4 @@
-import type { HealthResponse, SessionEvent, SessionId, SessionSummary } from "@cbot/shared";
+import type { HealthResponse, SessionEvent, SessionId, SessionSummary, ToolCallId } from "@cbot/shared";
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch("/api/health");
@@ -80,6 +80,49 @@ export async function saveApiKey(xaiApiKey: string): Promise<void> {
   });
   if (!res.ok) {
     throw new Error(`secrets ${res.status}`);
+  }
+}
+
+export async function setWorkspace(id: SessionId, workspace: string): Promise<SessionSummary> {
+  const res = await fetch(`/api/sessions/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspace }),
+  });
+  if (!res.ok) {
+    throw new Error(`workspace ${res.status}`);
+  }
+  const body = (await res.json()) as { session: SessionSummary };
+  return body.session;
+}
+
+export interface FsEntry {
+  name: string;
+  path: string;
+  type: "dir" | "file";
+}
+
+export async function browseDir(path?: string): Promise<{
+  path: string;
+  parent: string | null;
+  entries: FsEntry[];
+}> {
+  const q = path ? `?path=${encodeURIComponent(path)}` : "";
+  const res = await fetch(`/api/fs/browse${q}`);
+  if (!res.ok) {
+    throw new Error(`browse ${res.status}`);
+  }
+  return (await res.json()) as { path: string; parent: string | null; entries: FsEntry[] };
+}
+
+export async function sendApproval(id: SessionId, callId: ToolCallId, allow: boolean): Promise<void> {
+  const res = await fetch(`/api/sessions/${id}/approvals`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ callId, allow }),
+  });
+  if (!res.ok) {
+    throw new Error(`approval ${res.status}`);
   }
 }
 

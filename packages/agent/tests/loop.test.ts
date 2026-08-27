@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { runTurn, sessionNeedsTurn, titleFromText } from "../src/loop.ts";
+import { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { LlmClient, LlmStreamEvent } from "../src/llm/client.ts";
 import { LlmError } from "../src/llm/client.ts";
 import { deriveMessages } from "../src/session/derive.ts";
+import { ApprovalGate } from "../src/approval.ts";
 
 class ScriptedLlm implements LlmClient {
   constructor(private readonly events: LlmStreamEvent[] | Error) {}
@@ -18,22 +19,40 @@ class ScriptedLlm implements LlmClient {
   }
 }
 
+function turnCtx(
+  store: SessionStore,
+  llm: LlmClient,
+  extra: Partial<TurnContext> & Pick<TurnContext, "apiKey">,
+): TurnContext {
+  return {
+    store,
+    llm,
+    baseURL: "https://api.x.ai/v1",
+    model: "grok-4.6",
+    workspace: extra.workspace ?? null,
+    approvalMode: extra.approvalMode ?? "allow",
+    approvals: extra.approvals ?? new ApprovalGate(),
+    ...extra,
+  };
+}
+
 describe("runTurn", () => {
   test("streams chunks then a final assistant message reconstructable from the log", async () => {
     const store = await SessionStore.open(":memory:");
     const session = store.create();
     store.append(session.id, { type: "user/message", text: "ping", mentions: [] });
-    await runTurn(session.id, {
-      store,
-      llm: new ScriptedLlm([
-        { type: "text", text: "po" },
-        { type: "text", text: "ng" },
-        { type: "done", finishReason: "stop" },
-      ]),
-      apiKey: "test",
-      baseURL: "https://api.x.ai/v1",
-      model: "grok-4.6",
-    });
+    await runTurn(
+      session.id,
+      turnCtx(
+        store,
+        new ScriptedLlm([
+          { type: "text", text: "po" },
+          { type: "text", text: "ng" },
+          { type: "done", finishReason: "stop" },
+        ]),
+        { apiKey: "test" },
+      ),
+    );
     const events = store.events(session.id);
     expect(sessionNeedsTurn(events)).toBe(false);
     expect(deriveMessages(events)).toEqual([
@@ -48,13 +67,7 @@ describe("runTurn", () => {
     const store = await SessionStore.open(":memory:");
     const session = store.create();
     store.append(session.id, { type: "user/message", text: "hi", mentions: [] });
-    await runTurn(session.id, {
-      store,
-      llm: new ScriptedLlm([]),
-      apiKey: undefined,
-      baseURL: "https://api.x.ai/v1",
-      model: "grok-4.6",
-    });
+    await runTurn(session.id, turnCtx(store, new ScriptedLlm([]), { apiKey: undefined }));
     const last = store.events(session.id).filter((e) => e.type === "assistant/message")[0];
     expect(last?.type).toBe("assistant/message");
     if (last?.type === "assistant/message") {
@@ -67,13 +80,12 @@ describe("runTurn", () => {
     const store = await SessionStore.open(":memory:");
     const session = store.create();
     store.append(session.id, { type: "user/message", text: "hi", mentions: [] });
-    await runTurn(session.id, {
-      store,
-      llm: new ScriptedLlm(new LlmError("nope", "provider_auth_or_access")),
-      apiKey: "test",
-      baseURL: "https://api.x.ai/v1",
-      model: "grok-4.6",
-    });
+    await runTurn(
+      session.id,
+      turnCtx(store, new ScriptedLlm(new LlmError("nope", "provider_auth_or_access")), {
+        apiKey: "test",
+      }),
+    );
     const message = store.events(session.id).find((e) => e.type === "assistant/message");
     expect(message?.type === "assistant/message" && message.text).toContain(
       "provider_auth_or_access",

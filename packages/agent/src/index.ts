@@ -4,4 +4,7 @@ export { SessionStore, type CreateSessionInput } from "./session/store.ts";
 export { deriveMessages, type ChatMessage } from "./session/derive.ts";
 export { LlmError, OpenAiCompatClient, type LlmClient, type LlmRequest, type LlmStreamEvent } from "./llm/client.ts";
 export { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "./loop.ts";
-export { CODING_SYSTEM_PROMPT } from "./prompt.ts";
+export { CODING_SYSTEM_PROMPT, codingSystemPrompt } from "./prompt.ts";
+export { ApprovalGate } from "./approval.ts";
+export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";
+export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";

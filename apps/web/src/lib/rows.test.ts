@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { asTurnId, type SessionEvent } from "@cbot/shared";
+import { asToolCallId, asTurnId, type SessionEvent } from "@cbot/shared";
 import { visibleRows } from "./rows.ts";
 
 function envelope(seq: number): { seq: number; time: string } {
@@ -38,5 +38,44 @@ describe("visibleRows", () => {
       { key: "u-1", kind: "user", text: "hi", live: false },
       { key: "live-trn_2", kind: "assistant", text: "hello", live: true },
     ]);
+  });
+
+  test("replaces a pending tool result with the settled result", () => {
+    const turnId = asTurnId("trn_3");
+    const callId = asToolCallId("call_1");
+    const events: SessionEvent[] = [
+      {
+        ...envelope(1),
+        type: "tool/call",
+        turnId,
+        call: { id: callId, name: "bash", arguments: "{\"command\":\"ls\"}", ui: "terminal" },
+      },
+      {
+        ...envelope(2),
+        type: "tool/result",
+        turnId,
+        callId,
+        ok: true,
+        content: "승인 대기 중",
+        pendingApproval: true,
+      },
+      {
+        ...envelope(3),
+        type: "tool/result",
+        turnId,
+        callId,
+        ok: true,
+        content: "exit 0\nok",
+      },
+    ];
+    const rows = visibleRows(events);
+    expect(rows).toHaveLength(1);
+    const row = rows[0];
+    expect(row?.kind).toBe("tool");
+    if (row?.kind === "tool") {
+      expect(row.pendingApproval).toBe(false);
+      expect(row.content).toContain("ok");
+      expect(row.ui).toBe("terminal");
+    }
   });
 });

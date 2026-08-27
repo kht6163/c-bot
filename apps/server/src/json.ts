@@ -29,6 +29,9 @@ export function jsonError(err: unknown): Response {
     return Response.json({ error: err.message }, { status: err.status });
   }
   const message = err instanceof Error ? err.message : "internal error";
-  const status = message === "unknown session" || message === "empty message" ? 400 : 500;
+  const status =
+    message === "unknown session" || message === "empty message" || message === "workspace required"
+      ? 400
+      : 500;
   return Response.json({ error: message }, { status });
 }

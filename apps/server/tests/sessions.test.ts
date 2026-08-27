@@ -51,6 +51,15 @@ describe("sessions API", () => {
     expect(created.status).toBe(201);
     const { session } = (await created.json()) as { session: { id: string } };
 
+    const workspaceRes = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    expect(workspaceRes.status).toBe(200);
+
     const sent = await handleHttp(
       new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
         method: "POST",

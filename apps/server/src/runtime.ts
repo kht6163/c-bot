@@ -1,4 +1,5 @@
 import {
+  ApprovalGate,
   OpenAiCompatClient,
   SessionStore,
   ensureHome,
@@ -10,7 +11,7 @@ import {
   titleFromText,
   type LlmClient,
 } from "@cbot/agent";
-import type { SessionId } from "@cbot/shared";
+import type { SessionId, ToolCallId } from "@cbot/shared";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
 
@@ -19,6 +20,7 @@ export interface Runtime {
   store: SessionStore;
   hub: EventHub;
   llm: LlmClient;
+  approvals: ApprovalGate;
 }
 
 const busy = new Set<string>();
@@ -30,7 +32,7 @@ export async function createRuntime(env: ProcessEnv, llm?: LlmClient): Promise<R
   store.onAppend((sessionId, event) => {
     hub.emit(sessionId, event);
   });
-  return { env, store, hub, llm: llm ?? new OpenAiCompatClient() };
+  return { env, store, hub, llm: llm ?? new OpenAiCompatClient(), approvals: new ApprovalGate() };
 }
 
 export async function acceptUserMessage(
@@ -46,11 +48,18 @@ export async function acceptUserMessage(
   if (!session) {
     throw new Error("unknown session");
   }
+  if (!session.workspace) {
+    throw new Error("workspace required");
+  }
   runtime.store.append(sessionId, { type: "user/message", text: trimmed, mentions: [] });
   if (session.title === "새 세션") {
     runtime.store.setTitle(sessionId, titleFromText(trimmed));
   }
   void pump(runtime, sessionId);
+}
+
+export function settleApproval(runtime: Runtime, callId: ToolCallId, allow: boolean): boolean {
+  return runtime.approvals.settle(callId, allow);
 }
 
 async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
@@ -62,12 +71,16 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
     while (sessionNeedsTurn(runtime.store.events(sessionId))) {
       const config = await loadConfig(runtime.env.home);
       const secrets = await loadSecrets(runtime.env.home);
+      const session = runtime.store.get(sessionId);
       await runTurn(sessionId, {
         store: runtime.store,
         llm: runtime.llm,
         apiKey: secrets.xaiApiKey,
         baseURL: config.llm.baseURL,
         model: config.llm.model,
+        workspace: session?.workspace ?? null,
+        approvalMode: config.approval.mode,
+        approvals: runtime.approvals,
       });
     }
   } finally {

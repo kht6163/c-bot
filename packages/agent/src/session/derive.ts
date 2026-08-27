@@ -42,6 +42,9 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
         });
         break;
       case "tool/result":
+        if (event.pendingApproval) {
+          break;
+        }
         messages.push({
           role: "tool",
           content: event.content,

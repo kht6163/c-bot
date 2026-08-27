@@ -1,6 +1,6 @@
-import { PROTOCOL_VERSION, asSessionId, type ServerFrame } from "@cbot/shared";
+import { PROTOCOL_VERSION, asSessionId, asToolCallId, type ServerFrame } from "@cbot/shared";
 import { isRecord } from "./json.ts";
-import { acceptUserMessage, type Runtime } from "./runtime.ts";
+import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
 import type { Socket } from "./hub.ts";
 
 export function onWsOpen(ws: Socket): void {
@@ -31,6 +31,15 @@ export async function onWsMessage(ws: Socket, raw: string | Buffer, runtime: Run
     } catch (err) {
       sendError(ws, err instanceof Error ? err.message : "send failed");
     }
+    return;
+  }
+  if (
+    parsed.type === "approve" &&
+    typeof parsed.sessionId === "string" &&
+    typeof parsed.callId === "string" &&
+    typeof parsed.allow === "boolean"
+  ) {
+    settleApproval(runtime, asToolCallId(parsed.callId), parsed.allow);
   }
 }
 
