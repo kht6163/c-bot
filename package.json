@@ -1,0 +1,16 @@
+{
+  "name": "c-bot",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --filter @cbot/server dev",
+    "test": "bun test --path-ignore-patterns=example-project",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "bun run --filter '*' typecheck"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.21",
+    "typescript": "^5.9.2"
+  }
+}
