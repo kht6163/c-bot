@@ -8,6 +8,7 @@ import {
   type SessionId,
   type SessionSummary,
 } from "@cbot/shared";
+import { Composer } from "./components/Composer.tsx";
 import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
@@ -39,7 +40,6 @@ export function App() {
   const [selectedId, setSelectedId] = useState<SessionId | undefined>();
   const [selected, setSelected] = useState<SessionSummary | undefined>();
   const [events, setEvents] = useState<SessionEvent[]>([]);
-  const [draft, setDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [newBotOpen, setNewBotOpen] = useState(false);
@@ -363,41 +363,23 @@ export function App() {
             </p>
           </div>
         )}
-        <form
-          className="composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!selectedId || !draft.trim()) {
+        <Composer
+          disabled={!composerReady}
+          resetKey={selectedId ?? ""}
+          placeholder={
+            composerReady
+              ? "메시지를 입력하세요"
+              : !project?.current
+                ? "프로젝트를 먼저 여세요"
+                : "새 세션을 만들면 메시지를 보낼 수 있습니다"
+          }
+          onSend={(text) => {
+            if (!selectedId) {
               return;
             }
-            const text = draft;
-            setDraft("");
             void sendMessage(selectedId, text).then(() => loadList());
           }}
-        >
-          <textarea
-            rows={3}
-            disabled={!composerReady}
-            value={draft}
-            placeholder={
-              composerReady
-                ? "메시지를 입력하세요"
-                : !project?.current
-                  ? "프로젝트를 먼저 여세요"
-                  : "새 세션을 만들면 메시지를 보낼 수 있습니다"
-            }
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                e.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <button type="submit" disabled={!composerReady || !draft.trim()}>
-            보내기
-          </button>
-        </form>
+        />
       </section>
     </div>
       <SettingsDialog
