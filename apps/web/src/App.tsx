@@ -182,6 +182,14 @@ export function App() {
     }
   }
 
+  const handleSend = useCallback((text: string) => {
+    const id = selectedRef.current;
+    if (!id) {
+      return;
+    }
+    void sendMessage(id, text).then(() => loadList());
+  }, [loadList]);
+
   const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
 
   return (
@@ -373,12 +381,7 @@ export function App() {
                 ? "프로젝트를 먼저 여세요"
                 : "새 세션을 만들면 메시지를 보낼 수 있습니다"
           }
-          onSend={(text) => {
-            if (!selectedId) {
-              return;
-            }
-            void sendMessage(selectedId, text).then(() => loadList());
-          }}
+          onSend={handleSend}
         />
       </section>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef } from "react";
 import { isImeKeyboardEvent } from "../lib/ime.ts";
 
 interface Props {
@@ -8,27 +8,19 @@ interface Props {
   onSend: (text: string) => void;
 }
 
-/**
- * Uncontrolled textarea so Hangul composition is not reset by React value writes.
- * Space/arrow are not required to "confirm" a syllable before it can be sent.
- */
-export function Composer({ disabled, placeholder, resetKey, onSend }: Props) {
+function ComposerInner({ disabled, placeholder, resetKey, onSend }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const onSendRef = useRef(onSend);
   const composing = useRef(false);
   const skipCompositionEnd = useRef(false);
-  const [hasText, setHasText] = useState(false);
+  onSendRef.current = onSend;
 
   useEffect(() => {
     if (ref.current) {
       ref.current.value = "";
     }
-    setHasText(false);
     composing.current = false;
   }, [resetKey]);
-
-  function syncHasText() {
-    setHasText((ref.current?.value.trim().length ?? 0) > 0);
-  }
 
   return (
     <form
@@ -47,8 +39,7 @@ export function Composer({ disabled, placeholder, resetKey, onSend }: Props) {
         if (ref.current) {
           ref.current.value = "";
         }
-        setHasText(false);
-        onSend(text);
+        onSendRef.current(text);
       }}
     >
       <textarea
@@ -56,7 +47,10 @@ export function Composer({ disabled, placeholder, resetKey, onSend }: Props) {
         rows={3}
         disabled={disabled}
         placeholder={placeholder}
-        defaultValue=""
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         onCompositionStart={() => {
           composing.current = true;
         }}
@@ -67,14 +61,6 @@ export function Composer({ disabled, placeholder, resetKey, onSend }: Props) {
             if (ref.current) {
               ref.current.value = "";
             }
-            setHasText(false);
-            return;
-          }
-          syncHasText();
-        }}
-        onInput={() => {
-          if (!composing.current) {
-            syncHasText();
           }
         }}
         onKeyDown={(e) => {
@@ -87,9 +73,17 @@ export function Composer({ disabled, placeholder, resetKey, onSend }: Props) {
           }
         }}
       />
-      <button type="submit" disabled={disabled || !hasText}>
+      <button type="submit" disabled={disabled}>
         보내기
       </button>
     </form>
   );
 }
+
+export const Composer = memo(ComposerInner, (prev, next) => {
+  return (
+    prev.disabled === next.disabled &&
+    prev.placeholder === next.placeholder &&
+    prev.resetKey === next.resetKey
+  );
+});
