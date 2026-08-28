@@ -37,18 +37,24 @@ export function BotMemoryPanel({ bot, onClose }: { bot: BotView; onClose: () => 
   return (
     <div className="memory-panel">
       <div className="memory-layout">
+        <div className="memory-toolbar">
+          <input
+            value={query}
+            placeholder="검색"
+            aria-label="메모리 검색"
+            onChange={(event) => {
+              const next = event.target.value;
+              setQuery(next);
+              void reload(next);
+            }}
+          />
+        </div>
+        <label className="memory-title-field">
+          제목
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
         <div className="memory-list-pane">
-          <div className="memory-toolbar">
-            <input
-              value={query}
-              placeholder="검색"
-              aria-label="메모리 검색"
-              onChange={(event) => {
-                const next = event.target.value;
-                setQuery(next);
-                void reload(next);
-              }}
-            />
+          <div className="memory-list-head">
             <button
               type="button"
               className="text-btn"
@@ -86,18 +92,12 @@ export function BotMemoryPanel({ bot, onClose }: { bot: BotView; onClose: () => 
             )}
           </ul>
         </div>
-        <div className="memory-form">
-          <label>
-            제목
-            <input value={title} onChange={(event) => setTitle(event.target.value)} />
-          </label>
-          <label className="memory-body-field">
-            내용
-            <textarea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
-          </label>
-          {error ? <p className="hint danger">{error}</p> : null}
-        </div>
+        <label className="memory-body-field">
+          내용
+          <textarea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
+        </label>
       </div>
+      {error ? <p className="hint danger">{error}</p> : null}
       <div className="modal-actions">
         {selected ? (
           <button
