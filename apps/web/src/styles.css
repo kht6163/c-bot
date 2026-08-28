@@ -1882,9 +1882,29 @@ select.field-input {
   align-items: center;
 }
 
-.bot-row .row-actions {
+.dialog-tabs {
   display: flex;
-  align-items: center;
+  gap: 4px;
+}
+
+.dialog-tab {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dialog-tab:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.dialog-tab.active {
+  background: var(--row-active);
+  color: var(--text);
 }
 
 .modal-wide {

@@ -21,7 +21,6 @@ interface Props {
   onDeleteProject: (path: string, name: string) => void;
   onNewBot: () => void;
   onEditBot: (id: string) => void;
-  onMemoryBot: (id: string) => void;
   onDeleteBot: (id: string) => void;
 }
 
@@ -41,7 +40,6 @@ export function Sidebar({
   onDeleteProject,
   onNewBot,
   onEditBot,
-  onMemoryBot,
   onDeleteBot,
 }: Props) {
   const tree = project ? projectTree(project, sessions) : [];
@@ -190,30 +188,22 @@ export function Sidebar({
                     <span className="row-title">@{bot.handle}</span>
                     <span className="row-meta">{bot.role === "leader" ? "Lead" : bot.title}</span>
                   </button>
-                  <div className="row-actions">
+                  {bot.role === "leader" ? (
+                    <span className="caret-slot" />
+                  ) : (
                     <button
                       type="button"
-                      className="add-btn"
-                      aria-label={`@${bot.handle} 메모리`}
-                      onClick={() => onMemoryBot(bot.id)}
+                      className="add-btn bot-delete"
+                      aria-label={`@${bot.handle} 삭제`}
+                      onClick={() => {
+                        if (window.confirm(`@${bot.handle}을(를) 삭제할까요?`)) {
+                          onDeleteBot(bot.id);
+                        }
+                      }}
                     >
-                      기억
+                      ×
                     </button>
-                    {bot.role === "leader" ? null : (
-                      <button
-                        type="button"
-                        className="add-btn bot-delete"
-                        aria-label={`@${bot.handle} 삭제`}
-                        onClick={() => {
-                          if (window.confirm(`@${bot.handle}을(를) 삭제할까요?`)) {
-                            onDeleteBot(bot.id);
-                          }
-                        }}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </li>
               ))}
             </ul>

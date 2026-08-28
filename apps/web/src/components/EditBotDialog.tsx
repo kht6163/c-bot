@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { fetchSettings, type BotView, type SettingsView } from "../lib/api.ts";
 import { defaultEffort, effortLabel, effortsFor } from "../lib/thinking.ts";
+import { BotMemoryPanel } from "./BotMemoryPanel.tsx";
 import { ModelSearchSelect } from "./ModelSearchSelect.tsx";
 
 interface Props {
   bot: BotView | undefined;
   onClose: () => void;
-  onOpenMemory: () => void;
   onSave: (input: {
     title: string;
     description: string;
@@ -17,7 +17,8 @@ interface Props {
   }) => Promise<void>;
 }
 
-export function EditBotDialog({ bot, onClose, onOpenMemory, onSave }: Props) {
+export function EditBotDialog({ bot, onClose, onSave }: Props) {
+  const [pane, setPane] = useState<"profile" | "memory">("profile");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [soul, setSoul] = useState("");
@@ -30,6 +31,7 @@ export function EditBotDialog({ bot, onClose, onOpenMemory, onSave }: Props) {
     if (!bot) {
       return;
     }
+    setPane("profile");
     setTitle(bot.title);
     setDescription(bot.description);
     setSoul(bot.soul ?? "");
@@ -54,88 +56,124 @@ export function EditBotDialog({ bot, onClose, onOpenMemory, onSave }: Props) {
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal" role="dialog" aria-labelledby="edit-bot-title" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={pane === "memory" ? "modal modal-wide" : "modal"}
+        role="dialog"
+        aria-labelledby="edit-bot-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 id="edit-bot-title">{bot.role === "leader" ? "Leader" : `@${bot.handle}`}</h2>
-        {bot.role === "leader" ? (
-          <p className="hint-static">고정 리드입니다. 삭제할 수 없습니다. 모델과 프롬프트만 바꿉니다.</p>
-        ) : (
-          <p className="hint-static">직접 대화하지 않습니다. 리드가 이 봇을 부릅니다.</p>
-        )}
-        <label>
-          이름
-          <input value={title} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <label>
-          역할
-          <input value={description} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        <div className="field">
-          <span className="field-label">모델</span>
-          <ModelSearchSelect
-            ariaLabel="모델"
-            placeholder="모델 검색"
-            emptyLabel="기본 모델"
-            value={choice}
-            options={options}
-            onChange={(next) => {
-              setChoice(next);
-              const [nextProvider, nextModel] = next ? next.split("::") : [null, null];
-              const nextEfforts = effortsFor(settings, nextProvider ?? null, nextModel ?? null);
-              setThinking(defaultEffort(nextEfforts) ?? "");
-            }}
-          />
-        </div>
-        {efforts.length > 0 ? (
-          <label>
-            Effort
-            <select
-              className="field-input select-input"
-              value={thinking && efforts.includes(thinking) ? thinking : (defaultEffort(efforts) ?? "")}
-              aria-label="Effort"
-              onChange={(e) => setThinking(e.target.value)}
-            >
-              {efforts.map((level) => (
-                <option key={level} value={level}>
-                  {effortLabel(level)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          프롬프트
-          <textarea rows={8} value={soul} onChange={(e) => setSoul(e.target.value)} />
-        </label>
-        {error ? <p className="hint danger">{error}</p> : null}
-        <div className="modal-actions">
-          <button type="button" className="ghost" onClick={onOpenMemory}>
-            메모리
-          </button>
-          <button type="button" className="ghost" onClick={onClose}>
-            닫기
+        <div className="dialog-tabs" role="tablist" aria-label="봇 설정">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={pane === "profile"}
+            className={pane === "profile" ? "dialog-tab active" : "dialog-tab"}
+            onClick={() => setPane("profile")}
+          >
+            설정
           </button>
           <button
             type="button"
-            onClick={() => {
-              const [provider, model] = choice ? choice.split("::") : [null, null];
-              const levels = effortsFor(settings, provider || null, model || null);
-              const nextThinking =
-                thinking && levels.includes(thinking) ? thinking : defaultEffort(levels);
-              void onSave({
-                title,
-                description,
-                soul,
-                provider: provider || null,
-                model: model || null,
-                thinking: nextThinking,
-              }).catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : "failed");
-              });
-            }}
+            role="tab"
+            aria-selected={pane === "memory"}
+            className={pane === "memory" ? "dialog-tab active" : "dialog-tab"}
+            onClick={() => setPane("memory")}
           >
-            저장
+            메모리
           </button>
         </div>
+        {pane === "profile" ? (
+          <>
+            {bot.role === "leader" ? (
+              <p className="hint-static">고정 리드입니다. 삭제할 수 없습니다. 모델과 프롬프트를 바꿉니다.</p>
+            ) : (
+              <p className="hint-static">직접 대화하지 않습니다. 리드가 이 봇을 부릅니다.</p>
+            )}
+            <label>
+              이름
+              <input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </label>
+            <label>
+              역할
+              <input value={description} onChange={(e) => setDescription(e.target.value)} />
+            </label>
+            <div className="field">
+              <span className="field-label">모델</span>
+              <ModelSearchSelect
+                ariaLabel="모델"
+                placeholder="모델 검색"
+                emptyLabel="기본 모델"
+                value={choice}
+                options={options}
+                onChange={(next) => {
+                  setChoice(next);
+                  const [nextProvider, nextModel] = next ? next.split("::") : [null, null];
+                  const nextEfforts = effortsFor(settings, nextProvider ?? null, nextModel ?? null);
+                  setThinking(defaultEffort(nextEfforts) ?? "");
+                }}
+              />
+            </div>
+            {efforts.length > 0 ? (
+              <label>
+                Effort
+                <select
+                  className="field-input select-input"
+                  value={thinking && efforts.includes(thinking) ? thinking : (defaultEffort(efforts) ?? "")}
+                  aria-label="Effort"
+                  onChange={(e) => setThinking(e.target.value)}
+                >
+                  {efforts.map((level) => (
+                    <option key={level} value={level}>
+                      {effortLabel(level)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label>
+              프롬프트
+              <textarea rows={8} value={soul} onChange={(e) => setSoul(e.target.value)} />
+            </label>
+            {error ? <p className="hint danger">{error}</p> : null}
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={onClose}>
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const [provider, model] = choice ? choice.split("::") : [null, null];
+                  const levels = effortsFor(settings, provider || null, model || null);
+                  const nextThinking =
+                    thinking && levels.includes(thinking) ? thinking : defaultEffort(levels);
+                  void onSave({
+                    title,
+                    description,
+                    soul,
+                    provider: provider || null,
+                    model: model || null,
+                    thinking: nextThinking,
+                  }).catch((err: unknown) => {
+                    setError(err instanceof Error ? err.message : "failed");
+                  });
+                }}
+              >
+                저장
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="hint-static">이 봇만 쓰는 기억입니다. 한글은 CJK 바이그램으로 찾습니다.</p>
+            <BotMemoryPanel bot={bot} />
+            <div className="modal-actions">
+              <button type="button" className="ghost" onClick={onClose}>
+                닫기
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
