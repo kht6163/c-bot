@@ -1,7 +1,23 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { SessionEvent, SessionId, ToolCallId } from "@cbot/shared";
 import { visibleRows, type ChatRow } from "../lib/rows.ts";
-import { dragSplit, equalWeights, teamPanes, type TeamPane, type ViewMode } from "../lib/team.ts";
+import {
+  loadNoteLayout,
+  mergeNotes,
+  mergeOrder,
+  moveNote,
+  noteExtent,
+  raiseNote,
+  resizeNote,
+  saveNoteLayout,
+  teamPanes,
+  toggleCollapsed,
+  visibleNote,
+  wheelResize,
+  type NoteRect,
+  type TeamPane,
+  type ViewMode,
+} from "../lib/team.ts";
 import { SessionLog } from "./SessionLog.tsx";
 
 interface BotInfo {
@@ -84,7 +100,8 @@ export function TeamStage({
         </div>
       ) : null}
       {mode === "split" ? (
-        <SplitPanes
+        <NoteBoard
+          sessionId={codingSessionId}
           panes={panes}
           codingEvents={codingEvents}
           botEvents={botEvents}
@@ -108,98 +125,248 @@ export function TeamStage({
   );
 }
 
-function SplitPanes({
+function NoteBoard({
+  sessionId,
   panes,
   codingEvents,
   botEvents,
   codingBusy,
   onApprove,
 }: {
+  sessionId: SessionId;
   panes: TeamPane[];
   codingEvents: SessionEvent[];
   botEvents: Record<string, SessionEvent[]>;
   codingBusy: boolean;
   onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean) => void;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{
-    index: number;
-    origin: number;
-    size: number;
-    base: number[];
-    stacked: boolean;
-  } | null>(null);
-  const keys = panes.map((pane) => pane.key).join("|");
-  const [weights, setWeights] = useState(() => equalWeights(panes.length));
+  const boardRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<Record<string, NoteRect>>({});
+  const skipSave = useRef(true);
+  const drag = useRef<
+    | { kind: "move"; key: string; x: number; y: number; start: NoteRect }
+    | { kind: "resize"; key: string; x: number; y: number; start: NoteRect; edges: "e" | "s" | "se" }
+    | null
+  >(null);
+  const paneKeyStr = panes.map((pane) => pane.key).join("|");
+  const [notes, setNotes] = useState<Record<string, NoteRect>>(() => {
+    const keys = panes.map((pane) => pane.key);
+    return mergeNotes(keys, loadNoteLayout(sessionId, window.localStorage).notes);
+  });
+  const [order, setOrder] = useState<string[]>(() => {
+    const keys = panes.map((pane) => pane.key);
+    return mergeOrder(loadNoteLayout(sessionId, window.localStorage).order, keys);
+  });
+  notesRef.current = notes;
 
   useEffect(() => {
-    setWeights(equalWeights(panes.length));
-  }, [keys, panes.length]);
+    skipSave.current = true;
+    const keys = paneKeyStr.length === 0 ? [] : paneKeyStr.split("|");
+    const saved = loadNoteLayout(sessionId, window.localStorage);
+    setNotes(mergeNotes(keys, saved.notes));
+    setOrder(mergeOrder(saved.order, keys));
+  }, [sessionId, paneKeyStr]);
+
+  useEffect(() => {
+    if (skipSave.current) {
+      skipSave.current = false;
+      return;
+    }
+    if (Object.keys(notes).length === 0) {
+      return;
+    }
+    saveNoteLayout(sessionId, { order, notes }, window.localStorage);
+  }, [notes, order, sessionId]);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) {
+      return;
+    }
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const head = target.closest("[data-note-wheel]");
+      if (!head) {
+        return;
+      }
+      const article = head.closest("[data-note-key]");
+      const key = article instanceof HTMLElement ? article.dataset.noteKey : undefined;
+      const current = key ? notesRef.current[key] : undefined;
+      if (!key || !current) {
+        return;
+      }
+      event.preventDefault();
+      patchNote(key, wheelResize(current, event.deltaY, event.shiftKey));
+    };
+    board.addEventListener("wheel", onWheel, { passive: false });
+    return () => board.removeEventListener("wheel", onWheel);
+  }, []);
+
+  function patchNote(key: string, next: NoteRect): void {
+    setNotes((current) => ({ ...current, [key]: next }));
+  }
+
+  function bringFront(key: string): void {
+    setOrder((current) => raiseNote(current, key));
+  }
+
+  function onDragMove(event: ReactPointerEvent<HTMLElement>): void {
+    const state = drag.current;
+    if (!state || !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+    const dx = event.clientX - state.x;
+    const dy = event.clientY - state.y;
+    if (state.kind === "move") {
+      patchNote(state.key, moveNote(state.start, dx, dy));
+      return;
+    }
+    patchNote(state.key, resizeNote(state.start, dx, dy, state.edges));
+  }
+
+  function onDragEnd(event: ReactPointerEvent<HTMLElement>): void {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    drag.current = null;
+  }
+
+  const extent = noteExtent(Object.values(notes));
+  const topKey = order[order.length - 1];
+
+  function startResize(
+    event: ReactPointerEvent<HTMLElement>,
+    key: string,
+    start: NoteRect,
+    edges: "e" | "s" | "se",
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    bringFront(key);
+    drag.current = { kind: "resize", key, x: event.clientX, y: event.clientY, start, edges };
+  }
 
   return (
-    <div className="split-grid" ref={rootRef}>
-      {panes.map((pane, index) => (
-        <Fragment key={pane.key}>
-          {index > 0 ? (
-            <div
-              className="split-gutter"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="칸 크기 조절"
-              onPointerDown={(event) => {
-                const root = rootRef.current;
-                if (!root) {
-                  return;
-                }
-                event.preventDefault();
-                event.currentTarget.setPointerCapture(event.pointerId);
-                const stacked = getComputedStyle(root).flexDirection === "column";
-                drag.current = {
-                  index: index - 1,
-                  origin: stacked ? event.clientY : event.clientX,
-                  size: stacked ? root.clientHeight : root.clientWidth,
-                  base: weights,
-                  stacked,
-                };
-              }}
-              onPointerMove={(event) => {
-                const state = drag.current;
-                if (!state || !event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  return;
-                }
-                const pos = state.stacked ? event.clientY : event.clientX;
-                const delta = (pos - state.origin) / Math.max(1, state.size);
-                setWeights(dragSplit(state.base, state.index, delta));
-              }}
-              onPointerUp={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-                drag.current = null;
-              }}
-            />
-          ) : null}
-          <div className="split-slot" style={{ flexGrow: weights[index] ?? 1, flexBasis: 0 }}>
-          <article className="bot-pane">
-            <header className="bot-pane-head">
-              <span className="bot-pane-name">@{pane.handle}</span>
-              {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
-              {paneBusy(pane, codingEvents, botEvents) ? (
-                <span className="scaffold-pulse" aria-hidden="true" />
-              ) : null}
-            </header>
-            <PaneLog
-              pane={pane}
-              codingEvents={codingEvents}
-              botEvents={botEvents}
-              codingBusy={codingBusy}
-              compact
-              onApprove={onApprove}
-            />
-          </article>
-          </div>
-        </Fragment>
-      ))}
+    <div className="split-board" ref={boardRef}>
+      <div className="split-board-space" style={{ minWidth: extent.w, minHeight: extent.h }}>
+        {panes.map((pane) => {
+          const note = notes[pane.key];
+          if (!note) {
+            return null;
+          }
+          const box = visibleNote(note);
+          const z = order.indexOf(pane.key) + 1;
+          return (
+            <article
+              key={pane.key}
+              className={`bot-note${pane.key === topKey ? " is-top" : ""}${note.collapsed ? " collapsed" : ""}`}
+              data-note-key={pane.key}
+              style={{ left: box.x, top: box.y, width: box.w, height: box.h, zIndex: z }}
+              onPointerDown={() => bringFront(pane.key)}
+            >
+              <header
+                className="bot-note-head"
+                data-note-wheel
+                onPointerDown={(event) => {
+                  if (event.button !== 0) {
+                    return;
+                  }
+                  const target = event.target;
+                  if (target instanceof Element && target.closest("button")) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  drag.current = {
+                    kind: "move",
+                    key: pane.key,
+                    x: event.clientX,
+                    y: event.clientY,
+                    start: note,
+                  };
+                }}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                onDoubleClick={(event) => {
+                  if ((event.target as Element).closest("button")) {
+                    return;
+                  }
+                  patchNote(pane.key, toggleCollapsed(note));
+                }}
+              >
+                <span className="bot-pane-name">@{pane.handle}</span>
+                {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
+                {paneBusy(pane, codingEvents, botEvents) ? (
+                  <span className="scaffold-pulse" aria-hidden="true" />
+                ) : null}
+                <button
+                  type="button"
+                  className="note-fold"
+                  aria-expanded={!note.collapsed}
+                  aria-label={note.collapsed ? "펼치기" : "접기"}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    patchNote(pane.key, toggleCollapsed(note));
+                  }}
+                >
+                  {note.collapsed ? "펼치기" : "접기"}
+                </button>
+              </header>
+              {note.collapsed ? null : (
+                <PaneLog
+                  pane={pane}
+                  codingEvents={codingEvents}
+                  botEvents={botEvents}
+                  codingBusy={codingBusy}
+                  compact
+                  onApprove={onApprove}
+                />
+              )}
+              {note.collapsed ? null : (
+                <>
+                  <div
+                    className="note-resize note-e"
+                    data-note-wheel
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="너비 조절"
+                    onPointerDown={(event) => startResize(event, pane.key, note, "e")}
+                    onPointerMove={onDragMove}
+                    onPointerUp={onDragEnd}
+                    onPointerCancel={onDragEnd}
+                  />
+                  <div
+                    className="note-resize note-s"
+                    data-note-wheel
+                    role="separator"
+                    aria-orientation="horizontal"
+                    aria-label="높이 조절"
+                    onPointerDown={(event) => startResize(event, pane.key, note, "s")}
+                    onPointerMove={onDragMove}
+                    onPointerUp={onDragEnd}
+                    onPointerCancel={onDragEnd}
+                  />
+                  <div
+                    className="note-resize note-se"
+                    data-note-wheel
+                    role="separator"
+                    aria-label="크기 조절"
+                    onPointerDown={(event) => startResize(event, pane.key, note, "se")}
+                    onPointerMove={onDragMove}
+                    onPointerUp={onDragEnd}
+                    onPointerCancel={onDragEnd}
+                  />
+                </>
+              )}
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }

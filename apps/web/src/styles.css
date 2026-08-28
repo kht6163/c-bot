@@ -330,8 +330,11 @@ button {
 }
 
 .composer.dock {
+  position: relative;
+  z-index: 6;
   width: 100%;
   padding: 0 32px 12px;
+  background: var(--bg);
 }
 
 .composer-card {
@@ -1990,51 +1993,62 @@ select.field-input {
   color: var(--quiet);
 }
 
-.split-grid {
-  display: flex;
+.split-board {
+  position: relative;
+  isolation: isolate;
   flex: 1;
   min-height: 0;
-  padding: 8px;
+  overflow: auto;
+  background: var(--bg);
 }
 
-.split-slot {
+.split-board-space {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.bot-note {
+  position: absolute;
   display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-}
-
-.split-gutter {
-  flex: 0 0 8px;
-  cursor: col-resize;
-  touch-action: none;
-  background: transparent;
-}
-
-.split-gutter:hover,
-.split-gutter:active {
-  background: var(--border);
-}
-
-.bot-pane {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  flex-direction: column;
+  background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-raised);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgb(15 17 21 / 6%), 0 8px 20px rgb(15 17 21 / 6%);
   overflow: hidden;
 }
 
-.bot-pane-head {
+.bot-note.is-top {
+  box-shadow: 0 2px 6px rgb(15 17 21 / 8%), 0 14px 28px rgb(15 17 21 / 8%);
+}
+
+.bot-note.collapsed {
+  box-shadow: 0 1px 2px rgb(15 17 21 / 6%);
+}
+
+.bot-note-head {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 8px 0 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.bot-note.collapsed .bot-note-head {
+  border-bottom: 0;
+}
+
+.bot-note-head:active {
+  cursor: grabbing;
 }
 
 .bot-pane-name {
@@ -2042,13 +2056,78 @@ select.field-input {
   font-weight: 500;
 }
 
+.bot-note .log.pane {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.note-fold {
+  margin-left: auto;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.note-fold:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.note-resize {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+
+.note-e {
+  top: 32px;
+  right: 0;
+  width: 8px;
+  bottom: 10px;
+  cursor: col-resize;
+}
+
+.note-s {
+  left: 0;
+  right: 10px;
+  bottom: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.note-se {
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+
 @media (max-width: 899px) {
-  .split-grid {
+  .split-board-space {
+    display: flex;
     flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    min-width: 0 !important;
+    min-height: 0 !important;
   }
 
-  .split-gutter {
-    flex-basis: 8px;
-    cursor: row-resize;
+  .bot-note {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    z-index: auto !important;
+  }
+
+  .note-e,
+  .note-se {
+    display: none;
   }
 }
