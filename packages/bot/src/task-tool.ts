@@ -22,7 +22,7 @@ export function taskTool(opts: {
           type: "string",
           enum: ["list", "add", "update", "remove"],
           description:
-            "remove erases the row for good, and a job takes its pieces with it. Use it only when the row should not be on the board at all: a mistake, a duplicate, a test row, or the user asked to delete it. Work you finished or decided against is a status change, not a remove. One id per call.",
+            "remove erases the row for good, and a job takes its pieces with it even when they are still open. Use it only when the row should not be on the board at all: a mistake, a duplicate, a test row, or the user asked to delete it. Work you finished or decided against is a status change, not a remove. One id per call.",
         },
         id: { type: "string", description: "Task id for update or remove." },
         parent: {
@@ -41,6 +41,11 @@ export function taskTool(opts: {
         owner: { type: "string", description: "Owner handle. Default yourself. Use a teammate handle to assign." },
         query_owner: { type: "string", description: "Filter list by owner handle, or me." },
         query_status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"] },
+        cascade: {
+          type: "boolean",
+          description:
+            "Required to remove a job whose pieces are not finished. Without it the call is refused and lists those pieces, so you can ask the user before losing them.",
+        },
         assigned: {
           type: "boolean",
           description: "If true, list pending/in_progress tasks owned by you that someone else requested.",
@@ -130,6 +135,27 @@ export function taskTool(opts: {
         }
         if (action === "remove" || action === "delete") {
           const id = String(args.id ?? "").trim();
+          // Pieces that are still open do not show up in a completed-only
+          // listing, so a board cleanup would take them without ever naming
+          // them. Put them in front of the caller instead.
+          const open = store
+            .children(id)
+            .filter(
+              (child) =>
+                child.boardId === boardId &&
+                (child.status === "pending" || child.status === "in_progress"),
+            );
+          if (open.length > 0 && args.cascade !== true) {
+            return JSON.stringify({
+              ok: false,
+              error: "job has unfinished pieces",
+              subtasks: open.map((child) => ({
+                id: child.id,
+                title: child.title,
+                status: child.status,
+              })),
+            });
+          }
           const gone = store.remove(id, boardId);
           if (gone.length === 0) {
             return JSON.stringify({ ok: false, error: "unknown task" });

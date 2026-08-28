@@ -208,6 +208,62 @@ describe("TaskStore remove", () => {
   });
 });
 
+describe("taskTool remove guard", () => {
+  test("refuses to take unfinished pieces until asked twice", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tasks-"));
+    const sessions = await SessionStore.open(":memory:");
+    const coding = sessions.create({ kind: "coding", workspace: home });
+    const lead = await createBot(home, sessions, { handle: "leaderx", title: "L", description: "L" });
+    const tool = taskTool({ home, store: sessions, sessionId: coding.id, actor: lead, roster: [lead] });
+    const run = async (args: Record<string, unknown>) =>
+      JSON.parse(await tool.execute(args, { workspace: home, approvalMode: "allow" })) as {
+        ok: boolean;
+        error?: string;
+        removed?: number;
+        subtasks?: { title: string }[];
+        task?: { id: string };
+      };
+
+    const job = await run({ action: "add", title: "인증 리팩터", status: "completed" });
+    const jobId = job.task?.id ?? "";
+    await run({ action: "add", title: "토큰 만료", parent: jobId, status: "completed" });
+    await run({ action: "add", title: "세션 갱신", parent: jobId, status: "pending" });
+
+    const refused = await run({ action: "remove", id: jobId });
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toBe("job has unfinished pieces");
+    expect(refused.subtasks?.map((item) => item.title)).toEqual(["세션 갱신"]);
+    const still = await run({ action: "list" });
+    expect((still as unknown as { tasks: unknown[] }).tasks).toHaveLength(3);
+
+    const done = await run({ action: "remove", id: jobId, cascade: true });
+    expect(done.ok).toBe(true);
+    expect(done.removed).toBe(3);
+    sessions.close();
+  });
+
+  test("a job whose pieces are all finished needs no cascade", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tasks-"));
+    const sessions = await SessionStore.open(":memory:");
+    const coding = sessions.create({ kind: "coding", workspace: home });
+    const lead = await createBot(home, sessions, { handle: "leaderx", title: "L", description: "L" });
+    const tool = taskTool({ home, store: sessions, sessionId: coding.id, actor: lead, roster: [lead] });
+    const run = async (args: Record<string, unknown>) =>
+      JSON.parse(await tool.execute(args, { workspace: home, approvalMode: "allow" })) as {
+        ok: boolean;
+        removed?: number;
+        task?: { id: string };
+      };
+    const job = await run({ action: "add", title: "일", status: "completed" });
+    const jobId = job.task?.id ?? "";
+    await run({ action: "add", title: "조각", parent: jobId, status: "cancelled" });
+    const done = await run({ action: "remove", id: jobId });
+    expect(done.ok).toBe(true);
+    expect(done.removed).toBe(2);
+    sessions.close();
+  });
+});
+
 describe("taskTool", () => {
   test("adds to the parent coding session board from a hop mailbox", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-tasktool-"));
@@ -282,8 +338,16 @@ describe("taskTool", () => {
     expect(tooDeep.ok).toBe(false);
     expect(tooDeep.error).toContain("one level deep");
 
-    const removed = JSON.parse(
+    const refused = JSON.parse(
       await tool.execute({ action: "remove", id: job.task.id }, { workspace: home, approvalMode: "allow" }),
+    ) as { ok: boolean; error?: string };
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toBe("job has unfinished pieces");
+    const removed = JSON.parse(
+      await tool.execute({ action: "remove", id: job.task.id, cascade: true }, {
+        workspace: home,
+        approvalMode: "allow",
+      }),
     ) as { ok: boolean; removed: number };
     expect(removed.ok).toBe(true);
     expect(removed.removed).toBe(2);
