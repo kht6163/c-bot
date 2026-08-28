@@ -46,7 +46,9 @@ export function parseGitStatus(out: string): Omit<GitStatusView, "repo"> {
 }
 
 export async function gitStatus(workspace: string): Promise<GitStatusView> {
-  const proc = Bun.spawn(["git", "status", "--porcelain=v1", "-b"], {
+  // Without core.quotePath=false git C-escapes every non-ASCII path, so a
+  // Korean filename would reach the UI as an octal C-escape, not text.
+  const proc = Bun.spawn(["git", "-c", "core.quotePath=false", "status", "--porcelain=v1", "-b"], {
     cwd: workspace,
     stdout: "pipe",
     stderr: "pipe",
