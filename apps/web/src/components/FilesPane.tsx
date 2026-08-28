@@ -15,18 +15,17 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
   }, [sessionId]);
 
   useEffect(() => {
+    setEntries(undefined);
+  }, [sessionId, dir]);
+
+  useEffect(() => {
     setError("");
     void fetchWorkspaceDir(sessionId, dir)
       .then(setEntries)
       .catch((err: unknown) => {
-        setEntries([]);
         setError(err instanceof Error ? err.message : "폴더를 읽지 못했습니다");
       });
   }, [sessionId, dir, refreshKey]);
-
-  if (error) {
-    return <p className="hint danger">{error}</p>;
-  }
 
   if (preview) {
     return (
@@ -39,6 +38,7 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
             {baseName(preview.path)}
           </span>
         </div>
+        {error ? <p className="hint danger">{error}</p> : null}
         <FilePreview preview={preview} />
       </div>
     );
@@ -62,6 +62,7 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
           ),
         )}
       </nav>
+      {error ? <p className="hint danger">{error}</p> : null}
       {!entries ? (
         <p className="empty">불러오는 중</p>
       ) : entries.length === 0 ? (
@@ -73,6 +74,7 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
               <button
                 type="button"
                 className="file-item"
+                aria-label={`${entry.kind === "dir" ? "폴더" : "파일"} ${entry.name}`}
                 onClick={() => {
                   if (entry.kind === "dir") {
                     setDir(entry.path);
@@ -87,7 +89,11 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
               >
                 <EntryIcon dir={entry.kind === "dir"} />
                 <span className="file-name">{entry.name}</span>
-                {entry.kind === "dir" ? <span className="file-chevron">›</span> : null}
+                {entry.kind === "dir" ? (
+                  <span className="file-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}
