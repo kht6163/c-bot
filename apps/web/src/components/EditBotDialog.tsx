@@ -18,7 +18,6 @@ interface Props {
 }
 
 export function EditBotDialog({ bot, onClose, onSave }: Props) {
-  const [pane, setPane] = useState<"profile" | "memory">("profile");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [soul, setSoul] = useState("");
@@ -31,7 +30,6 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
     if (!bot) {
       return;
     }
-    setPane("profile");
     setTitle(bot.title);
     setDescription(bot.description);
     setSoul(bot.soul ?? "");
@@ -57,34 +55,14 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className={pane === "memory" ? "modal modal-wide" : "modal"}
+        className="modal modal-wide"
         role="dialog"
         aria-labelledby="edit-bot-title"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="edit-bot-title">{bot.role === "leader" ? "Leader" : `@${bot.handle}`}</h2>
-        <div className="dialog-tabs" role="tablist" aria-label="봇 설정">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pane === "profile"}
-            className={pane === "profile" ? "dialog-tab active" : "dialog-tab"}
-            onClick={() => setPane("profile")}
-          >
-            설정
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={pane === "memory"}
-            className={pane === "memory" ? "dialog-tab active" : "dialog-tab"}
-            onClick={() => setPane("memory")}
-          >
-            메모리
-          </button>
-        </div>
-        {pane === "profile" ? (
-          <>
+        <div className="modal-scroll bot-settings">
+          <div className="bot-settings-profile">
             {bot.role === "leader" ? (
               <p className="hint-static">고정 리드입니다. 삭제할 수 없습니다. 모델과 프롬프트를 바꿉니다.</p>
             ) : (
@@ -131,44 +109,44 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
                 </select>
               </label>
             ) : null}
-            <label>
+            <label className="bot-settings-prompt">
               프롬프트
-              <textarea rows={8} value={soul} onChange={(e) => setSoul(e.target.value)} />
+              <textarea rows={6} value={soul} onChange={(e) => setSoul(e.target.value)} />
             </label>
-            {error ? <p className="hint danger">{error}</p> : null}
-            <div className="modal-actions">
-              <button type="button" className="ghost" onClick={onClose}>
-                닫기
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const [provider, model] = choice ? choice.split("::") : [null, null];
-                  const levels = effortsFor(settings, provider || null, model || null);
-                  const nextThinking =
-                    thinking && levels.includes(thinking) ? thinking : defaultEffort(levels);
-                  void onSave({
-                    title,
-                    description,
-                    soul,
-                    provider: provider || null,
-                    model: model || null,
-                    thinking: nextThinking,
-                  }).catch((err: unknown) => {
-                    setError(err instanceof Error ? err.message : "failed");
-                  });
-                }}
-              >
-                저장
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="hint-static">이 봇만 쓰는 기억입니다. 한글은 CJK 바이그램으로 찾습니다.</p>
-            <BotMemoryPanel bot={bot} onClose={onClose} />
-          </>
-        )}
+          </div>
+          <section className="memory-section" aria-label="메모리">
+            <h3 className="field-label">메모리</h3>
+            <p className="hint-static">이 봇만 쓰는 기억입니다. 추가하면 목록에 바로 남습니다.</p>
+            <BotMemoryPanel bot={bot} />
+          </section>
+        </div>
+        {error ? <p className="hint danger">{error}</p> : null}
+        <div className="modal-actions">
+          <button type="button" className="ghost" onClick={onClose}>
+            닫기
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const [provider, model] = choice ? choice.split("::") : [null, null];
+              const levels = effortsFor(settings, provider || null, model || null);
+              const nextThinking =
+                thinking && levels.includes(thinking) ? thinking : defaultEffort(levels);
+              void onSave({
+                title,
+                description,
+                soul,
+                provider: provider || null,
+                model: model || null,
+                thinking: nextThinking,
+              }).catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : "failed");
+              });
+            }}
+          >
+            저장
+          </button>
+        </div>
       </div>
     </div>
   );

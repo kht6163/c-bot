@@ -953,6 +953,19 @@ button {
   font-weight: 500;
 }
 
+.memory-form-actions button {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.memory-form-actions button:hover {
+  background: var(--row-hover);
+}
+
 .hint {
   min-height: 1.2em;
   margin: 0;
@@ -1882,58 +1895,87 @@ select.field-input {
   align-items: center;
 }
 
-.dialog-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.dialog-tab {
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.dialog-tab:hover {
-  background: var(--row-hover);
-  color: var(--text);
-}
-
-.dialog-tab.active {
-  background: var(--row-active);
-  color: var(--text);
-}
-
 .modal-wide {
-  width: min(720px, calc(100vw - 32px));
-  max-height: min(80vh, 720px);
+  width: min(860px, calc(100vw - 32px));
+  height: min(90vh, 860px);
+  max-height: min(90vh, 860px);
+  overflow: hidden;
+}
+
+.modal-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.bot-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 16px;
+  overflow: hidden;
+}
+
+.bot-settings-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.bot-settings-prompt {
+  flex: 1;
+  min-height: 0;
+}
+
+.bot-settings-prompt textarea {
+  flex: 1;
+  min-height: 6em;
+}
+
+.memory-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.memory-section h3 {
+  margin: 0;
+}
+
+.memory-section .hint-static {
+  margin: 0;
 }
 
 .memory-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
   flex: 1;
-}
-
-.memory-panel .modal-actions {
-  margin-top: 0;
 }
 
 .memory-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  grid-template-rows: auto minmax(12em, 1fr);
+  grid-template-rows: auto minmax(8em, 1fr) auto;
   grid-template-areas:
     "toolbar title"
-    "list body";
+    "list body"
+    ". actions";
   gap: 8px 12px;
   flex: 1;
-  min-height: 280px;
+  min-height: 0;
   align-items: stretch;
 }
 
@@ -1971,12 +2013,12 @@ select.field-input {
 .memory-list-head {
   display: flex;
   align-items: center;
-  min-height: 1.2em;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 24px;
 }
 
-.memory-list-head .text-btn {
-  height: auto;
-  padding: 0;
+.memory-list-label {
   font-size: 12px;
   color: var(--muted);
 }
@@ -1992,10 +2034,18 @@ select.field-input {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: #fff;
 }
 
 .memory-list .empty {
   padding: 12px;
+}
+
+.memory-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
 }
 
 .memory-item {
@@ -2003,12 +2053,21 @@ select.field-input {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  width: 100%;
+  min-width: 0;
   padding: 8px 10px;
   border: 0;
-  border-bottom: 1px solid var(--border);
-  background: #fff;
+  border-radius: 0;
+  background: transparent;
   text-align: left;
+}
+
+.memory-row-delete {
+  color: var(--quiet);
+  margin-right: 4px;
+}
+
+.memory-row-delete:hover {
+  color: var(--danger);
 }
 
 .memory-item .row-meta {
@@ -2018,8 +2077,8 @@ select.field-input {
   width: 100%;
 }
 
-.memory-item.active,
-.memory-item:hover {
+.memory-row:hover,
+.memory-row:has(.memory-item.active) {
   background: var(--row-hover);
 }
 
@@ -2031,7 +2090,13 @@ select.field-input {
 
 .memory-body-field textarea {
   flex: 1;
-  min-height: 8em;
+  min-height: 6em;
+}
+
+.memory-form-actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .memory-chip {
@@ -2040,15 +2105,48 @@ select.field-input {
 }
 
 @media (max-width: 899px) {
+  .modal-wide {
+    height: min(92vh, 860px);
+  }
+
+  .bot-settings {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+  }
+
+  .bot-settings-profile {
+    overflow: visible;
+    flex: none;
+  }
+
+  .bot-settings-prompt {
+    flex: none;
+  }
+
+  .bot-settings-prompt textarea {
+    flex: none;
+    min-height: 6em;
+  }
+
+  .memory-section {
+    flex: none;
+    padding-left: 0;
+    border-left: 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
   .memory-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(10em, 1fr) auto minmax(10em, 1fr);
+    grid-template-rows: auto minmax(8em, 1fr) auto auto auto;
     grid-template-areas:
       "toolbar"
       "list"
       "title"
-      "body";
-    min-height: 420px;
+      "body"
+      "actions";
+    min-height: 0;
   }
 
   .memory-toolbar {
