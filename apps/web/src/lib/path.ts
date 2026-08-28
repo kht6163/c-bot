@@ -7,8 +7,11 @@ export function projectPaths(input: {
   current: string | null;
   recents: string[];
 }): string[] {
-  const rest = input.recents.filter((path) => path !== input.current);
-  return input.current ? [input.current, ...rest] : rest;
+  const recents = input.recents.filter((path) => path.length > 0);
+  if (input.current && !recents.includes(input.current)) {
+    return [...recents, input.current];
+  }
+  return recents;
 }
 
 export function projectTree<T extends { workspace: string | null; updatedAt: string }>(

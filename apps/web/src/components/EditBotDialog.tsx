@@ -1,44 +1,44 @@
 import { useEffect, useState } from "react";
-import { fetchSettings, type SettingsView } from "../lib/api.ts";
+import { fetchSettings, type BotView, type SettingsView } from "../lib/api.ts";
 import { defaultEffort, effortLabel, effortsFor } from "../lib/thinking.ts";
 import { ModelSearchSelect } from "./ModelSearchSelect.tsx";
 
 interface Props {
-  open: boolean;
+  bot: BotView | undefined;
   onClose: () => void;
-  onCreate: (input: {
-    handle: string;
+  onSave: (input: {
     title: string;
     description: string;
+    soul: string;
     provider: string | null;
     model: string | null;
     thinking: string | null;
   }) => Promise<void>;
 }
 
-export function NewBotDialog({ open, onClose, onCreate }: Props) {
-  const [handle, setHandle] = useState("");
+export function EditBotDialog({ bot, onClose, onSave }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [soul, setSoul] = useState("");
   const [choice, setChoice] = useState("");
   const [thinking, setThinking] = useState("");
   const [settings, setSettings] = useState<SettingsView | undefined>();
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!open) {
+    if (!bot) {
       return;
     }
-    setHandle("");
-    setTitle("");
-    setDescription("");
-    setChoice("");
-    setThinking("");
+    setTitle(bot.title);
+    setDescription(bot.description);
+    setSoul(bot.soul ?? "");
+    setChoice(bot.provider && bot.model ? `${bot.provider}::${bot.model}` : "");
+    setThinking(bot.thinking ?? "");
     setError("");
     void fetchSettings().then(setSettings);
-  }, [open]);
+  }, [bot]);
 
-  if (!open) {
+  if (!bot) {
     return null;
   }
 
@@ -53,24 +53,20 @@ export function NewBotDialog({ open, onClose, onCreate }: Props) {
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal" role="dialog" aria-labelledby="bot-title" onClick={(e) => e.stopPropagation()}>
-        <h2 id="bot-title">새 봇</h2>
-        <p className="hint-static">전문 봇입니다. 직접 대화하지 않고, 리드가 필요할 때 부릅니다.</p>
-        <label>
-          핸들
-          <input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="researcher" />
-        </label>
+      <div className="modal" role="dialog" aria-labelledby="edit-bot-title" onClick={(e) => e.stopPropagation()}>
+        <h2 id="edit-bot-title">{bot.role === "leader" ? "Leader" : `@${bot.handle}`}</h2>
+        {bot.role === "leader" ? (
+          <p className="hint-static">고정 리드입니다. 삭제할 수 없습니다. 모델과 프롬프트만 바꿉니다.</p>
+        ) : (
+          <p className="hint-static">직접 대화하지 않습니다. 리드가 이 봇을 부릅니다.</p>
+        )}
         <label>
           이름
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Researcher" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
         <label>
           역할
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="코드베이스를 조사한다"
-          />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
         <div className="field">
           <span className="field-label">모델</span>
@@ -93,7 +89,7 @@ export function NewBotDialog({ open, onClose, onCreate }: Props) {
             Effort
             <select
               className="field-input select-input"
-              value={thinking}
+              value={thinking && efforts.includes(thinking) ? thinking : (defaultEffort(efforts) ?? "")}
               aria-label="Effort"
               onChange={(e) => setThinking(e.target.value)}
             >
@@ -105,9 +101,10 @@ export function NewBotDialog({ open, onClose, onCreate }: Props) {
             </select>
           </label>
         ) : null}
-        {options.length === 0 ? (
-          <p className="hint-static">설정 → 모델에서 프로바이더를 추가하면 여기서 고를 수 있습니다.</p>
-        ) : null}
+        <label>
+          프롬프트
+          <textarea rows={8} value={soul} onChange={(e) => setSoul(e.target.value)} />
+        </label>
         {error ? <p className="hint danger">{error}</p> : null}
         <div className="modal-actions">
           <button type="button" className="ghost" onClick={onClose}>
@@ -117,19 +114,22 @@ export function NewBotDialog({ open, onClose, onCreate }: Props) {
             type="button"
             onClick={() => {
               const [provider, model] = choice ? choice.split("::") : [null, null];
-              void onCreate({
-                handle,
+              const levels = effortsFor(settings, provider || null, model || null);
+              const nextThinking =
+                thinking && levels.includes(thinking) ? thinking : defaultEffort(levels);
+              void onSave({
                 title,
                 description,
+                soul,
                 provider: provider || null,
                 model: model || null,
-                thinking: thinking || null,
+                thinking: nextThinking,
               }).catch((err: unknown) => {
                 setError(err instanceof Error ? err.message : "failed");
               });
             }}
           >
-            만들기
+            저장
           </button>
         </div>
       </div>

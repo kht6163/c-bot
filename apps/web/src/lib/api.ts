@@ -4,15 +4,18 @@ import type {
   SessionEvent,
   SessionId,
   SessionSummary,
+  SessionTeamMember,
   ToolCallId,
 } from "@cbot/shared";
+import { parseApiBody } from "./api-json.ts";
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  return parseApiBody<T>(await res.text(), res.status, path);
+}
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const res = await fetch("/api/health");
-  if (!res.ok) {
-    throw new Error(`health ${res.status}`);
-  }
-  return (await res.json()) as HealthResponse;
+  return api<HealthResponse>("/api/health");
 }
 
 export interface BotView {
@@ -20,16 +23,17 @@ export interface BotView {
   handle: string;
   title: string;
   description: string;
+  role: "leader" | "specialist";
+  provider: string | null;
+  model: string | null;
+  thinking: string | null;
   sessionId: string;
   hidden: boolean;
+  soul?: string;
 }
 
 export async function fetchBots(): Promise<BotView[]> {
-  const res = await fetch("/api/bots");
-  if (!res.ok) {
-    throw new Error(`bots ${res.status}`);
-  }
-  const body = (await res.json()) as { bots: BotView[] };
+  const body = await api<{ bots: BotView[] }>("/api/bots");
   return body.bots;
 }
 
@@ -37,105 +41,174 @@ export async function createBot(input: {
   handle: string;
   title: string;
   description: string;
+  provider?: string | null;
+  model?: string | null;
+  thinking?: string | null;
 }): Promise<BotView> {
-  const res = await fetch("/api/bots", {
+  const body = await api<{ bot: BotView }>("/api/bots", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) {
-    throw new Error(`create bot ${res.status}`);
-  }
-  const body = (await res.json()) as { bot: BotView };
   return body.bot;
 }
 
+export async function updateBot(
+  id: string,
+  input: {
+    title?: string;
+    description?: string;
+    soul?: string;
+    provider?: string | null;
+    model?: string | null;
+    thinking?: string | null;
+  },
+): Promise<BotView> {
+  const body = await api<{ bot: BotView }>(`/api/bots/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.bot;
+}
+
+export async function deleteBot(id: string): Promise<void> {
+  await api<{ ok: boolean }>(`/api/bots/${id}`, { method: "DELETE" });
+}
+
 export async function fetchProject(): Promise<ProjectView> {
-  const res = await fetch("/api/project");
-  if (!res.ok) {
-    throw new Error(`project ${res.status}`);
-  }
-  return (await res.json()) as ProjectView;
+  return api<ProjectView>("/api/project");
 }
 
 export async function openProject(path: string): Promise<ProjectView> {
-  const res = await fetch("/api/project", {
+  return api<ProjectView>("/api/project", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ path }),
   });
-  if (!res.ok) {
-    throw new Error(`project ${res.status}`);
-  }
-  return (await res.json()) as ProjectView;
+}
+
+export async function deleteProject(path: string): Promise<ProjectView> {
+  return api<ProjectView>("/api/project", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
 }
 
 export async function fetchSessions(): Promise<SessionSummary[]> {
-  const res = await fetch("/api/sessions");
-  if (!res.ok) {
-    throw new Error(`sessions ${res.status}`);
-  }
-  const body = (await res.json()) as { sessions: SessionSummary[] };
+  const body = await api<{ sessions: SessionSummary[] }>("/api/sessions");
   return body.sessions;
 }
 
 export async function createSession(workspace?: string): Promise<SessionSummary> {
-  const res = await fetch("/api/sessions", {
+  const body = await api<{ session: SessionSummary }>("/api/sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(workspace !== undefined ? { workspace } : {}),
   });
-  if (!res.ok) {
-    throw new Error(`create ${res.status}`);
-  }
-  const body = (await res.json()) as { session: SessionSummary };
   return body.session;
 }
 
 export async function fetchSession(
   id: SessionId,
-): Promise<{ session: SessionSummary; events: SessionEvent[] }> {
-  const res = await fetch(`/api/sessions/${id}`);
-  if (!res.ok) {
-    throw new Error(`session ${res.status}`);
-  }
-  return (await res.json()) as { session: SessionSummary; events: SessionEvent[] };
+): Promise<{ session: SessionSummary; events: SessionEvent[]; team: SessionTeamMember[] }> {
+  const body = await api<{
+    session: SessionSummary;
+    events: SessionEvent[];
+    team?: SessionTeamMember[];
+  }>(`/api/sessions/${id}`);
+  return { session: body.session, events: body.events, team: body.team ?? [] };
+}
+
+export async function deleteSession(id: SessionId): Promise<void> {
+  await api<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" });
 }
 
 export async function sendMessage(id: SessionId, text: string): Promise<void> {
-  const res = await fetch(`/api/sessions/${id}/messages`, {
+  await api<{ ok: boolean }>(`/api/sessions/${id}/messages`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) {
-    throw new Error(`send ${res.status}`);
-  }
+}
+
+export interface ProviderView {
+  id: string;
+  displayName: string;
+  baseURL: string;
+  kind: "shipped" | "custom";
+  models: string[];
+  thinking: Record<string, string[]>;
+  hasApiKey: boolean;
+  keyEnv: string;
+}
+
+export interface CatalogProviderView {
+  id: string;
+  displayName: string;
+  baseURL: string;
 }
 
 export interface SettingsView {
-  model: string;
-  baseURL: string;
+  activeProvider: string | null;
+  activeModel: string | null;
+  activeThinking: string | null;
   hasApiKey: boolean;
+  providers: ProviderView[];
+  catalog: CatalogProviderView[];
 }
 
 export async function fetchSettings(): Promise<SettingsView> {
-  const res = await fetch("/api/settings");
-  if (!res.ok) {
-    throw new Error(`settings ${res.status}`);
-  }
-  return (await res.json()) as SettingsView;
+  return api<SettingsView>("/api/settings");
 }
 
-export async function saveSettings(input: { model: string; baseURL: string }): Promise<void> {
-  const res = await fetch("/api/settings", {
+export async function saveActiveModel(input: {
+  provider: string | null;
+  model: string | null;
+  thinking?: string | null;
+}): Promise<SettingsView> {
+  return api<SettingsView>("/api/settings/active", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) {
-    throw new Error(`settings ${res.status}`);
-  }
+}
+
+export async function createProvider(input: {
+  id: string;
+  displayName: string;
+  baseURL: string;
+  models: string[];
+  thinking?: Record<string, string[]>;
+  apiKey?: string;
+}): Promise<SettingsView> {
+  return api<SettingsView>("/api/providers", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateProvider(
+  id: string,
+  input: {
+    displayName?: string;
+    baseURL?: string;
+    models?: string[];
+    thinking?: Record<string, string[]>;
+    apiKey?: string;
+  },
+): Promise<SettingsView> {
+  return api<SettingsView>(`/api/providers/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteProvider(id: string): Promise<SettingsView> {
+  return api<SettingsView>(`/api/providers/${id}`, { method: "DELETE" });
 }
 
 export interface LlmProbeView {
@@ -146,42 +219,36 @@ export interface LlmProbeView {
 }
 
 export async function testLlmConnection(input: {
+  provider?: string;
   apiKey?: string;
   model: string;
   baseURL: string;
 }): Promise<LlmProbeView> {
-  const res = await fetch("/api/llm/test", {
+  return api<LlmProbeView>("/api/llm/test", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) {
-    throw new Error(`llm test ${res.status}`);
-  }
-  return (await res.json()) as LlmProbeView;
 }
 
-export async function saveApiKey(xaiApiKey: string): Promise<void> {
-  const res = await fetch("/api/secrets", {
-    method: "PUT",
+export async function fetchRemoteModels(input: {
+  provider?: string;
+  baseURL: string;
+  apiKey?: string;
+}): Promise<{ models: string[]; catalog: { id: string; thinking: string[] }[] }> {
+  return api<{ models: string[]; catalog: { id: string; thinking: string[] }[] }>("/api/llm/models", {
+    method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ xaiApiKey }),
+    body: JSON.stringify(input),
   });
-  if (!res.ok) {
-    throw new Error(`secrets ${res.status}`);
-  }
 }
 
 export async function setWorkspace(id: SessionId, workspace: string): Promise<SessionSummary> {
-  const res = await fetch(`/api/sessions/${id}`, {
+  const body = await api<{ session: SessionSummary }>(`/api/sessions/${id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ workspace }),
   });
-  if (!res.ok) {
-    throw new Error(`workspace ${res.status}`);
-  }
-  const body = (await res.json()) as { session: SessionSummary };
   return body.session;
 }
 
@@ -191,28 +258,46 @@ export interface FsEntry {
   type: "dir" | "file";
 }
 
+export async function pickNativeFolder(): Promise<{ path: string } | { cancelled: true }> {
+  const body = await api<{ path: string | null; cancelled?: boolean }>("/api/fs/pick-dir", {
+    method: "POST",
+  });
+  if (body.cancelled === true || typeof body.path !== "string" || body.path.length === 0) {
+    return { cancelled: true };
+  }
+  return { path: body.path };
+}
+
+export async function resolvePickedDir(name: string, children: string[]): Promise<string> {
+  const body = await api<{ path: string }>("/api/fs/resolve-dir", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, children }),
+  });
+  return body.path;
+}
+
+export async function searchProjectFiles(workspace: string, query: string): Promise<string[]> {
+  const q = `?workspace=${encodeURIComponent(workspace)}&q=${encodeURIComponent(query)}`;
+  const body = await api<{ files: string[] }>(`/api/fs/search${q}`);
+  return body.files;
+}
+
 export async function browseDir(path?: string): Promise<{
   path: string;
   parent: string | null;
   entries: FsEntry[];
 }> {
   const q = path ? `?path=${encodeURIComponent(path)}` : "";
-  const res = await fetch(`/api/fs/browse${q}`);
-  if (!res.ok) {
-    throw new Error(`browse ${res.status}`);
-  }
-  return (await res.json()) as { path: string; parent: string | null; entries: FsEntry[] };
+  return api<{ path: string; parent: string | null; entries: FsEntry[] }>(`/api/fs/browse${q}`);
 }
 
 export async function sendApproval(id: SessionId, callId: ToolCallId, allow: boolean): Promise<void> {
-  const res = await fetch(`/api/sessions/${id}/approvals`, {
+  await api<{ ok: boolean }>(`/api/sessions/${id}/approvals`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ callId, allow }),
   });
-  if (!res.ok) {
-    throw new Error(`approval ${res.status}`);
-  }
 }
 
 export function openEvents(): WebSocket {

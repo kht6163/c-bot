@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PROTOCOL_VERSION,
-  asSessionId,
   type ProjectView,
   type ServerFrame,
   type SessionEvent,
   type SessionId,
   type SessionSummary,
+  type SessionTeamMember,
 } from "@cbot/shared";
 import { Composer } from "./components/Composer.tsx";
+import { EditBotDialog } from "./components/EditBotDialog.tsx";
 import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { TeamStage } from "./components/TeamStage.tsx";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
   createBot,
   createSession,
+  deleteBot,
+  deleteProject,
+  deleteSession,
   fetchBots,
+  updateBot,
   fetchHealth,
   fetchProject,
   fetchSession,
@@ -24,11 +30,17 @@ import {
   fetchSettings,
   openEvents,
   openProject,
+  pickNativeFolder,
   sendApproval,
   sendMessage,
   type BotView,
 } from "./lib/api.ts";
-import { visibleRows, type ChatRow } from "./lib/rows.ts";
+import {
+  fallbackAfterDelete,
+  mergeEventList,
+  specialistSessionIds,
+  type ViewMode,
+} from "./lib/team.ts";
 
 type LinkState = "connecting" | "ok" | "down";
 
@@ -42,28 +54,74 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [newBotOpen, setNewBotOpen] = useState(false);
+  const [editBotId, setEditBotId] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("agent");
+  const [focusedKey, setFocusedKey] = useState("lead");
+  const [team, setTeam] = useState<SessionTeamMember[]>([]);
+  const [botEvents, setBotEvents] = useState<Record<string, SessionEvent[]>>({});
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const eventsRef = useRef<SessionEvent[]>([]);
   const projectRef = useRef<ProjectView | undefined>(undefined);
+  const botsRef = useRef<BotView[]>([]);
+  const teamRef = useRef<SessionTeamMember[]>([]);
+  const watchIdsRef = useRef<string[]>([]);
   const sendSeqRef = useRef(0);
-  const logRef = useRef<HTMLDivElement>(null);
 
   selectedRef.current = selectedId;
   eventsRef.current = events;
   projectRef.current = project;
+  botsRef.current = bots;
+  teamRef.current = team;
 
-  const mergeEvent = useCallback((event: SessionEvent) => {
-    setEvents((current) => {
-      if (current.some((item) => item.seq === event.seq)) {
-        return current;
-      }
-      return [...current, event].sort((a, b) => a.seq - b.seq);
-    });
+  const subscribeWatched = useCallback((ids: string[]) => {
+    watchIdsRef.current = ids;
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    for (const id of ids) {
+      socket.send(JSON.stringify({ type: "subscribe", sessionId: id }));
+    }
   }, []);
+
+  const loadSpecialistLogs = useCallback(async (members: SessionTeamMember[]) => {
+    const ids = specialistSessionIds(members);
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const detail = await fetchSession(id);
+          return [id, detail.events] as const;
+        } catch {
+          return [id, [] as SessionEvent[]] as const;
+        }
+      }),
+    );
+    const next: Record<string, SessionEvent[]> = {};
+    for (const [id, nextEvents] of entries) {
+      next[id] = nextEvents;
+    }
+    setBotEvents(next);
+    return ids;
+  }, []);
+
+  const refreshTeam = useCallback(
+    async (id: SessionId) => {
+      const detail = await fetchSession(id);
+      if (selectedRef.current !== id) {
+        return;
+      }
+      setTeam(detail.team);
+      const specialistIds = await loadSpecialistLogs(detail.team);
+      subscribeWatched([id, ...specialistIds]);
+    },
+    [loadSpecialistLogs, subscribeWatched],
+  );
+  const refreshTeamRef = useRef(refreshTeam);
+  refreshTeamRef.current = refreshTeam;
 
   const loadList = useCallback(async () => {
     const [nextSessions, nextBots, nextProject] = await Promise.all([
@@ -76,25 +134,31 @@ export function App() {
     setProject(nextProject);
   }, []);
 
-  const openSession = useCallback(async (id: SessionId) => {
-    setSelectedId(id);
-    setPendingSend(false);
-    const detail = await fetchSession(id);
-    setSelected(detail.session);
-    setEvents(detail.events);
-    if (detail.session.kind === "coding") {
-      setSessions((current) => {
-        const others = current.filter((s) => s.id !== id);
-        return [detail.session, ...others];
-      });
-      const workspace = detail.session.workspace;
-      if (workspace && workspace !== projectRef.current?.current) {
-        const next = await openProject(workspace);
-        setProject(next);
+  const openSession = useCallback(
+    async (id: SessionId) => {
+      setSelectedId(id);
+      setPendingSend(false);
+      setFocusedKey("lead");
+      const detail = await fetchSession(id);
+      setSelected(detail.session);
+      setEvents(detail.events);
+      setTeam(detail.team);
+      if (detail.session.kind === "coding") {
+        setSessions((current) => {
+          const others = current.filter((s) => s.id !== id);
+          return [detail.session, ...others];
+        });
+        const workspace = detail.session.workspace;
+        if (workspace && workspace !== projectRef.current?.current) {
+          const next = await openProject(workspace);
+          setProject(next);
+        }
       }
-    }
-    socketRef.current?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
-  }, []);
+      const specialistIds = await loadSpecialistLogs(detail.team);
+      subscribeWatched([id, ...specialistIds]);
+    },
+    [loadSpecialistLogs, subscribeWatched],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -114,9 +178,9 @@ export function App() {
 
     void loadList();
     void fetchSettings()
-      .then((settings) => {
+      .then((next) => {
         if (!cancelled) {
-          setHasApiKey(settings.hasApiKey);
+          setHasApiKey(next.hasApiKey);
         }
       })
       .catch(() => {
@@ -138,13 +202,35 @@ export function App() {
         }
         if (frame.type === "hello") {
           setLink("ok");
-          const id = selectedRef.current;
-          if (id) {
-            socket?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
+          const watched = watchIdsRef.current;
+          if (watched.length > 0) {
+            for (const id of watched) {
+              socket?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
+            }
+          } else if (selectedRef.current) {
+            socket?.send(JSON.stringify({ type: "subscribe", sessionId: selectedRef.current }));
           }
         }
-        if (frame.type === "event" && frame.sessionId === selectedRef.current) {
-          mergeEvent(frame.event);
+        if (frame.type === "event") {
+          if (frame.sessionId === selectedRef.current) {
+            setEvents((current) => mergeEventList(current, frame.event));
+            if (isTeamSignal(frame.event)) {
+              void refreshTeamRef.current(frame.sessionId);
+            }
+          } else {
+            setBotEvents((current) => {
+              const known =
+                frame.sessionId in current ||
+                teamRef.current.some((member) => member.sessionId === frame.sessionId);
+              if (!known) {
+                return current;
+              }
+              return {
+                ...current,
+                [frame.sessionId]: mergeEventList(current[frame.sessionId] ?? [], frame.event),
+              };
+            });
+          }
         }
       });
       socket.addEventListener("error", () => {
@@ -166,11 +252,7 @@ export function App() {
       socket?.close();
       socketRef.current = undefined;
     };
-  }, [loadList, mergeEvent]);
-
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [events]);
+  }, [loadList]);
 
   useEffect(() => {
     if (!pendingSend) {
@@ -183,12 +265,8 @@ export function App() {
     }
   }, [events, pendingSend]);
 
-  const rows = useMemo(() => visibleRows(events), [events]);
   const busy = pendingSend || hasOpenTurn(events);
-  const log = useMemo(() => withThinking(rows, busy), [rows, busy]);
-  const composerReady = Boolean(
-    selectedId && (selected?.kind === "bot-chat" || selected?.workspace),
-  );
+  const composerReady = Boolean(selectedId && selected?.kind === "coding" && selected.workspace);
 
   async function switchProject(path: string) {
     const next = await openProject(path);
@@ -198,14 +276,30 @@ export function App() {
     setSessions(list);
   }
 
+  function openNativeProject() {
+    void pickNativeFolder()
+      .then(async (picked) => {
+        if ("cancelled" in picked) {
+          return;
+        }
+        await switchProject(picked.path);
+      })
+      .catch(() => {
+        setWorkspaceOpen(true);
+      });
+  }
+
   const handleSend = useCallback(
     (text: string) => {
       void (async () => {
         let id = selectedRef.current;
+        if (id && selected?.kind === "bot-chat") {
+          return;
+        }
         if (!id) {
           const workspace = projectRef.current?.current;
           if (!workspace) {
-            setWorkspaceOpen(true);
+            openNativeProject();
             return;
           }
           const session = await createSession(workspace);
@@ -223,10 +317,11 @@ export function App() {
         }
       })();
     },
-    [loadList, openSession],
+    [loadList, openSession, selected],
   );
 
-  const overlayOpen = settingsOpen || workspaceOpen || newBotOpen;
+  const overlayOpen = settingsOpen || workspaceOpen || newBotOpen || Boolean(editBotId);
+  const editBot = bots.find((item) => item.id === editBotId);
 
   return (
     <>
@@ -239,7 +334,7 @@ export function App() {
         link={link}
         hasApiKey={hasApiKey}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenProjectPicker={() => setWorkspaceOpen(true)}
+        onOpenProjectPicker={openNativeProject}
         onSelectProject={(path) => {
           void switchProject(path);
         }}
@@ -254,69 +349,107 @@ export function App() {
         onOpenSession={(id) => {
           void openSession(id);
         }}
+        onDeleteSession={(session) => {
+          void (async () => {
+            await deleteSession(session.id);
+            const remaining = sessions.filter((item) => item.id !== session.id);
+            setSessions(remaining);
+            const next = fallbackAfterDelete(session, selectedId, remaining);
+            if (next) {
+              if (next.id !== selectedId) {
+                await openSession(next.id);
+              }
+              return;
+            }
+            setSelectedId(undefined);
+            setSelected(undefined);
+            setEvents([]);
+            setTeam([]);
+            setBotEvents({});
+            subscribeWatched([]);
+          })();
+        }}
+        onDeleteProject={(path) => {
+          void (async () => {
+            const nextProject = await deleteProject(path);
+            setProject(nextProject);
+            const remaining = sessions.filter((item) => item.workspace !== path);
+            setSessions(remaining);
+            if (selected?.workspace === path) {
+              const next = remaining[0];
+              if (next) {
+                await openSession(next.id);
+              } else {
+                setSelectedId(undefined);
+                setSelected(undefined);
+                setEvents([]);
+                setTeam([]);
+                setBotEvents({});
+                subscribeWatched([]);
+              }
+            }
+          })();
+        }}
         onNewBot={() => setNewBotOpen(true)}
+        onEditBot={(id) => setEditBotId(id)}
+        onDeleteBot={(id) => {
+          void (async () => {
+            const bot = bots.find((item) => item.id === id);
+            await deleteBot(id);
+            const nextBots = bots.filter((item) => item.id !== id);
+            setBots(nextBots);
+            const nextTeam = team.filter((member) => member.id !== id);
+            setTeam(nextTeam);
+            if (bot) {
+              setBotEvents((current) => {
+                const next = { ...current };
+                for (const member of team) {
+                  if (member.id === id) {
+                    delete next[member.sessionId];
+                  }
+                }
+                return next;
+              });
+              if (focusedKey === bot.id) {
+                setFocusedKey("lead");
+              }
+            }
+            if (selectedRef.current) {
+              subscribeWatched([selectedRef.current, ...specialistSessionIds(nextTeam)]);
+            }
+          })();
+        }}
       />
       <section className="main">
         {selectedId ? (
-          <div className="log" ref={logRef}>
-            {log.length === 0 ? (
-              <p className="empty-log">메시지를 보내면 대화가 시작됩니다.</p>
-            ) : (
-              log.map((row) =>
-                row.kind === "status" ? (
-                  <div key={row.key} className="scaffold" role="status" aria-live="polite">
-                    <span className="scaffold-pulse" aria-hidden="true" />
-                    {row.text}
-                  </div>
-                ) : row.kind === "tool" ? (
-                  <article
-                    key={row.key}
-                    className={`tool-card ui-${row.ui}${row.live ? " live" : ""}`}
-                  >
-                    <span className="who">{row.name}</span>
-                    <pre>{row.content || row.arguments}</pre>
-                    {row.pendingApproval && selectedId ? (
-                      <div className="approval">
-                        <button
-                          type="button"
-                          onClick={() => void sendApproval(selectedId, row.callId, true)}
-                        >
-                          허용
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => void sendApproval(selectedId, row.callId, false)}
-                        >
-                          거절
-                        </button>
-                      </div>
-                    ) : null}
-                  </article>
-                ) : (
-                  <article
-                    key={row.key}
-                    className={`bubble ${row.kind}${row.live ? " live" : ""}`}
-                  >
-                    {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
-                    <pre>{row.text}</pre>
-                  </article>
-                ),
-              )
-            )}
-          </div>
+          <TeamStage
+            codingSessionId={selectedId}
+            bots={team}
+            leadHandle={bots.find((bot) => bot.role === "leader")?.handle ?? "leader"}
+            leadTitle={bots.find((bot) => bot.role === "leader")?.title ?? "Lead"}
+            codingEvents={events}
+            botEvents={botEvents}
+            viewMode={viewMode}
+            focusedKey={focusedKey}
+            codingBusy={busy}
+            onViewMode={setViewMode}
+            onFocus={setFocusedKey}
+            onApprove={(sessionId, callId, allow) => {
+              void sendApproval(sessionId, callId, allow);
+            }}
+          />
         ) : (
           <div className="hero">
             <h1>c-bot</h1>
             {project?.current ? (
               <p className="hero-chip">
-                <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
+                <button type="button" className="ghost" onClick={openNativeProject}>
                   {project.name}
                 </button>
               </p>
             ) : (
               <p className="hero-chip">
-                <button type="button" className="ghost" onClick={() => setWorkspaceOpen(true)}>
+                <button type="button" className="ghost" onClick={openNativeProject}>
                   프로젝트 열기
                 </button>
                 {hasApiKey ? null : (
@@ -332,6 +465,8 @@ export function App() {
               resetKey={selectedId ?? "home"}
               variant="hero"
               placeholder="무엇을 만들지 적어 보세요"
+              workspace={project?.current ?? null}
+              bots={bots}
               onSend={handleSend}
             />
           </div>
@@ -342,7 +477,11 @@ export function App() {
             blocked={!composerReady}
             resetKey={selectedId}
             variant="dock"
-            placeholder={busy ? "생각 중" : "에이전트에게 메시지"}
+            placeholder={
+              busy ? "생각 중" : focusedKey === "lead" ? "에이전트에게 메시지" : "리드에게 메시지"
+            }
+            workspace={selected?.workspace ?? project?.current ?? null}
+            bots={bots}
             onSend={handleSend}
           />
         ) : null}
@@ -352,7 +491,9 @@ export function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onChanged={() => {
-          void fetchSettings().then((settings) => setHasApiKey(settings.hasApiKey));
+          void fetchSettings().then((next) => {
+            setHasApiKey(next.hasApiKey);
+          });
         }}
       />
       <NewBotDialog
@@ -360,9 +501,21 @@ export function App() {
         onClose={() => setNewBotOpen(false)}
         onCreate={async (input) => {
           const bot = await createBot(input);
-          setBots((current) => [...current, bot].sort((a, b) => a.handle.localeCompare(b.handle)));
+          const nextBots = [...bots.filter((item) => item.id !== bot.id), bot];
+          setBots(nextBots);
           setNewBotOpen(false);
-          await openSession(asSessionId(bot.sessionId));
+        }}
+      />
+      <EditBotDialog
+        bot={editBot}
+        onClose={() => setEditBotId(undefined)}
+        onSave={async (input) => {
+          if (!editBotId) {
+            return;
+          }
+          const bot = await updateBot(editBotId, input);
+          setBots((current) => current.map((item) => (item.id === bot.id ? bot : item)));
+          setEditBotId(undefined);
         }}
       />
       <WorkspacePicker
@@ -377,6 +530,13 @@ export function App() {
         }}
       />
     </>
+  );
+}
+
+function isTeamSignal(event: SessionEvent): boolean {
+  return (
+    event.type === "bot/delivery" ||
+    (event.type === "tool/call" && event.call.name === "message_agent")
   );
 }
 
@@ -422,22 +582,4 @@ function turnSettledAfter(events: readonly SessionEvent[], afterSeq: number): bo
   return saw && open.size === 0;
 }
 
-function isLiveWork(row: ChatRow): boolean {
-  if (row.kind === "status") {
-    return true;
-  }
-  if (row.kind === "assistant") {
-    return row.live;
-  }
-  if (row.kind === "tool") {
-    return row.live || row.pendingApproval;
-  }
-  return false;
-}
 
-function withThinking(rows: ChatRow[], busy: boolean): ChatRow[] {
-  if (!busy || rows.some(isLiveWork)) {
-    return rows;
-  }
-  return [...rows, { key: "thinking", kind: "status", text: "생각 중", live: true }];
-}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { asSessionId, type ProjectView, type SessionId, type SessionSummary } from "@cbot/shared";
+import { type ProjectView, type SessionId, type SessionSummary } from "@cbot/shared";
 import type { BotView } from "../lib/api.ts";
 import { projectTree, timeAgo } from "../lib/path.ts";
 
@@ -17,7 +17,11 @@ interface Props {
   onSelectProject: (path: string) => void;
   onNewSession: (path: string) => void;
   onOpenSession: (id: SessionId) => void;
+  onDeleteSession: (session: SessionSummary) => void;
+  onDeleteProject: (path: string, name: string) => void;
   onNewBot: () => void;
+  onEditBot: (id: string) => void;
+  onDeleteBot: (id: string) => void;
 }
 
 export function Sidebar({
@@ -32,7 +36,11 @@ export function Sidebar({
   onSelectProject,
   onNewSession,
   onOpenSession,
+  onDeleteSession,
+  onDeleteProject,
   onNewBot,
+  onEditBot,
+  onDeleteBot,
 }: Props) {
   const tree = project ? projectTree(project, sessions) : [];
   const [folded, setFolded] = useState<Record<string, boolean>>({});
@@ -101,19 +109,37 @@ export function Sidebar({
                       >
                         <span className="row-title">{branch.name}</span>
                       </button>
-                      <button
-                        type="button"
-                        className="add-btn"
-                        aria-label="새 세션"
-                        onClick={() => onNewSession(branch.path)}
-                      >
-                        +
-                      </button>
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="add-btn"
+                          aria-label="새 세션"
+                          onClick={() => onNewSession(branch.path)}
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          className="add-btn row-delete"
+                          aria-label={`${branch.name} 프로젝트 삭제`}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `"${branch.name}" 프로젝트를 목록에서 지울까요? 이 폴더의 코딩 세션도 삭제됩니다.`,
+                              )
+                            ) {
+                              onDeleteProject(branch.path, branch.name);
+                            }
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                     {expanded && branch.sessions.length > 0 ? (
                       <ul className="row-list row-nest">
                         {branch.sessions.map((session) => (
-                          <li key={session.id}>
+                          <li key={session.id} className="session-row">
                             <button
                               type="button"
                               className={session.id === selectedId ? "row active" : "row"}
@@ -122,6 +148,18 @@ export function Sidebar({
                             >
                               <span className="row-title">{session.title}</span>
                               <span className="row-meta">{timeAgo(session.updatedAt)}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="add-btn row-delete"
+                              aria-label={`${session.title} 세션 삭제`}
+                              onClick={() => {
+                                if (window.confirm(`"${session.title}" 세션을 삭제할까요?`)) {
+                                  onDeleteSession(session);
+                                }
+                              }}
+                            >
+                              ×
                             </button>
                           </li>
                         ))}
@@ -141,16 +179,31 @@ export function Sidebar({
           ) : (
             <ul className="row-list">
               {bots.map((bot) => (
-                <li key={bot.id}>
+                <li key={bot.id} className="bot-row">
                   <button
                     type="button"
-                    className={bot.sessionId === selectedId ? "row active" : "row"}
-                    aria-current={bot.sessionId === selectedId ? "true" : undefined}
-                    onClick={() => onOpenSession(asSessionId(bot.sessionId))}
+                    className="row"
+                    onClick={() => onEditBot(bot.id)}
                   >
                     <span className="row-title">@{bot.handle}</span>
-                    <span className="row-meta">{bot.title}</span>
+                    <span className="row-meta">{bot.role === "leader" ? "Lead" : bot.title}</span>
                   </button>
+                  {bot.role === "leader" ? (
+                    <span className="caret-slot" />
+                  ) : (
+                    <button
+                      type="button"
+                      className="add-btn bot-delete"
+                      aria-label={`@${bot.handle} 삭제`}
+                      onClick={() => {
+                        if (window.confirm(`@${bot.handle}을(를) 삭제할까요?`)) {
+                          onDeleteBot(bot.id);
+                        }
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

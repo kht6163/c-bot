@@ -16,7 +16,8 @@ export type ChatRow =
       ok: boolean;
       live: boolean;
     }
-  | { key: string; kind: "status"; text: string; live: true };
+  | { key: string; kind: "status"; text: string; live: true }
+  | { key: string; kind: "thinking"; text: string; live: boolean };
 
 export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
   const openTurns = new Set<string>();
@@ -34,9 +35,27 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
 
   const rows: ChatRow[] = [];
   const liveByTurn = new Map<string, string>();
+  const thinkingByTurn = new Map<string, string>();
+  const thinkingSeq = new Map<string, number>();
   const toolAt = new Map<string, number>();
   const runningTools = new Map<string, number>();
   const waitingTurns = new Set<string>();
+  const thinkingShown = new Set<string>();
+
+  const flushThinking = (turnId: string, live: boolean) => {
+    const text = thinkingByTurn.get(turnId);
+    if (!text) {
+      return;
+    }
+    thinkingByTurn.delete(turnId);
+    thinkingShown.add(turnId);
+    rows.push({
+      key: `th-${turnId}-${thinkingSeq.get(turnId) ?? 0}`,
+      kind: "thinking",
+      text,
+      live,
+    });
+  };
 
   for (const event of events) {
     if (event.type === "user/message") {
@@ -49,12 +68,16 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
         live: false,
         handle: event.fromHandle,
       });
+    } else if (event.type === "assistant/thinking") {
+      thinkingByTurn.set(event.turnId, (thinkingByTurn.get(event.turnId) ?? "") + event.text);
+      thinkingSeq.set(event.turnId, event.seq);
     } else if (event.type === "assistant/chunk") {
       const sealed = lastMessageSeq.get(event.turnId) ?? -1;
       if (event.seq > sealed) {
         liveByTurn.set(event.turnId, (liveByTurn.get(event.turnId) ?? "") + event.text);
       }
     } else if (event.type === "assistant/message") {
+      flushThinking(event.turnId, false);
       if (event.text.length > 0) {
         rows.push({
           key: `a-${event.seq}`,
@@ -64,6 +87,7 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
         });
       }
     } else if (event.type === "tool/call") {
+      flushThinking(event.turnId, false);
       toolAt.set(event.call.id, rows.length);
       runningTools.set(event.turnId, (runningTools.get(event.turnId) ?? 0) + 1);
       waitingTurns.delete(event.turnId);
@@ -109,6 +133,10 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
     }
   }
 
+  for (const turnId of thinkingByTurn.keys()) {
+    flushThinking(turnId, openTurns.has(turnId));
+  }
+
   for (const [turnId, text] of liveByTurn) {
     if (text.length > 0) {
       rows.push({ key: `live-${turnId}`, kind: "assistant", text, live: true });
@@ -117,7 +145,12 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
 
   for (const turnId of openTurns) {
     const liveText = liveByTurn.get(turnId) ?? "";
-    if (liveText.length > 0 || (runningTools.get(turnId) ?? 0) > 0 || waitingTurns.has(turnId)) {
+    if (
+      liveText.length > 0 ||
+      (runningTools.get(turnId) ?? 0) > 0 ||
+      waitingTurns.has(turnId) ||
+      thinkingShown.has(turnId)
+    ) {
       continue;
     }
     rows.push({

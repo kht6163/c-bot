@@ -140,6 +140,43 @@ describe("visibleRows", () => {
     ]);
   });
 
+  test("places thinking with its turn instead of after every later message", () => {
+    const t1 = asTurnId("trn_a");
+    const t2 = asTurnId("trn_b");
+    const events: SessionEvent[] = [
+      { ...envelope(1), type: "user/message", text: "하이", mentions: [] },
+      { ...envelope(2), type: "turn/start", turnId: t1 },
+      { ...envelope(3), type: "assistant/thinking", turnId: t1, text: "greet" },
+      {
+        ...envelope(4),
+        type: "assistant/message",
+        turnId: t1,
+        text: "안녕하세요",
+        toolCalls: [],
+      },
+      { ...envelope(5), type: "turn/end", turnId: t1 },
+      { ...envelope(6), type: "user/message", text: "팀원", mentions: [] },
+      { ...envelope(7), type: "turn/start", turnId: t2 },
+      { ...envelope(8), type: "assistant/thinking", turnId: t2, text: "roster" },
+      {
+        ...envelope(9),
+        type: "assistant/message",
+        turnId: t2,
+        text: "에이전트는 이렇습니다",
+        toolCalls: [],
+      },
+      { ...envelope(10), type: "turn/end", turnId: t2 },
+    ];
+    expect(visibleRows(events).map((row) => `${row.kind}:${"text" in row ? row.text : ""}`)).toEqual([
+      "user:하이",
+      "thinking:greet",
+      "assistant:안녕하세요",
+      "user:팀원",
+      "thinking:roster",
+      "assistant:에이전트는 이렇습니다",
+    ]);
+  });
+
   test("shows 생각 중 again after a tool result while the turn is still open", () => {
     const turnId = asTurnId("trn_gap");
     const callId = asToolCallId("call_gap");

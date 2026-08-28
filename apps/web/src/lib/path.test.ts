@@ -9,16 +9,16 @@ describe("folderName", () => {
 });
 
 describe("projectPaths", () => {
-  test("puts current first and keeps other recents", () => {
-    expect(projectPaths({ current: "/a", recents: ["/b", "/a"] })).toEqual(["/a", "/b"]);
-    expect(projectPaths({ current: "/a", recents: ["/b"] })).toEqual(["/a", "/b"]);
+  test("keeps recents in added order and does not pin current first", () => {
+    expect(projectPaths({ current: "/a", recents: ["/b", "/a"] })).toEqual(["/b", "/a"]);
+    expect(projectPaths({ current: "/a", recents: ["/b"] })).toEqual(["/b", "/a"]);
     expect(projectPaths({ current: "/a", recents: [] })).toEqual(["/a"]);
     expect(projectPaths({ current: null, recents: ["/b"] })).toEqual(["/b"]);
   });
 });
 
 describe("projectTree", () => {
-  test("groups sessions under current, recents, then other workspaces, newest first", () => {
+  test("groups sessions under recents in added order, then other workspaces", () => {
     const tree = projectTree(
       { current: "/a", recents: ["/b", "/a"] },
       [
@@ -30,12 +30,12 @@ describe("projectTree", () => {
       ],
     );
     expect(tree.map((branch) => ({ path: branch.path, name: branch.name }))).toEqual([
-      { path: "/a", name: "a" },
       { path: "/b", name: "b" },
+      { path: "/a", name: "a" },
       { path: "/c", name: "c" },
     ]);
-    expect(tree[0]?.sessions.map((session) => session.title)).toEqual(["a-new", "a-old"]);
-    expect(tree[1]?.sessions).toEqual([]);
+    expect(tree[0]?.sessions).toEqual([]);
+    expect(tree[1]?.sessions.map((session) => session.title)).toEqual(["a-new", "a-old"]);
     expect(tree[2]?.sessions.map((session) => session.title)).toEqual(["c-new", "c-old"]);
   });
 
