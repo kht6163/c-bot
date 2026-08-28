@@ -5,6 +5,7 @@ import {
   SESSION_FORMAT_VERSION,
   asBotId,
   asSessionId,
+  asTurnId,
   newSessionId,
   type BotId,
   type SessionEvent,
@@ -101,7 +102,46 @@ export class SessionStore {
     if (!columns.some((column) => column.name === "parent_id")) {
       db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
     }
-    return new SessionStore(db);
+    const store = new SessionStore(db);
+    store.closeInterruptedTurns();
+    return store;
+  }
+
+  /**
+   * A process that dies mid-turn (dev restart, crash) leaves `turn/start`
+   * with no `turn/end`. The UI would show that turn as forever open and
+   * sessionNeedsTurn() would never schedule the follow-up, so close them at
+   * boot — before any listener is registered, so nothing is emitted twice.
+   */
+  private closeInterruptedTurns(): void {
+    const rows = this.db
+      .query(
+        `SELECT session_id, type, payload FROM events
+         WHERE type IN ('turn/start', 'turn/end') ORDER BY session_id, seq ASC`,
+      )
+      .all() as { session_id: string; type: string; payload: string }[];
+    const open = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const { turnId } = JSON.parse(row.payload) as { turnId?: string };
+      if (!turnId) {
+        continue;
+      }
+      let ids = open.get(row.session_id);
+      if (!ids) {
+        ids = new Set<string>();
+        open.set(row.session_id, ids);
+      }
+      if (row.type === "turn/start") {
+        ids.add(turnId);
+      } else {
+        ids.delete(turnId);
+      }
+    }
+    for (const [sessionId, ids] of open) {
+      for (const turnId of ids) {
+        this.append(asSessionId(sessionId), { type: "turn/end", turnId: asTurnId(turnId) });
+      }
+    }
   }
 
   close(): void {

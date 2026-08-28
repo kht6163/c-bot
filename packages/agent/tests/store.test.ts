@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { deriveMessages } from "../src/session/derive.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { asBotId, newTurnId } from "@cbot/shared";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("SessionStore", () => {
   test("create, append, and list in seq order", async () => {
@@ -108,6 +111,28 @@ describe("SessionStore", () => {
     expect(store.get(hop.id)).toBeUndefined();
     expect(store.get(canonical.id)?.title).toBe("Bot Chat");
     store.close();
+  });
+
+  test("reopening closes a turn the previous process left open", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cbot-store-"));
+    const path = join(dir, "sessions.sqlite");
+    const first = await SessionStore.open(path);
+    const session = first.create();
+    const turnId = newTurnId();
+    first.append(session.id, { type: "user/message", text: "hi", mentions: [] });
+    first.append(session.id, { type: "turn/start", turnId });
+    first.close();
+
+    const second = await SessionStore.open(path);
+    const events = second.events(session.id);
+    expect(events.some((event) => event.type === "turn/end" && event.turnId === turnId)).toBe(true);
+    expect(deriveMessages(events).map((message) => message.role)).toEqual(["user"]);
+    second.close();
+
+    const third = await SessionStore.open(path);
+    const ends = third.events(session.id).filter((event) => event.type === "turn/end");
+    expect(ends).toHaveLength(1);
+    third.close();
   });
 });
 
