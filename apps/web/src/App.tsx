@@ -42,6 +42,7 @@ import {
   specialistSessionIds,
   type ViewMode,
 } from "./lib/team.ts";
+import { reconnectDelay } from "./lib/reconnect.ts";
 
 type LinkState = "connecting" | "ok" | "down";
 
@@ -166,6 +167,9 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     let socket: WebSocket | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+    let armed = false;
 
     void fetchHealth()
       .then((health) => {
@@ -179,7 +183,9 @@ export function App() {
         }
       });
 
-    void loadList();
+    void loadList().catch(() => {
+      armed = true;
+    });
     void fetchSettings()
       .then((next) => {
         if (!cancelled) {
@@ -190,11 +196,57 @@ export function App() {
         /* settings are optional at first paint */
       });
 
-    try {
-      socket = openEvents();
-      socketRef.current = socket;
-      socket.addEventListener("message", (ev) => {
-        if (cancelled || typeof ev.data !== "string") {
+    const resync = () => {
+      void loadList().catch(() => {
+        /* the log on the server is the truth; the next reconnect retries */
+      });
+      const id = selectedRef.current;
+      if (!id) {
+        return;
+      }
+      void (async () => {
+        const detail = await fetchSession(id);
+        if (cancelled || selectedRef.current !== id) {
+          return;
+        }
+        setSelected(detail.session);
+        setEvents(detail.events);
+        setTeam(detail.team);
+        const specialistIds = await loadSpecialistLogs(detail.team);
+        subscribeWatched([id, ...specialistIds]);
+      })().catch(() => {
+        /* same: the next reconnect retries */
+      });
+    };
+
+    const schedule = () => {
+      if (cancelled || timer !== undefined) {
+        return;
+      }
+      attempt += 1;
+      timer = setTimeout(() => {
+        timer = undefined;
+        connect();
+      }, reconnectDelay(attempt));
+    };
+
+    function connect(): void {
+      if (cancelled) {
+        return;
+      }
+      let ws: WebSocket;
+      try {
+        ws = openEvents();
+      } catch {
+        armed = true;
+        setLink("down");
+        schedule();
+        return;
+      }
+      socket = ws;
+      socketRef.current = ws;
+      ws.addEventListener("message", (ev) => {
+        if (cancelled || socketRef.current !== ws || typeof ev.data !== "string") {
           return;
         }
         let frame: ServerFrame;
@@ -204,14 +256,19 @@ export function App() {
           return;
         }
         if (frame.type === "hello") {
+          attempt = 0;
           setLink("ok");
           const watched = watchIdsRef.current;
           if (watched.length > 0) {
             for (const id of watched) {
-              socket?.send(JSON.stringify({ type: "subscribe", sessionId: id }));
+              ws.send(JSON.stringify({ type: "subscribe", sessionId: id }));
             }
           } else if (selectedRef.current) {
-            socket?.send(JSON.stringify({ type: "subscribe", sessionId: selectedRef.current }));
+            ws.send(JSON.stringify({ type: "subscribe", sessionId: selectedRef.current }));
+          }
+          if (armed) {
+            armed = false;
+            resync();
           }
         }
         if (frame.type === "event") {
@@ -243,26 +300,33 @@ export function App() {
           }
         }
       });
-      socket.addEventListener("error", () => {
+      ws.addEventListener("error", () => {
         if (!cancelled) {
           setLink("down");
         }
       });
-      socket.addEventListener("close", () => {
-        if (!cancelled) {
-          setLink((current) => (current === "ok" ? "down" : current));
+      ws.addEventListener("close", () => {
+        if (cancelled || socketRef.current !== ws) {
+          return;
         }
+        socketRef.current = undefined;
+        armed = true;
+        setLink("down");
+        schedule();
       });
-    } catch {
-      setLink("down");
     }
+
+    connect();
 
     return () => {
       cancelled = true;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
       socket?.close();
       socketRef.current = undefined;
     };
-  }, [loadList]);
+  }, [loadList, loadSpecialistLogs, subscribeWatched]);
 
   useEffect(() => {
     if (!pendingSend) {
