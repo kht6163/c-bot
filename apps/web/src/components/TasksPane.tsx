@@ -43,9 +43,12 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
       });
   }, [sessionId, refreshKey]);
 
-  const all = items ?? [];
+  const all = useMemo(() => items ?? [], [items]);
   const owners = useMemo(() => [...new Set(all.map((item) => item.ownerHandle))].sort(), [all]);
-  const visible = owner ? all.filter((item) => item.ownerHandle === owner) : all;
+  // A bot can reassign the last task away from the filtered owner. Falling back
+  // to 전체 keeps the pane out of a state whose only control has just vanished.
+  const active = owner && owners.includes(owner) ? owner : "";
+  const visible = active ? all.filter((item) => item.ownerHandle === active) : all;
   const lanes = LANES.map((lane) => ({
     ...lane,
     items: visible.filter((item) => laneOf(item) === lane.key),
@@ -74,7 +77,7 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
         <div className="task-owners">
           <button
             type="button"
-            className={owner === "" ? "task-owner active" : "task-owner"}
+            className={active === "" ? "task-owner active" : "task-owner"}
             onClick={() => setOwner("")}
           >
             전체
@@ -83,7 +86,7 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
             <button
               key={handle}
               type="button"
-              className={owner === handle ? "task-owner active" : "task-owner"}
+              className={active === handle ? "task-owner active" : "task-owner"}
               onClick={() => setOwner(handle)}
             >
               @{handle}
@@ -91,7 +94,7 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
           ))}
         </div>
       ) : null}
-      {lanes.length === 0 ? <p className="empty">@{owner}가 맡은 일이 없습니다</p> : null}
+      {lanes.length === 0 ? <p className="empty">@{active}가 맡은 일이 없습니다</p> : null}
       {lanes.map((lane) => (
         <section key={lane.key} className="task-lane">
           <p className="section-label">
