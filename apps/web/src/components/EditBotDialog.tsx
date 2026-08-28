@@ -116,7 +116,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
           </div>
           <section className="memory-section" aria-label="메모리">
             <h3 className="field-label">메모리</h3>
-            <p className="hint-static">이 봇만 쓰는 기억입니다. 추가하면 목록에 바로 남습니다.</p>
+            <p className="hint-static">설명은 언제 쓸지(검색), 내용은 실제로 기억할 사실입니다.</p>
             <BotMemoryPanel bot={bot} />
           </section>
         </div>

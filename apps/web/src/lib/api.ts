@@ -79,6 +79,7 @@ export async function deleteBot(id: string): Promise<void> {
 export interface MemoryView {
   id: string;
   title: string;
+  cue: string;
   body: string;
   createdAt: string;
   updatedAt: string;
@@ -94,7 +95,7 @@ export async function fetchMemories(botId: string, query = ""): Promise<MemoryVi
 
 export async function createMemory(
   botId: string,
-  input: { title: string; body: string },
+  input: { title: string; cue: string; body: string },
 ): Promise<MemoryView> {
   const body = await api<{ memory: MemoryView }>(`/api/bots/${botId}/memories`, {
     method: "POST",
@@ -107,7 +108,7 @@ export async function createMemory(
 export async function updateMemory(
   botId: string,
   id: string,
-  input: { title?: string; body?: string },
+  input: { title?: string; cue?: string; body?: string },
 ): Promise<MemoryView> {
   const body = await api<{ memory: MemoryView }>(`/api/bots/${botId}/memories/${id}`, {
     method: "PUT",

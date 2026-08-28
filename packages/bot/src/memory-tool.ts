@@ -7,14 +7,18 @@ export function memoryTool(home: string, botId: BotId): ToolDefinition {
     name: "memory",
     ui: "generic",
     description:
-      "Persistent notes for THIS bot only. Use add/update/remove for durable facts that should survive sessions. Do not dump the whole conversation. Search returns ranked hits. Keep title short; body is the fact.",
+      "Persistent notes for THIS bot only. Use add/update/remove for durable facts that should survive sessions. Do not dump the whole conversation. Search matches title and cue (when to use), not the full body. Keep title short; cue is the retrieval hint; body is the fact.",
     parameters: {
       type: "object",
       properties: {
         action: { type: "string", enum: ["add", "update", "remove", "search"] },
         id: { type: "string", description: "Memory id for update or remove." },
         title: { type: "string" },
-        body: { type: "string" },
+        cue: {
+          type: "string",
+          description: "When to recall this memory. Search uses title and cue.",
+        },
+        body: { type: "string", description: "The fact to remember." },
         query: { type: "string", description: "Search text. Empty lists recent notes." },
       },
       required: ["action"],
@@ -27,6 +31,7 @@ export function memoryTool(home: string, botId: BotId): ToolDefinition {
         if (action === "add") {
           const entry = store.create({
             title: String(args.title ?? ""),
+            cue: String(args.cue ?? ""),
             body: String(args.body ?? ""),
           });
           return JSON.stringify({ ok: true, memory: entry });
@@ -35,6 +40,7 @@ export function memoryTool(home: string, botId: BotId): ToolDefinition {
           const id = String(args.id ?? "").trim();
           const updated = store.update(id, {
             ...(typeof args.title === "string" ? { title: args.title } : {}),
+            ...(typeof args.cue === "string" ? { cue: args.cue } : {}),
             ...(typeof args.body === "string" ? { body: args.body } : {}),
           });
           if (!updated) {

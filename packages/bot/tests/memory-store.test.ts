@@ -19,6 +19,19 @@ describe("MemoryStore", () => {
     store.close();
   });
 
+  test("indexes cue for search and leaves the body out when cue is set", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-memcue-"));
+    const store = await MemoryStore.open(home, asBotId("bot_a"));
+    store.create({
+      title: "계약",
+      cue: "세션 규칙을 물을 때",
+      body: "로그가 진실이다. 모델이 본 입력은 로그에 남긴다.",
+    });
+    expect(store.search("세션")[0]?.title).toBe("계약");
+    expect(store.search("모델이")).toEqual([]);
+    store.close();
+  });
+
   test("updates and removes without leaking the old text", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-memu-"));
     const store = await MemoryStore.open(home, asBotId("bot_a"));

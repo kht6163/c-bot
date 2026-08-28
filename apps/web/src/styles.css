@@ -1968,9 +1968,10 @@ select.field-input {
 .memory-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  grid-template-rows: auto minmax(8em, 1fr) auto;
+  grid-template-rows: auto auto minmax(8em, 1fr) auto;
   grid-template-areas:
     "toolbar title"
+    "list cue"
     "list body"
     ". actions";
   gap: 8px 12px;
@@ -2082,6 +2083,16 @@ select.field-input {
   background: var(--row-hover);
 }
 
+.memory-cue-field {
+  grid-area: cue;
+  min-width: 0;
+}
+
+.memory-cue-field textarea {
+  min-height: 3em;
+  resize: vertical;
+}
+
 .memory-body-field {
   grid-area: body;
   min-width: 0;
@@ -2141,11 +2152,12 @@ select.field-input {
 
   .memory-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(8em, 1fr) auto auto auto;
+    grid-template-rows: auto minmax(8em, 1fr) auto auto auto auto;
     grid-template-areas:
       "toolbar"
       "list"
       "title"
+      "cue"
       "body"
       "actions";
     min-height: 0;

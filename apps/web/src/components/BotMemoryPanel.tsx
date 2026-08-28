@@ -13,6 +13,7 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [title, setTitle] = useState("");
+  const [cue, setCue] = useState("");
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
 
@@ -20,6 +21,7 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
     setQuery("");
     setSelectedId(undefined);
     setTitle("");
+    setCue("");
     setBody("");
     setError("");
     void fetchMemories(bot.id)
@@ -39,6 +41,7 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
   function startNew(): void {
     setSelectedId(undefined);
     setTitle("");
+    setCue("");
     setBody("");
     setError("");
   }
@@ -78,12 +81,13 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
                     onClick={() => {
                       setSelectedId(item.id);
                       setTitle(item.title);
+                      setCue(item.cue);
                       setBody(item.body);
                       setError("");
                     }}
                   >
                     <span className="row-title">{item.title}</span>
-                    <span className="row-meta">{item.body}</span>
+                    <span className="row-meta">{item.cue || item.body}</span>
                   </button>
                   <button
                     type="button"
@@ -108,6 +112,15 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
             )}
           </ul>
         </div>
+        <label className="memory-cue-field">
+          설명
+          <textarea
+            rows={2}
+            placeholder="언제 이 기억을 꺼내 쓸지. 검색은 제목과 여기로 합니다."
+            value={cue}
+            onChange={(event) => setCue(event.target.value)}
+          />
+        </label>
         <label className="memory-body-field">
           내용
           <textarea rows={6} value={body} onChange={(event) => setBody(event.target.value)} />
@@ -127,14 +140,15 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
                   return;
                 }
                 if (selected) {
-                  const saved = await updateMemory(bot.id, selected.id, { title, body });
+                  const saved = await updateMemory(bot.id, selected.id, { title, cue, body });
                   setSelectedId(saved.id);
                   setTitle(saved.title);
+                  setCue(saved.cue);
                   setBody(saved.body);
                   await reload();
                   return;
                 }
-                await createMemory(bot.id, { title, body });
+                await createMemory(bot.id, { title, cue, body });
                 setQuery("");
                 startNew();
                 await reload("");

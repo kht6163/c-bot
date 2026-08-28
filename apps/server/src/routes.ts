@@ -132,6 +132,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
           }
           const entry = memory.create({
             title: typeof body.title === "string" ? body.title : "",
+            cue: typeof body.cue === "string" ? body.cue : "",
             body: typeof body.body === "string" ? body.body : "",
           });
           return Response.json({ memory: entry }, { status: 201 });
@@ -157,6 +158,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
           }
           const entry = memory.update(memId, {
             ...(typeof body.title === "string" ? { title: body.title } : {}),
+            ...(typeof body.cue === "string" ? { cue: body.cue } : {}),
             ...(typeof body.body === "string" ? { body: body.body } : {}),
           });
           if (!entry) {
