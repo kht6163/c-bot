@@ -102,7 +102,7 @@ export function BotMemoryPanel({ bot, onClose }: { bot: BotView; onClose: () => 
         {selected ? (
           <button
             type="button"
-            className="ghost memory-delete"
+            className="ghost"
             onClick={() => {
               void (async () => {
                 await deleteMemory(bot.id, selected.id);

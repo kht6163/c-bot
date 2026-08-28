@@ -1923,10 +1923,6 @@ select.field-input {
   margin-top: 0;
 }
 
-.memory-delete {
-  margin-right: auto;
-}
-
 .memory-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
