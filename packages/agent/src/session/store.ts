@@ -5,6 +5,7 @@ import {
   SESSION_FORMAT_VERSION,
   asBotId,
   asSessionId,
+  asToolCallId,
   asTurnId,
   newSessionId,
   type BotId,
@@ -138,9 +139,48 @@ export class SessionStore {
       }
     }
     for (const [sessionId, ids] of open) {
-      for (const turnId of ids) {
-        this.append(asSessionId(sessionId), { type: "turn/end", turnId: asTurnId(turnId) });
+      if (ids.size === 0) {
+        continue;
       }
+      const id = asSessionId(sessionId);
+      this.answerInterruptedCalls(id, ids);
+      for (const turnId of ids) {
+        this.append(id, { type: "turn/end", turnId: asTurnId(turnId) });
+      }
+    }
+  }
+
+  /**
+   * Closing the turn is not enough: the model history is only valid when every
+   * tool call the assistant made has a result. A call left unanswered — the
+   * process died mid-run, or an approval was waiting and the gate that held it
+   * is gone with the process — would derive into an assistant message whose
+   * tool_calls no tool message answers, which the provider rejects outright.
+   */
+  private answerInterruptedCalls(sessionId: SessionId, turnIds: ReadonlySet<string>): void {
+    const owed = new Map<string, string>();
+    const answered = new Set<string>();
+    for (const event of this.events(sessionId)) {
+      if (event.type === "assistant/message" && turnIds.has(event.turnId)) {
+        for (const call of event.toolCalls) {
+          owed.set(call.id, event.turnId);
+        }
+      }
+      if (event.type === "tool/result" && !event.pendingApproval) {
+        answered.add(event.callId);
+      }
+    }
+    for (const [callId, turnId] of owed) {
+      if (answered.has(callId)) {
+        continue;
+      }
+      this.append(sessionId, {
+        type: "tool/result",
+        turnId: asTurnId(turnId),
+        callId: asToolCallId(callId),
+        ok: false,
+        content: "서버가 다시 시작되어 도구 실행이 끊겼습니다.",
+      });
     }
   }
 

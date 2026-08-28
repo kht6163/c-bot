@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { deriveMessages } from "../src/session/derive.ts";
 import { SessionStore } from "../src/session/store.ts";
-import { asBotId, newTurnId } from "@cbot/shared";
+import { asBotId, asToolCallId, newTurnId } from "@cbot/shared";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,6 +132,52 @@ describe("SessionStore", () => {
     const third = await SessionStore.open(path);
     const ends = third.events(session.id).filter((event) => event.type === "turn/end");
     expect(ends).toHaveLength(1);
+    third.close();
+  });
+
+  test("reopening answers the tool calls the interrupted turn left owing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cbot-store-"));
+    const path = join(dir, "sessions.sqlite");
+    const first = await SessionStore.open(path);
+    const session = first.create();
+    const turnId = newTurnId();
+    const waiting = asToolCallId("call_waiting");
+    const done = asToolCallId("call_done");
+    first.append(session.id, { type: "user/message", text: "run it", mentions: [] });
+    first.append(session.id, { type: "turn/start", turnId });
+    first.append(session.id, {
+      type: "assistant/message",
+      turnId,
+      text: "",
+      toolCalls: [
+        { id: done, name: "read_file", arguments: "{}", ui: "generic" },
+        { id: waiting, name: "bash", arguments: "{}", ui: "terminal" },
+      ],
+    });
+    first.append(session.id, { type: "tool/result", turnId, callId: done, ok: true, content: "hi" });
+    first.append(session.id, {
+      type: "tool/result",
+      turnId,
+      callId: waiting,
+      ok: false,
+      content: "승인을 기다립니다",
+      pendingApproval: true,
+    });
+    first.close();
+
+    const second = await SessionStore.open(path);
+    const messages = deriveMessages(second.events(session.id));
+    const called = messages.flatMap((message) => (message.toolCalls ?? []).map((call) => call.id));
+    const replied = new Set(messages.flatMap((message) => (message.toolCallId ? [message.toolCallId] : [])));
+    expect(called.length).toBe(2);
+    for (const id of called) {
+      expect(replied.has(id)).toBe(true);
+    }
+    expect(messages.filter((message) => message.role === "tool")).toHaveLength(2);
+    second.close();
+
+    const third = await SessionStore.open(path);
+    expect(third.events(session.id).filter((event) => event.type === "tool/result")).toHaveLength(3);
     third.close();
   });
 });
