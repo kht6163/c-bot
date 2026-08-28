@@ -9,6 +9,7 @@ import {
   type SessionTeamMember,
 } from "@cbot/shared";
 import { Composer } from "./components/Composer.tsx";
+import { BotMemoryDialog } from "./components/BotMemoryDialog.tsx";
 import { EditBotDialog } from "./components/EditBotDialog.tsx";
 import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
@@ -55,6 +56,7 @@ export function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [newBotOpen, setNewBotOpen] = useState(false);
   const [editBotId, setEditBotId] = useState<string | undefined>();
+  const [memoryBotId, setMemoryBotId] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
@@ -320,8 +322,10 @@ export function App() {
     [loadList, openSession, selected],
   );
 
-  const overlayOpen = settingsOpen || workspaceOpen || newBotOpen || Boolean(editBotId);
+  const overlayOpen =
+    settingsOpen || workspaceOpen || newBotOpen || Boolean(editBotId) || Boolean(memoryBotId);
   const editBot = bots.find((item) => item.id === editBotId);
+  const memoryBot = bots.find((item) => item.id === memoryBotId);
 
   return (
     <>
@@ -392,6 +396,7 @@ export function App() {
         }}
         onNewBot={() => setNewBotOpen(true)}
         onEditBot={(id) => setEditBotId(id)}
+        onMemoryBot={(id) => setMemoryBotId(id)}
         onDeleteBot={(id) => {
           void (async () => {
             const bot = bots.find((item) => item.id === id);
@@ -509,6 +514,10 @@ export function App() {
       <EditBotDialog
         bot={editBot}
         onClose={() => setEditBotId(undefined)}
+        onOpenMemory={() => {
+          setMemoryBotId(editBotId);
+          setEditBotId(undefined);
+        }}
         onSave={async (input) => {
           if (!editBotId) {
             return;
@@ -518,6 +527,7 @@ export function App() {
           setEditBotId(undefined);
         }}
       />
+      <BotMemoryDialog bot={memoryBot} onClose={() => setMemoryBotId(undefined)} />
       <WorkspacePicker
         open={workspaceOpen}
         current={project?.current ?? null}

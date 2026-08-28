@@ -35,6 +35,8 @@ export {
   type LoggedToolCall,
   type AttachedFile,
   type Mention,
+  type MemoryRecallEvent,
+  type RecalledMemory,
   type SessionEvent,
   type SessionKind,
   type ToolCallEvent,

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { deriveMessages } from "../src/session/derive.ts";
 import { SessionStore } from "../src/session/store.ts";
-import { newTurnId } from "@cbot/shared";
+import { asBotId, newTurnId } from "@cbot/shared";
 
 describe("SessionStore", () => {
   test("create, append, and list in seq order", async () => {
@@ -144,6 +144,20 @@ describe("deriveMessages", () => {
     });
     expect(deriveMessages(store.events(session.id))[0]?.content).toContain("hello file");
     expect(deriveMessages(store.events(session.id))[0]?.content).toContain("note.txt");
+  });
+
+  test("puts recalled memory into model history", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create();
+    store.append(session.id, { type: "user/message", text: "세션?", mentions: [] });
+    store.append(session.id, {
+      type: "memory/recall",
+      botId: asBotId("bot_lead"),
+      query: "세션?",
+      items: [{ id: "mem_1", title: "계약", body: "세션 로그가 진실이다" }],
+    });
+    const messages = deriveMessages(store.events(session.id));
+    expect(messages[1]?.content).toContain("세션 로그가 진실이다");
     store.close();
   });
 });

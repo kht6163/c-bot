@@ -17,7 +17,8 @@ export type ChatRow =
       live: boolean;
     }
   | { key: string; kind: "status"; text: string; live: true }
-  | { key: string; kind: "thinking"; text: string; live: boolean };
+  | { key: string; kind: "thinking"; text: string; live: boolean }
+  | { key: string; kind: "memory"; text: string; live: false };
 
 export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
   const openTurns = new Set<string>();
@@ -67,6 +68,13 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
         text: event.text,
         live: false,
         handle: event.fromHandle,
+      });
+    } else if (event.type === "memory/recall" && event.items.length > 0) {
+      rows.push({
+        key: `m-${event.seq}`,
+        kind: "memory",
+        text: event.items.map((item) => item.title).join(" · "),
+        live: false,
       });
     } else if (event.type === "assistant/thinking") {
       thinkingByTurn.set(event.turnId, (thinkingByTurn.get(event.turnId) ?? "") + event.text);

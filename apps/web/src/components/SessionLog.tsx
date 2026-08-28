@@ -34,6 +34,11 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
               <span className="who">thinking</span>
               <pre>{row.text}</pre>
             </article>
+          ) : row.kind === "memory" ? (
+            <article key={row.key} className="memory-chip">
+              <span className="who">memory</span>
+              {row.text}
+            </article>
           ) : row.kind === "tool" ? (
             <article key={row.key} className={`tool-card ui-${row.ui}${row.live ? " live" : ""}`}>
               <span className="who">{row.name}</span>

@@ -37,6 +37,8 @@ export function jsonError(err: unknown): Response {
     message === "direct bot chat is disabled" ||
     message === "leader cannot be deleted" ||
     message === "handle leader is reserved" ||
+    message === "unknown memory" ||
+    message === "memory is empty" ||
     message.startsWith("handle")
       ? 400
       : 500;

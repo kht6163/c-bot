@@ -101,6 +101,19 @@ export interface BotDeliveryEvent extends EventEnvelope {
   target: string;
 }
 
+export interface RecalledMemory {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface MemoryRecallEvent extends EventEnvelope {
+  type: "memory/recall";
+  botId: BotId;
+  query: string;
+  items: readonly RecalledMemory[];
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -111,4 +124,5 @@ export type SessionEvent =
   | ToolCallEvent
   | ToolResultEvent
   | BotMessageEvent
-  | BotDeliveryEvent;
+  | BotDeliveryEvent
+  | MemoryRecallEvent;

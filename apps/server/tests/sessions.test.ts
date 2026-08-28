@@ -291,6 +291,32 @@ describe("bots API", () => {
     expect(body.bots.map((item) => item.handle)).toEqual(["leader"]);
     runtime.store.close();
   });
+
+  test("creates and searches bot memory with korean bigrams", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-memapi-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const listed = await handleHttp(new Request("http://127.0.0.1/api/bots"), opts);
+    const { bots } = (await listed.json()) as { bots: { id: string; handle: string }[] };
+    const leader = bots.find((item) => item.handle === "leader");
+    expect(leader).toBeDefined();
+    const created = await handleHttp(
+      new Request(`http://127.0.0.1/api/bots/${leader?.id}/memories`, {
+        method: "POST",
+        body: JSON.stringify({ title: "세션 계약", body: "세션 로그가 진실이다" }),
+      }),
+      opts,
+    );
+    expect(created.status).toBe(201);
+    const found = await handleHttp(
+      new Request(`http://127.0.0.1/api/bots/${leader?.id}/memories?q=${encodeURIComponent("세션")}`),
+      opts,
+    );
+    const body = (await found.json()) as { memories: { title: string }[] };
+    expect(body.memories.some((item) => item.title === "세션 계약")).toBe(true);
+    runtime.store.close();
+  });
 });
 
 const TEST_WORKSPACE = "/Users/hantaekim/project/test";

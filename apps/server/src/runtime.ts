@@ -23,8 +23,10 @@ import {
   ensureLeaderBot,
   listBots,
   loadBot,
+  memoryTool,
   messageAgentTool,
   protocolSection,
+  recallIntoSession,
   workspaceForMailbox,
   withProtocol,
 } from "@cbot/bot";
@@ -172,12 +174,14 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
               fromBotId: me.id,
               wake: (target) => wakeSession(runtime, target),
             }),
+            memoryTool(runtime.env.home, me.id),
           ];
           const base = [me.soul.trim(), codingSystemPrompt(workspace)]
             .filter((part) => part.length > 0)
             .join("\n\n");
           systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
           pin = { provider: me.provider, model: me.model, thinking: me.thinking };
+          await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
         }
       } else if (session?.kind === "bot-chat" && session.botId && config.botMode.protocol) {
         const me = await loadBot(runtime.env.home, session.botId);
@@ -191,12 +195,14 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
               fromBotId: me.id,
               wake: (target) => wakeSession(runtime, target),
             }),
+            memoryTool(runtime.env.home, me.id),
           ];
           const base = [me.soul.trim(), codingSystemPrompt(workspace)]
             .filter((part) => part.length > 0)
             .join("\n\n");
           systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
           pin = { provider: me.provider, model: me.model, thinking: me.thinking };
+          await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
         }
       }
       const endpoint = resolveLlmEndpoint(config, secrets, pin);

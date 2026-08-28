@@ -23,7 +23,7 @@ import {
   type LlmProvider,
 } from "@cbot/agent";
 import type { ProjectView, SessionId, SessionTeamMember } from "@cbot/shared";
-import { createBot, deleteBot, listBots, loadBot, updateBot } from "@cbot/bot";
+import { createBot, deleteBot, listBots, loadBot, MemoryStore, updateBot } from "@cbot/bot";
 import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
 import { homedir } from "node:os";
@@ -110,6 +110,69 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         thinking: typeof body.thinking === "string" ? body.thinking : null,
       });
       return Response.json({ bot }, { status: 201 });
+    }
+    const memListMatch = /^\/api\/bots\/([^/]+)\/memories$/.exec(url.pathname);
+    if (memListMatch) {
+      const botId = asBotId(decodeURIComponent(memListMatch[1] ?? ""));
+      const bot = await loadBot(runtime.env.home, botId);
+      if (!bot) {
+        throw new HttpError(404, "unknown bot");
+      }
+      const memory = await MemoryStore.open(runtime.env.home, botId);
+      try {
+        if (req.method === "GET") {
+          const q = url.searchParams.get("q") ?? "";
+          const memories = q.trim() ? memory.search(q) : memory.list();
+          return Response.json({ memories });
+        }
+        if (req.method === "POST") {
+          const body = await readJson(req);
+          if (!isRecord(body)) {
+            throw new HttpError(400, "invalid JSON");
+          }
+          const entry = memory.create({
+            title: typeof body.title === "string" ? body.title : "",
+            body: typeof body.body === "string" ? body.body : "",
+          });
+          return Response.json({ memory: entry }, { status: 201 });
+        }
+      } finally {
+        memory.close();
+      }
+    }
+    const memOneMatch = /^\/api\/bots\/([^/]+)\/memories\/([^/]+)$/.exec(url.pathname);
+    if (memOneMatch) {
+      const botId = asBotId(decodeURIComponent(memOneMatch[1] ?? ""));
+      const memId = decodeURIComponent(memOneMatch[2] ?? "");
+      const bot = await loadBot(runtime.env.home, botId);
+      if (!bot) {
+        throw new HttpError(404, "unknown bot");
+      }
+      const memory = await MemoryStore.open(runtime.env.home, botId);
+      try {
+        if (req.method === "PUT") {
+          const body = await readJson(req);
+          if (!isRecord(body)) {
+            throw new HttpError(400, "invalid JSON");
+          }
+          const entry = memory.update(memId, {
+            ...(typeof body.title === "string" ? { title: body.title } : {}),
+            ...(typeof body.body === "string" ? { body: body.body } : {}),
+          });
+          if (!entry) {
+            throw new HttpError(404, "unknown memory");
+          }
+          return Response.json({ memory: entry });
+        }
+        if (req.method === "DELETE") {
+          if (!memory.remove(memId)) {
+            throw new HttpError(404, "unknown memory");
+          }
+          return Response.json({ ok: true });
+        }
+      } finally {
+        memory.close();
+      }
     }
     const botMatch = /^\/api\/bots\/([^/]+)$/.exec(url.pathname);
     if (botMatch && req.method === "PUT") {

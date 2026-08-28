@@ -6,6 +6,7 @@ import { ModelSearchSelect } from "./ModelSearchSelect.tsx";
 interface Props {
   bot: BotView | undefined;
   onClose: () => void;
+  onOpenMemory: () => void;
   onSave: (input: {
     title: string;
     description: string;
@@ -16,7 +17,7 @@ interface Props {
   }) => Promise<void>;
 }
 
-export function EditBotDialog({ bot, onClose, onSave }: Props) {
+export function EditBotDialog({ bot, onClose, onOpenMemory, onSave }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [soul, setSoul] = useState("");
@@ -107,6 +108,9 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
         </label>
         {error ? <p className="hint danger">{error}</p> : null}
         <div className="modal-actions">
+          <button type="button" className="ghost" onClick={onOpenMemory}>
+            메모리
+          </button>
           <button type="button" className="ghost" onClick={onClose}>
             닫기
           </button>

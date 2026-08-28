@@ -1882,6 +1882,87 @@ select.field-input {
   align-items: center;
 }
 
+.bot-row .row-actions {
+  display: flex;
+  align-items: center;
+}
+
+.modal-wide {
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(80vh, 720px);
+}
+
+.memory-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 12px;
+  min-height: 280px;
+}
+
+.memory-list-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.memory-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.memory-list .empty {
+  padding: 12px;
+}
+
+.memory-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  text-align: left;
+}
+
+.memory-item .row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.memory-item.active,
+.memory-item:hover {
+  background: var(--row-hover);
+}
+
+.memory-form {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.memory-chip {
+  font-size: 12px;
+  color: var(--quiet);
+}
+
+@media (max-width: 899px) {
+  .memory-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .bot-row .bot-delete {
   opacity: 0;
   color: var(--quiet);

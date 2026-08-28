@@ -26,6 +26,11 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
       case "bot/message":
         messages.push({ role: "user", content: event.text });
         break;
+      case "memory/recall":
+        if (event.items.length > 0) {
+          messages.push({ role: "user", content: formatRecalledMemory(event.items) });
+        }
+        break;
       case "assistant/message":
         messages.push({
           role: "assistant",
@@ -63,6 +68,11 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
     }
   }
   return messages;
+}
+
+function formatRecalledMemory(items: readonly { title: string; body: string }[]): string {
+  const lines = items.map((item) => `- ${item.title}: ${item.body}`);
+  return `Recalled memory:\n${lines.join("\n")}`;
 }
 
 function userContent(text: string, files: readonly AttachedFile[] | undefined): string {

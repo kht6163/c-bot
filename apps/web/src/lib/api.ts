@@ -76,6 +76,51 @@ export async function deleteBot(id: string): Promise<void> {
   await api<{ ok: boolean }>(`/api/bots/${id}`, { method: "DELETE" });
 }
 
+export interface MemoryView {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchMemories(botId: string, query = ""): Promise<MemoryView[]> {
+  const path = query.trim()
+    ? `/api/bots/${botId}/memories?q=${encodeURIComponent(query.trim())}`
+    : `/api/bots/${botId}/memories`;
+  const body = await api<{ memories: MemoryView[] }>(path);
+  return body.memories;
+}
+
+export async function createMemory(
+  botId: string,
+  input: { title: string; body: string },
+): Promise<MemoryView> {
+  const body = await api<{ memory: MemoryView }>(`/api/bots/${botId}/memories`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.memory;
+}
+
+export async function updateMemory(
+  botId: string,
+  id: string,
+  input: { title?: string; body?: string },
+): Promise<MemoryView> {
+  const body = await api<{ memory: MemoryView }>(`/api/bots/${botId}/memories/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.memory;
+}
+
+export async function deleteMemory(botId: string, id: string): Promise<void> {
+  await api<{ ok: boolean }>(`/api/bots/${botId}/memories/${id}`, { method: "DELETE" });
+}
+
 export async function fetchProject(): Promise<ProjectView> {
   return api<ProjectView>("/api/project");
 }

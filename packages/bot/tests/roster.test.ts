@@ -7,6 +7,8 @@ import { createBot, deleteBot, ensureLeaderBot, listBots, loadBot } from "../src
 import { protocolSection } from "../src/protocol.ts";
 import { PROTOCOL_HEADING } from "../src/types.ts";
 import { messageAgentTool, workspaceForMailbox } from "../src/message-agent.ts";
+import { MemoryStore } from "../src/memory-store.ts";
+import { recallIntoSession } from "../src/recall.ts";
 import { deriveMessages } from "@cbot/agent";
 
 describe("roster", () => {
@@ -235,6 +237,25 @@ describe("message_agent", () => {
     expect(otherHop?.id).not.toBe(hop?.id);
     expect(store.events(otherHop!.id).some((event) => event.type === "bot/message")).toBe(true);
     expect(store.events(hop!.id).filter((event) => event.type === "bot/message")).toHaveLength(1);
+    store.close();
+  });
+});
+
+describe("recallIntoSession", () => {
+  test("writes matching memory into the session log once", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-recall-"));
+    const store = await SessionStore.open(join(home, "sessions", "sessions.sqlite"));
+    const bot = await createBot(home, store, { handle: "alpha", title: "Alpha", description: "A" });
+    const memory = await MemoryStore.open(home, bot.id);
+    memory.create({ title: "세션", body: "로그가 진실이다" });
+    memory.close();
+    const session = store.create({ kind: "coding" });
+    store.append(session.id, { type: "user/message", text: "세션 규칙이 뭐야", mentions: [] });
+    await recallIntoSession(home, bot.id, store, session.id);
+    await recallIntoSession(home, bot.id, store, session.id);
+    const recalls = store.events(session.id).filter((event) => event.type === "memory/recall");
+    expect(recalls).toHaveLength(1);
+    expect(recalls[0]?.type === "memory/recall" && recalls[0].items[0]?.title).toBe("세션");
     store.close();
   });
 });
