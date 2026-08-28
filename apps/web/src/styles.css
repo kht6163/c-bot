@@ -2601,17 +2601,77 @@ select.field-input {
   white-space: nowrap;
 }
 
+.files-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
 .file-crumbs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 8px;
+  align-items: baseline;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
 }
 
-.file-crumbs .text-btn {
+.file-crumb {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.file-crumb.current {
+  color: var(--text);
+}
+
+.file-crumb-btn {
   padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
   font-size: 12px;
-  color: var(--send);
+}
+
+.file-crumb-btn:hover {
+  color: var(--text);
+}
+
+.file-crumb-sep {
+  padding: 0 4px;
+  color: var(--quiet);
+}
+
+.file-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-back {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.file-back:hover {
+  color: var(--text);
+}
+
+.file-open {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-list {
@@ -2622,12 +2682,15 @@ select.field-input {
 
 .file-item {
   display: flex;
+  align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 4px;
+  min-height: 30px;
+  padding: 4px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
+  color: var(--text);
   text-align: left;
 }
 
@@ -2635,17 +2698,24 @@ select.field-input {
   background: var(--row-hover);
 }
 
-.file-kind {
+.file-icon {
   flex: none;
-  font-size: 11px;
   color: var(--quiet);
 }
 
 .file-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-chevron {
+  flex: none;
+  color: var(--quiet);
+  font-size: 13px;
 }
 
 .file-preview {

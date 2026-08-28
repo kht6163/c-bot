@@ -57,7 +57,7 @@ export function Inspector({ sessionId, refreshKey, onClose }: Props) {
       </div>
       <div className="inspector-body">
         {tab === "git" ? <GitPane sessionId={sessionId} refreshKey={refreshKey} /> : null}
-        {tab === "files" ? <FilesPane sessionId={sessionId} /> : null}
+        {tab === "files" ? <FilesPane sessionId={sessionId} refreshKey={refreshKey} /> : null}
         {tab === "tasks" ? <TasksPane sessionId={sessionId} refreshKey={refreshKey} /> : null}
       </div>
     </aside>

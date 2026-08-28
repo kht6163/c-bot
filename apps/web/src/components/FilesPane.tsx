@@ -3,9 +3,9 @@ import type { SessionId } from "@cbot/shared";
 import { fetchWorkspaceDir, fetchWorkspaceFile, type DirEntryView, type FilePreviewView } from "../lib/api.ts";
 import { MarkdownView } from "./MarkdownView.tsx";
 
-export function FilesPane({ sessionId }: { sessionId: SessionId }) {
+export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
   const [dir, setDir] = useState(".");
-  const [entries, setEntries] = useState<DirEntryView[]>([]);
+  const [entries, setEntries] = useState<DirEntryView[] | undefined>();
   const [preview, setPreview] = useState<FilePreviewView | undefined>();
   const [error, setError] = useState("");
 
@@ -20,64 +20,104 @@ export function FilesPane({ sessionId }: { sessionId: SessionId }) {
       .then(setEntries)
       .catch((err: unknown) => {
         setEntries([]);
-        setError(err instanceof Error ? err.message : "failed");
+        setError(err instanceof Error ? err.message : "폴더를 읽지 못했습니다");
       });
-  }, [sessionId, dir]);
+  }, [sessionId, dir, refreshKey]);
 
-  const crumbs = crumbsOf(dir);
+  if (error) {
+    return <p className="hint danger">{error}</p>;
+  }
+
+  if (preview) {
+    return (
+      <div className="files-pane">
+        <div className="file-head">
+          <button type="button" className="file-back" onClick={() => setPreview(undefined)}>
+            ← 목록
+          </button>
+          <span className="file-open" title={preview.path}>
+            {baseName(preview.path)}
+          </span>
+        </div>
+        <FilePreview preview={preview} />
+      </div>
+    );
+  }
 
   return (
     <div className="files-pane">
       <nav className="file-crumbs" aria-label="경로">
-        {crumbs.map((crumb) => (
-          <button
-            key={crumb.path}
-            type="button"
-            className="text-btn"
-            onClick={() => {
-              setDir(crumb.path);
-              setPreview(undefined);
-            }}
-          >
-            {crumb.label}
-          </button>
-        ))}
+        {crumbsOf(dir).map((crumb, i, all) =>
+          i === all.length - 1 ? (
+            <span key={crumb.path} className="file-crumb current">
+              {crumb.label}
+            </span>
+          ) : (
+            <span key={crumb.path} className="file-crumb">
+              <button type="button" className="file-crumb-btn" onClick={() => setDir(crumb.path)}>
+                {crumb.label}
+              </button>
+              <span className="file-crumb-sep">/</span>
+            </span>
+          ),
+        )}
       </nav>
-      {error ? <p className="hint danger">{error}</p> : null}
-      {preview ? (
-        <FilePreview preview={preview} />
+      {!entries ? (
+        <p className="empty">불러오는 중</p>
+      ) : entries.length === 0 ? (
+        <p className="empty">빈 폴더입니다</p>
       ) : (
         <ul className="file-list">
-          {entries.length === 0 ? (
-            <li className="empty">빈 폴더입니다</li>
-          ) : (
-            entries.map((entry) => (
-              <li key={entry.path}>
-                <button
-                  type="button"
-                  className="file-item"
-                  onClick={() => {
-                    if (entry.kind === "dir") {
-                      setDir(entry.path);
-                      setPreview(undefined);
-                      return;
-                    }
-                    void fetchWorkspaceFile(sessionId, entry.path)
-                      .then(setPreview)
-                      .catch((err: unknown) => {
-                        setError(err instanceof Error ? err.message : "failed");
-                      });
-                  }}
-                >
-                  <span className="file-kind">{entry.kind === "dir" ? "폴더" : "파일"}</span>
-                  <span className="file-name">{entry.name}</span>
-                </button>
-              </li>
-            ))
-          )}
+          {entries.map((entry) => (
+            <li key={entry.path}>
+              <button
+                type="button"
+                className="file-item"
+                onClick={() => {
+                  if (entry.kind === "dir") {
+                    setDir(entry.path);
+                    return;
+                  }
+                  void fetchWorkspaceFile(sessionId, entry.path)
+                    .then(setPreview)
+                    .catch((err: unknown) => {
+                      setError(err instanceof Error ? err.message : "파일을 읽지 못했습니다");
+                    });
+                }}
+              >
+                <EntryIcon dir={entry.kind === "dir"} />
+                <span className="file-name">{entry.name}</span>
+                {entry.kind === "dir" ? <span className="file-chevron">›</span> : null}
+              </button>
+            </li>
+          ))}
         </ul>
       )}
     </div>
+  );
+}
+
+function EntryIcon({ dir }: { dir: boolean }) {
+  return (
+    <svg className="file-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      {dir ? (
+        <path
+          d="M2 4.2c0-.7.5-1.2 1.2-1.2h2.9l1.3 1.5h4.4c.7 0 1.2.5 1.2 1.2v5.1c0 .7-.5 1.2-1.2 1.2H3.2c-.7 0-1.2-.5-1.2-1.2z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.1"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <path
+          d="M4 2.6h4.4L12 6.2v7.2c0 .5-.4.9-.9.9H4.9c-.5 0-.9-.4-.9-.9V3.5c0-.5.4-.9.9-.9zM8.3 2.8V6h3.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.1"
+          strokeLinejoin="round"
+        />
+      )}
+    </svg>
   );
 }
 
@@ -104,6 +144,10 @@ function FilePreview({ preview }: { preview: FilePreviewView }) {
 
 function isMarkdown(path: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(path);
+}
+
+function baseName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1) || path;
 }
 
 function crumbsOf(dir: string): { label: string; path: string }[] {
