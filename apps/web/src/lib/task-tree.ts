@@ -33,7 +33,7 @@ export function laneOf(task: TaskView): Lane {
  * than disappearing.
  */
 export function taskLanes(tasks: readonly TaskView[], ownerFilter = ""): TaskLane[] {
-  const visible = ownerFilter ? tasks.filter((task) => task.ownerHandle === ownerFilter) : tasks;
+  const visible = visibleTasks(tasks, ownerFilter);
   const shown = new Set(visible.map((task) => task.id));
   const childrenOf = new Map<string, TaskView[]>();
   const roots: TaskView[] = [];
@@ -57,6 +57,16 @@ export function taskLanes(tasks: readonly TaskView[], ownerFilter = ""): TaskLan
       .filter((task) => laneOf(task) === lane.key)
       .map((task) => ({ task, children: childrenOf.get(task.id) ?? [] })),
   })).filter((lane) => lane.nodes.length > 0);
+}
+
+/** The one filter, shared so the tally and the lanes can never disagree. */
+export function visibleTasks(tasks: readonly TaskView[], ownerFilter = ""): readonly TaskView[] {
+  return ownerFilter ? tasks.filter((task) => task.ownerHandle === ownerFilter) : tasks;
+}
+
+/** Counts pieces too, so a lane heading matches the tally above it. */
+export function laneSize(lane: TaskLane): number {
+  return lane.nodes.reduce((total, node) => total + 1 + node.children.length, 0);
 }
 
 /** Owners come from the board itself, so a bot with no work gets no chip. */

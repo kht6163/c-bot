@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SessionId } from "@cbot/shared";
 import { fetchTasks, type TaskView } from "../lib/api.ts";
 import { timeAgo } from "../lib/path.ts";
-import { countByStatus, openChildren, ownersOf, taskLanes } from "../lib/task-tree.ts";
+import { countByStatus, laneSize, openChildren, ownersOf, taskLanes, visibleTasks } from "../lib/task-tree.ts";
 
 const STATUS_LABEL: Record<TaskView["status"], string> = {
   pending: "대기",
@@ -42,6 +42,8 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
   // to 전체 keeps the pane out of a state whose only control has just vanished.
   const active = owner && owners.includes(owner) ? owner : "";
   const lanes = useMemo(() => taskLanes(all, active), [all, active]);
+  // The tally counts what the lanes show, or a chip would leave the two at odds.
+  const shown = useMemo(() => visibleTasks(all, active), [all, active]);
 
   if (error) {
     return <p className="hint danger">{error}</p>;
@@ -56,17 +58,18 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
   return (
     <div className="tasks-pane">
       <p className="task-ledger">
-        {countByStatus(all, "in_progress") > 0 ? (
-          <span className="task-ledger-live">진행 {countByStatus(all, "in_progress")}</span>
+        {countByStatus(shown, "in_progress") > 0 ? (
+          <span className="task-ledger-live">진행 {countByStatus(shown, "in_progress")}</span>
         ) : null}
-        <span>대기 {countByStatus(all, "pending")}</span>
-        <span>완료 {countByStatus(all, "completed")}</span>
+        <span>대기 {countByStatus(shown, "pending")}</span>
+        <span>완료 {countByStatus(shown, "completed")}</span>
       </p>
       {owners.length > 1 ? (
         <div className="task-owners">
           <button
             type="button"
             className={active === "" ? "task-owner active" : "task-owner"}
+            aria-pressed={active === ""}
             onClick={() => setOwner("")}
           >
             전체
@@ -76,6 +79,7 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
               key={handle}
               type="button"
               className={active === handle ? "task-owner active" : "task-owner"}
+              aria-pressed={active === handle}
               onClick={() => setOwner(handle)}
             >
               @{handle}
@@ -87,7 +91,7 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
       {lanes.map((lane) => (
         <section key={lane.key} className="task-lane">
           <p className="section-label">
-            {lane.label} {lane.nodes.length}
+            {lane.label} {laneSize(lane)}
           </p>
           <ul className="task-list">
             {lane.nodes.map((node) => (
