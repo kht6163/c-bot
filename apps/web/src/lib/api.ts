@@ -203,6 +203,7 @@ export interface FilePreviewView {
 export interface TaskView {
   id: string;
   boardId: string;
+  parentId: string | null;
   title: string;
   detail: string;
   status: "pending" | "in_progress" | "completed" | "cancelled";

@@ -2803,6 +2803,13 @@ select.field-input {
   padding: 0;
 }
 
+/* Subtasks hang off their job on a hairline, one level only. */
+.task-children {
+  margin-left: 13px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+}
+
 .task-row {
   display: flex;
   align-items: baseline;
@@ -2883,4 +2890,18 @@ select.field-input {
   flex: none;
   font-size: 11px;
   color: var(--quiet);
+}
+
+.task-row.is-child .task-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.task-row.is-child .task-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.task-left {
+  color: var(--muted);
 }

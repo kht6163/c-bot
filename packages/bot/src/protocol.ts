@@ -20,7 +20,7 @@ export function protocolSection(me: BotRecord, roster: readonly BotRecord[], sou
       "",
       "To use a specialist, call `message_agent`. It is fire-and-forget: you get a delivery acknowledgement, you finish your turn, and their reply arrives later as a notification in this conversation. Compose the message yourself; never paste the user's words verbatim.",
       "",
-      "Register session work with the `task` tool so teammates and the user can see who owns what. When you ask a specialist, add a task owned by them. Specialists should `task` list assigned=true to see requests they have not finished.",
+      "Register session work with the `task` tool so teammates and the user can see who owns what. When you ask a specialist, add a task owned by them. Break a job into pieces by adding tasks with parent set to the job — the board is two levels deep. Specialists should `task` list assigned=true to see requests they have not finished.",
       "",
     ].join("\n");
   }

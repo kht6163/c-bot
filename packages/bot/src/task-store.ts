@@ -10,6 +10,7 @@ export const TASK_DETAIL_MAX = 2000;
 export interface TaskEntry {
   id: string;
   boardId: SessionId;
+  parentId: string | null;
   title: string;
   detail: string;
   status: TaskStatus;
@@ -44,6 +45,7 @@ export class TaskStore {
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         board_id TEXT NOT NULL,
+        parent_id TEXT,
         title TEXT NOT NULL,
         detail TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL,
@@ -56,6 +58,10 @@ export class TaskStore {
       );
       CREATE INDEX IF NOT EXISTS tasks_board ON tasks(board_id, updated_at);
     `);
+    const columns = db.query("PRAGMA table_info(tasks)").all() as { name: string }[];
+    if (!columns.some((column) => column.name === "parent_id")) {
+      db.exec("ALTER TABLE tasks ADD COLUMN parent_id TEXT");
+    }
     return new TaskStore(db);
   }
 
@@ -69,7 +75,7 @@ export class TaskStore {
   ): TaskEntry[] {
     const rows = this.db
       .query(
-        `SELECT id, board_id AS boardId, title, detail, status,
+        `SELECT id, board_id AS boardId, parent_id AS parentId, title, detail, status,
                 owner_id AS ownerId, owner_handle AS ownerHandle,
                 requester_id AS requesterId, requester_handle AS requesterHandle,
                 created_at AS createdAt, updated_at AS updatedAt
@@ -93,7 +99,7 @@ export class TaskStore {
   get(id: string): TaskEntry | undefined {
     return this.db
       .query(
-        `SELECT id, board_id AS boardId, title, detail, status,
+        `SELECT id, board_id AS boardId, parent_id AS parentId, title, detail, status,
                 owner_id AS ownerId, owner_handle AS ownerHandle,
                 requester_id AS requesterId, requester_handle AS requesterHandle,
                 created_at AS createdAt, updated_at AS updatedAt
@@ -104,6 +110,7 @@ export class TaskStore {
 
   create(input: {
     boardId: SessionId;
+    parentId?: string | null;
     title: string;
     detail?: string;
     status?: TaskStatus;
@@ -119,16 +126,18 @@ export class TaskStore {
     const now = new Date().toISOString();
     const id = newId("task");
     const status = parseStatus(input.status) ?? "pending";
+    const parentId = this.parentFor(input.boardId, input.parentId);
     this.db
       .query(
         `INSERT INTO tasks (
-           id, board_id, title, detail, status, owner_id, owner_handle,
+           id, board_id, parent_id, title, detail, status, owner_id, owner_handle,
            requester_id, requester_handle, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         input.boardId,
+        parentId,
         title,
         clip(input.detail ?? "", TASK_DETAIL_MAX),
         status,
@@ -146,7 +155,14 @@ export class TaskStore {
   update(
     id: string,
     boardId: SessionId,
-    patch: { title?: string; detail?: string; status?: TaskStatus; ownerId?: BotId; ownerHandle?: string },
+    patch: {
+      title?: string;
+      detail?: string;
+      status?: TaskStatus;
+      ownerId?: BotId;
+      ownerHandle?: string;
+      parentId?: string | null;
+    },
   ): TaskEntry | undefined {
     const current = this.get(id);
     if (!current || current.boardId !== boardId) {
@@ -160,14 +176,54 @@ export class TaskStore {
     const status = patch.status !== undefined ? (parseStatus(patch.status) ?? current.status) : current.status;
     const ownerId = patch.ownerId ?? current.ownerId;
     const ownerHandle = patch.ownerHandle ?? current.ownerHandle;
+    const parentId =
+      patch.parentId === undefined ? current.parentId : this.parentFor(boardId, patch.parentId, id);
+    if (parentId && this.children(id).length > 0) {
+      throw new Error("a task with subtasks cannot become a subtask");
+    }
     const now = new Date().toISOString();
     this.db
       .query(
-        `UPDATE tasks SET title = ?, detail = ?, status = ?, owner_id = ?, owner_handle = ?, updated_at = ?
+        `UPDATE tasks SET parent_id = ?, title = ?, detail = ?, status = ?, owner_id = ?,
+           owner_handle = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(title, detail, status, ownerId, ownerHandle, now, id);
+      .run(parentId, title, detail, status, ownerId, ownerHandle, now, id);
     return this.get(id);
+  }
+
+  children(id: string): TaskEntry[] {
+    return this.db
+      .query(
+        `SELECT id, board_id AS boardId, parent_id AS parentId, title, detail, status,
+                owner_id AS ownerId, owner_handle AS ownerHandle,
+                requester_id AS requesterId, requester_handle AS requesterHandle,
+                created_at AS createdAt, updated_at AS updatedAt
+         FROM tasks WHERE parent_id = ? ORDER BY created_at ASC`,
+      )
+      .all(id) as TaskEntry[];
+  }
+
+  /**
+   * The board is two levels deep on purpose: a job and its pieces. A parent
+   * has to be a top-level task on the same board, so a subtask can never grow
+   * subtasks of its own.
+   */
+  private parentFor(boardId: SessionId, parentId: string | null | undefined, selfId?: string): string | null {
+    if (!parentId) {
+      return null;
+    }
+    if (selfId && parentId === selfId) {
+      throw new Error("a task cannot be its own parent");
+    }
+    const parent = this.get(parentId);
+    if (!parent || parent.boardId !== boardId) {
+      throw new Error("unknown parent task");
+    }
+    if (parent.parentId) {
+      throw new Error("subtasks are one level deep");
+    }
+    return parent.id;
   }
 }
 

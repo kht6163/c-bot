@@ -2,14 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SessionId } from "@cbot/shared";
 import { fetchTasks, type TaskView } from "../lib/api.ts";
 import { timeAgo } from "../lib/path.ts";
-
-type Lane = "in_progress" | "pending" | "done";
-
-const LANES: { key: Lane; label: string }[] = [
-  { key: "in_progress", label: "진행 중" },
-  { key: "pending", label: "대기" },
-  { key: "done", label: "끝난 일" },
-];
+import { countByStatus, openChildren, ownersOf, taskLanes } from "../lib/task-tree.ts";
 
 const STATUS_LABEL: Record<TaskView["status"], string> = {
   pending: "대기",
@@ -44,15 +37,11 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
   }, [sessionId, refreshKey]);
 
   const all = useMemo(() => items ?? [], [items]);
-  const owners = useMemo(() => [...new Set(all.map((item) => item.ownerHandle))].sort(), [all]);
+  const owners = useMemo(() => ownersOf(all), [all]);
   // A bot can reassign the last task away from the filtered owner. Falling back
   // to 전체 keeps the pane out of a state whose only control has just vanished.
   const active = owner && owners.includes(owner) ? owner : "";
-  const visible = active ? all.filter((item) => item.ownerHandle === active) : all;
-  const lanes = LANES.map((lane) => ({
-    ...lane,
-    items: visible.filter((item) => laneOf(item) === lane.key),
-  })).filter((lane) => lane.items.length > 0);
+  const lanes = useMemo(() => taskLanes(all, active), [all, active]);
 
   if (error) {
     return <p className="hint danger">{error}</p>;
@@ -67,11 +56,11 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
   return (
     <div className="tasks-pane">
       <p className="task-ledger">
-        {count(all, "in_progress") > 0 ? (
-          <span className="task-ledger-live">진행 {count(all, "in_progress")}</span>
+        {countByStatus(all, "in_progress") > 0 ? (
+          <span className="task-ledger-live">진행 {countByStatus(all, "in_progress")}</span>
         ) : null}
-        <span>대기 {count(all, "pending")}</span>
-        <span>완료 {count(all, "completed")}</span>
+        <span>대기 {countByStatus(all, "pending")}</span>
+        <span>완료 {countByStatus(all, "completed")}</span>
       </p>
       {owners.length > 1 ? (
         <div className="task-owners">
@@ -98,25 +87,21 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
       {lanes.map((lane) => (
         <section key={lane.key} className="task-lane">
           <p className="section-label">
-            {lane.label} {lane.items.length}
+            {lane.label} {lane.nodes.length}
           </p>
           <ul className="task-list">
-            {lane.items.map((item) => (
-              <li key={item.id} className={`task-row status-${item.status}`}>
-                <span className="task-dot" aria-hidden="true" />
-                <span className="task-body">
-                  <span className="task-title">{item.title}</span>
-                  <span className="task-meta">
-                    @{item.ownerHandle}
-                    {item.requesterHandle !== item.ownerHandle ? (
-                      <span className="task-from"> ← @{item.requesterHandle}</span>
-                    ) : null}
-                    <span className="task-sep">·</span>
-                    {STATUS_LABEL[item.status]}
-                  </span>
-                  {item.detail ? <span className="task-detail">{item.detail}</span> : null}
-                </span>
-                <span className="task-time">{timeAgo(item.updatedAt)}</span>
+            {lane.nodes.map((node) => (
+              <li key={node.task.id}>
+                <TaskRow task={node.task} left={openChildren(node)} />
+                {node.children.length > 0 ? (
+                  <ul className="task-list task-children">
+                    {node.children.map((child) => (
+                      <li key={child.id}>
+                        <TaskRow task={child} child />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -126,13 +111,24 @@ export function TasksPane({ sessionId, refreshKey }: Props) {
   );
 }
 
-function laneOf(item: TaskView): Lane {
-  if (item.status === "in_progress") {
-    return "in_progress";
-  }
-  return item.status === "pending" ? "pending" : "done";
-}
-
-function count(items: readonly TaskView[], status: TaskView["status"]): number {
-  return items.filter((item) => item.status === status).length;
+function TaskRow({ task, left = 0, child = false }: { task: TaskView; left?: number; child?: boolean }) {
+  return (
+    <div className={`task-row status-${task.status}${child ? " is-child" : ""}`}>
+      <span className="task-dot" aria-hidden="true" />
+      <span className="task-body">
+        <span className="task-title">{task.title}</span>
+        <span className="task-meta">
+          @{task.ownerHandle}
+          {task.requesterHandle !== task.ownerHandle ? (
+            <span className="task-from"> ← @{task.requesterHandle}</span>
+          ) : null}
+          <span className="task-sep">·</span>
+          {STATUS_LABEL[task.status]}
+          {left > 0 ? <span className="task-left"> · 남은 조각 {left}</span> : null}
+        </span>
+        {task.detail ? <span className="task-detail">{task.detail}</span> : null}
+      </span>
+      <span className="task-time">{timeAgo(task.updatedAt)}</span>
+    </div>
+  );
 }

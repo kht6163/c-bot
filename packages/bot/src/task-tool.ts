@@ -14,12 +14,17 @@ export function taskTool(opts: {
     name: "task",
     ui: "generic",
     description:
-      "Shared task board for this coding session. All bots on the session see the same list. Use list to see work assigned to you (owner=me) or requests from others you have not finished. add registers work. update changes status (pending, in_progress, completed, cancelled). When the lead asks a specialist, add a task owned by that specialist.",
+      "Shared task board for this coding session. All bots on the session see the same list. Use list to see work assigned to you (owner=me) or requests from others you have not finished. add registers work. update changes status (pending, in_progress, completed, cancelled). When the lead asks a specialist, add a task owned by that specialist. Break a job into pieces by passing parent: the board is two levels deep, so a subtask cannot have subtasks of its own.",
     parameters: {
       type: "object",
       properties: {
         action: { type: "string", enum: ["list", "add", "update"] },
         id: { type: "string", description: "Task id for update." },
+        parent: {
+          type: "string",
+          description:
+            "Parent task id, making this a subtask of that job. One level only. Pass an empty string on update to lift a subtask back to the top.",
+        },
         title: { type: "string" },
         detail: { type: "string" },
         status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"] },
@@ -68,6 +73,7 @@ export function taskTool(opts: {
           const owner = resolveOwner(opts.actor, opts.roster, args.owner);
           const entry = store.create({
             boardId,
+            ...(typeof args.parent === "string" ? { parentId: args.parent.trim() || null } : {}),
             title,
             detail: typeof args.detail === "string" ? args.detail : "",
             status: typeof args.status === "string" ? (args.status as TaskStatus) : "pending",
@@ -92,6 +98,7 @@ export function taskTool(opts: {
           const owner =
             typeof args.owner === "string" ? resolveOwner(opts.actor, opts.roster, args.owner) : undefined;
           const entry = store.update(id, boardId, {
+            ...(typeof args.parent === "string" ? { parentId: args.parent.trim() || null } : {}),
             ...(typeof args.title === "string" ? { title: args.title } : {}),
             ...(typeof args.detail === "string" ? { detail: args.detail } : {}),
             ...(typeof args.status === "string" ? { status: args.status as TaskStatus } : {}),
