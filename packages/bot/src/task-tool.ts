@@ -91,7 +91,7 @@ export function taskTool(opts: {
           const id = String(args.id ?? "").trim();
           const owner =
             typeof args.owner === "string" ? resolveOwner(opts.actor, opts.roster, args.owner) : undefined;
-          const entry = store.update(id, {
+          const entry = store.update(id, boardId, {
             ...(typeof args.title === "string" ? { title: args.title } : {}),
             ...(typeof args.detail === "string" ? { detail: args.detail } : {}),
             ...(typeof args.status === "string" ? { status: args.status as TaskStatus } : {}),

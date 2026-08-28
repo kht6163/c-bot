@@ -142,12 +142,14 @@ export class TaskStore {
     return this.get(id) as TaskEntry;
   }
 
+  /** boardId scopes the write: a bot can only touch its own session board. */
   update(
     id: string,
+    boardId: SessionId,
     patch: { title?: string; detail?: string; status?: TaskStatus; ownerId?: BotId; ownerHandle?: string },
   ): TaskEntry | undefined {
     const current = this.get(id);
-    if (!current) {
+    if (!current || current.boardId !== boardId) {
       return undefined;
     }
     const title = patch.title !== undefined ? clip(patch.title, TASK_TITLE_MAX) : current.title;

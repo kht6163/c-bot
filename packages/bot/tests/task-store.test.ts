@@ -41,6 +41,30 @@ describe("TaskStore", () => {
   });
 });
 
+describe("TaskStore board isolation", () => {
+  test("a task on another board cannot be updated", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tasks-"));
+    const sessions = await SessionStore.open(":memory:");
+    const mine = sessions.create({ kind: "coding", workspace: home });
+    const theirs = sessions.create({ kind: "coding", workspace: home });
+    const bot = await createBot(home, sessions, { handle: "owner", title: "O", description: "O" });
+    const store = await TaskStore.open(home);
+    const entry = store.create({
+      boardId: theirs.id,
+      title: "남의 일",
+      ownerId: bot.id,
+      ownerHandle: bot.handle,
+      requesterId: bot.id,
+      requesterHandle: bot.handle,
+    });
+    expect(store.update(entry.id, mine.id, { status: "completed" })).toBeUndefined();
+    expect(store.get(entry.id)?.status).toBe("pending");
+    expect(store.update(entry.id, theirs.id, { status: "completed" })?.status).toBe("completed");
+    store.close();
+    sessions.close();
+  });
+});
+
 describe("taskTool", () => {
   test("adds to the parent coding session board from a hop mailbox", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-tasktool-"));
