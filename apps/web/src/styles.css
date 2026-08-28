@@ -953,7 +953,7 @@ button {
   font-weight: 500;
 }
 
-.memory-form-actions button {
+.memory-form-actions button:not(.ghost) {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 8px 14px;
@@ -962,7 +962,7 @@ button {
   font-weight: 500;
 }
 
-.memory-form-actions button:hover {
+.memory-form-actions button:not(.ghost):hover {
   background: var(--row-hover);
 }
 
@@ -2097,6 +2097,8 @@ select.field-input {
   grid-area: actions;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
 }
 
 .memory-chip {

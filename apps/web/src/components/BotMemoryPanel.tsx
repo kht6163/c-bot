@@ -65,9 +65,6 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
         <div className="memory-list-pane">
           <div className="memory-list-head">
             <span className="memory-list-label">목록</span>
-            <button type="button" className="add-btn" aria-label="새 메모리" onClick={startNew}>
-              +
-            </button>
           </div>
           <ul className="memory-list">
             {items.length === 0 ? (
@@ -116,6 +113,11 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
           <textarea rows={6} value={body} onChange={(event) => setBody(event.target.value)} />
         </label>
         <div className="memory-form-actions">
+          {selected ? (
+            <button type="button" className="ghost" onClick={startNew}>
+              새 기억
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
