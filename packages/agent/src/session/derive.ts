@@ -62,6 +62,7 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
       case "assistant/thinking":
       case "tool/call":
       case "bot/delivery":
+      case "task/change":
         break;
       default:
         assertNever(event);

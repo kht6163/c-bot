@@ -37,6 +37,8 @@ export {
   type Mention,
   type MemoryRecallEvent,
   type RecalledMemory,
+  type TaskChangeEvent,
+  type TaskStatus,
   type SessionEvent,
   type SessionKind,
   type ToolCallEvent,

@@ -14,6 +14,7 @@ import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TeamStage } from "./components/TeamStage.tsx";
+import { Inspector } from "./components/Inspector.tsx";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
   createBot,
@@ -62,6 +63,8 @@ export function App() {
   const [focusedKey, setFocusedKey] = useState("lead");
   const [team, setTeam] = useState<SessionTeamMember[]>([]);
   const [botEvents, setBotEvents] = useState<Record<string, SessionEvent[]>>({});
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorTick, setInspectorTick] = useState(0);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const eventsRef = useRef<SessionEvent[]>([]);
@@ -217,6 +220,13 @@ export function App() {
             if (isTeamSignal(frame.event)) {
               void refreshTeamRef.current(frame.sessionId);
             }
+            if (
+              frame.event.type === "task/change" ||
+              frame.event.type === "tool/result" ||
+              frame.event.type === "turn/end"
+            ) {
+              setInspectorTick((n) => n + 1);
+            }
           } else {
             setBotEvents((current) => {
               const known =
@@ -325,7 +335,10 @@ export function App() {
 
   return (
     <>
-    <div className="app" {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}>
+    <div
+      className={selectedId && inspectorOpen ? "app has-inspector" : "app"}
+      {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}
+    >
       <Sidebar
         project={project}
         sessions={sessions}
@@ -471,6 +484,15 @@ export function App() {
             />
           </div>
         )}
+        {selectedId && !inspectorOpen ? (
+          <button
+            type="button"
+            className="inspector-open"
+            onClick={() => setInspectorOpen(true)}
+          >
+            패널
+          </button>
+        ) : null}
         {selectedId ? (
           <Composer
             busy={busy}
@@ -486,6 +508,15 @@ export function App() {
           />
         ) : null}
       </section>
+      {selectedId && inspectorOpen ? (
+        <Inspector
+          sessionId={selectedId}
+          owners={bots.map((bot) => bot.handle)}
+          leadHandle={bots.find((bot) => bot.role === "leader")?.handle ?? "leader"}
+          refreshKey={inspectorTick}
+          onClose={() => setInspectorOpen(false)}
+        />
+      ) : null}
     </div>
       <SettingsDialog
         open={settingsOpen}

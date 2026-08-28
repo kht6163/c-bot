@@ -41,6 +41,7 @@ const EVENT_TYPES = new Set([
   "bot/message",
   "bot/delivery",
   "memory/recall",
+  "task/change",
 ]);
 
 export class SessionStore {

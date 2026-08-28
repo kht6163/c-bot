@@ -86,6 +86,7 @@ export function validateProviderId(id: string): string {
 export async function ensureHome(home: string): Promise<void> {
   await mkdir(join(home, "sessions"), { recursive: true });
   await mkdir(join(home, "bots"), { recursive: true });
+  await mkdir(join(home, "tasks"), { recursive: true });
   const path = configPath(home);
   const file = Bun.file(path);
   if (!(await file.exists())) {

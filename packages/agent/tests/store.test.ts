@@ -160,4 +160,21 @@ describe("deriveMessages", () => {
     expect(messages[1]?.content).toContain("세션 로그가 진실이다");
     store.close();
   });
+
+  test("does not put task/change into model history", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create();
+    store.append(session.id, { type: "user/message", text: "go", mentions: [] });
+    store.append(session.id, {
+      type: "task/change",
+      action: "add",
+      taskId: "task_1",
+      title: "조사",
+      status: "pending",
+      ownerHandle: "researcher",
+      requesterHandle: "leader",
+    });
+    expect(deriveMessages(store.events(session.id))).toEqual([{ role: "user", content: "go" }]);
+    store.close();
+  });
 });

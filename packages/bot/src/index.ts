@@ -30,4 +30,6 @@ export {
 } from "./memory-store.ts";
 export { memoryTool } from "./memory-tool.ts";
 export { recallIntoSession } from "./recall.ts";
+export { TaskStore, taskBoardId, tasksDbPath, type TaskEntry } from "./task-store.ts";
+export { taskTool } from "./task-tool.ts";
 export { cjkTokens, cjkSearchText, cjkMatchQuery } from "./cjk-tokenize.ts";

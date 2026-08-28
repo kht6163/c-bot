@@ -39,6 +39,12 @@ export function jsonError(err: unknown): Response {
     message === "handle leader is reserved" ||
     message === "unknown memory" ||
     message === "memory is empty" ||
+    message === "task title required" ||
+    message === "unknown task" ||
+    message === "unknown owner" ||
+    message === "path required" ||
+    message === "not a directory" ||
+    message === "path escapes workspace" ||
     message.startsWith("handle")
       ? 400
       : 500;

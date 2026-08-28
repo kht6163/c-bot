@@ -114,6 +114,18 @@ export interface MemoryRecallEvent extends EventEnvelope {
   items: readonly RecalledMemory[];
 }
 
+export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+export interface TaskChangeEvent extends EventEnvelope {
+  type: "task/change";
+  action: "add" | "update";
+  taskId: string;
+  title: string;
+  status: TaskStatus;
+  ownerHandle: string;
+  requesterHandle: string;
+}
+
 export type SessionEvent =
   | TurnStartEvent
   | TurnEndEvent
@@ -125,4 +137,5 @@ export type SessionEvent =
   | ToolResultEvent
   | BotMessageEvent
   | BotDeliveryEvent
-  | MemoryRecallEvent;
+  | MemoryRecallEvent
+  | TaskChangeEvent;

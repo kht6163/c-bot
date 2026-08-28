@@ -171,6 +171,97 @@ export async function deleteSession(id: SessionId): Promise<void> {
   await api<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" });
 }
 
+export interface GitFileView {
+  path: string;
+  index: string;
+  worktree: string;
+  label: string;
+}
+
+export interface GitStatusView {
+  repo: boolean;
+  branch: string;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  files: GitFileView[];
+}
+
+export interface DirEntryView {
+  name: string;
+  path: string;
+  kind: "file" | "dir";
+}
+
+export interface FilePreviewView {
+  path: string;
+  kind: "text" | "binary" | "missing";
+  text: string;
+  bytes: number;
+}
+
+export interface TaskView {
+  id: string;
+  boardId: string;
+  title: string;
+  detail: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  ownerId: string;
+  ownerHandle: string;
+  requesterId: string;
+  requesterHandle: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchGitStatus(id: SessionId): Promise<GitStatusView> {
+  const body = await api<{ git: GitStatusView }>(`/api/sessions/${id}/git`);
+  return body.git;
+}
+
+export async function fetchWorkspaceDir(id: SessionId, path = "."): Promise<DirEntryView[]> {
+  const q = path && path !== "." ? `?path=${encodeURIComponent(path)}` : "";
+  const body = await api<{ entries: DirEntryView[] }>(`/api/sessions/${id}/files${q}`);
+  return body.entries;
+}
+
+export async function fetchWorkspaceFile(id: SessionId, path: string): Promise<FilePreviewView> {
+  const body = await api<{ file: FilePreviewView }>(
+    `/api/sessions/${id}/file?path=${encodeURIComponent(path)}`,
+  );
+  return body.file;
+}
+
+export async function fetchTasks(id: SessionId): Promise<TaskView[]> {
+  const body = await api<{ tasks: TaskView[] }>(`/api/sessions/${id}/tasks`);
+  return body.tasks;
+}
+
+export async function createTask(
+  id: SessionId,
+  input: { title: string; detail?: string; ownerHandle?: string },
+): Promise<TaskView> {
+  const body = await api<{ task: TaskView }>(`/api/sessions/${id}/tasks`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.task;
+}
+
+export async function updateTask(
+  id: SessionId,
+  taskId: string,
+  input: { title?: string; detail?: string; status?: TaskView["status"]; ownerHandle?: string },
+): Promise<TaskView> {
+  const body = await api<{ task: TaskView }>(`/api/sessions/${id}/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.task;
+}
+
 export async function sendMessage(id: SessionId, text: string): Promise<void> {
   await api<{ ok: boolean }>(`/api/sessions/${id}/messages`, {
     method: "POST",

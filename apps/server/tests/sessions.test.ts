@@ -317,6 +317,41 @@ describe("bots API", () => {
     expect(body.memories.some((item) => item.title === "세션 계약")).toBe(true);
     runtime.store.close();
   });
+
+  test("lists git status and session tasks on the coding session", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-inspect-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]), TEST_WORKSPACE);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: TEST_WORKSPACE }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const git = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}/git`), opts);
+    expect(git.status).toBe(200);
+    const gitBody = (await git.json()) as { git: { repo: boolean } };
+    expect(typeof gitBody.git.repo).toBe("boolean");
+    const files = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}/files`), opts);
+    const listed = (await files.json()) as { entries: { name: string; kind: string }[] };
+    expect(files.status).toBe(200);
+    expect(Array.isArray(listed.entries)).toBe(true);
+    const task = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/tasks`, {
+        method: "POST",
+        body: JSON.stringify({ title: "조사", ownerHandle: "leader" }),
+      }),
+      opts,
+    );
+    expect(task.status).toBe(201);
+    const board = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}/tasks`), opts);
+    const body = (await board.json()) as { tasks: { title: string; ownerHandle: string }[] };
+    expect(body.tasks.some((item) => item.title === "조사" && item.ownerHandle === "leader")).toBe(true);
+    runtime.store.close();
+  });
 });
 
 const TEST_WORKSPACE = "/Users/hantaekim/project/test";

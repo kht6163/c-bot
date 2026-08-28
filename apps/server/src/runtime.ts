@@ -27,6 +27,7 @@ import {
   messageAgentTool,
   protocolSection,
   recallIntoSession,
+  taskTool,
   workspaceForMailbox,
   withProtocol,
 } from "@cbot/bot";
@@ -175,6 +176,13 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
               wake: (target) => wakeSession(runtime, target),
             }),
             memoryTool(runtime.env.home, me.id),
+            taskTool({
+              home: runtime.env.home,
+              store: runtime.store,
+              sessionId,
+              actor: me,
+              roster,
+            }),
           ];
           const base = [me.soul.trim(), codingSystemPrompt(workspace)]
             .filter((part) => part.length > 0)
@@ -196,6 +204,13 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
               wake: (target) => wakeSession(runtime, target),
             }),
             memoryTool(runtime.env.home, me.id),
+            taskTool({
+              home: runtime.env.home,
+              store: runtime.store,
+              sessionId,
+              actor: me,
+              roster,
+            }),
           ];
           const base = [me.soul.trim(), codingSystemPrompt(workspace)]
             .filter((part) => part.length > 0)
