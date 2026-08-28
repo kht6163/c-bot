@@ -339,17 +339,18 @@ describe("bots API", () => {
     const listed = (await files.json()) as { entries: { name: string; kind: string }[] };
     expect(files.status).toBe(200);
     expect(Array.isArray(listed.entries)).toBe(true);
-    const task = await handleHttp(
+    const board = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}/tasks`), opts);
+    expect(board.status).toBe(200);
+    const body = (await board.json()) as { tasks: { title: string }[] };
+    expect(Array.isArray(body.tasks)).toBe(true);
+    const write = await handleHttp(
       new Request(`http://127.0.0.1/api/sessions/${session.id}/tasks`, {
         method: "POST",
         body: JSON.stringify({ title: "조사", ownerHandle: "leader" }),
       }),
       opts,
     );
-    expect(task.status).toBe(201);
-    const board = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}/tasks`), opts);
-    const body = (await board.json()) as { tasks: { title: string; ownerHandle: string }[] };
-    expect(body.tasks.some((item) => item.title === "조사" && item.ownerHandle === "leader")).toBe(true);
+    expect(write.status).toBe(404);
     runtime.store.close();
   });
 });

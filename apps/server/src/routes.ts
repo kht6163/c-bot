@@ -25,7 +25,7 @@ import {
   validateProviderId,
   type LlmProvider,
 } from "@cbot/agent";
-import type { BotId, ProjectView, SessionId, SessionTeamMember, TaskStatus } from "@cbot/shared";
+import type { ProjectView, SessionId, SessionTeamMember } from "@cbot/shared";
 import { createBot, deleteBot, listBots, loadBot, MemoryStore, TaskStore, taskBoardId, updateBot } from "@cbot/bot";
 import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
@@ -335,86 +335,15 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       return Response.json({ file: await readWorkspacePreview(workspace, rel) });
     }
     const tasksMatch = /^\/api\/sessions\/([^/]+)\/tasks$/.exec(url.pathname);
-    if (tasksMatch) {
+    if (tasksMatch && req.method === "GET") {
       const id = asSessionId(decodeURIComponent(tasksMatch[1] ?? ""));
-      const session = runtime.store.get(id);
-      if (!session) {
+      if (!runtime.store.get(id)) {
         throw new HttpError(404, "unknown session");
       }
       const boardId = taskBoardId(runtime.store, id);
       const tasks = await TaskStore.open(runtime.env.home);
       try {
-        if (req.method === "GET") {
-          return Response.json({ tasks: tasks.list(boardId) });
-        }
-        if (req.method === "POST") {
-          const body = await readJson(req);
-          if (!isRecord(body)) {
-            throw new HttpError(400, "invalid JSON");
-          }
-          const roster = await listBots(runtime.env.home);
-          const owner = ownerFromHandle(roster, typeof body.ownerHandle === "string" ? body.ownerHandle : "leader");
-          const entry = tasks.create({
-            boardId,
-            title: typeof body.title === "string" ? body.title : "",
-            detail: typeof body.detail === "string" ? body.detail : "",
-            ownerId: owner.id,
-            ownerHandle: owner.handle,
-            requesterId: "user",
-            requesterHandle: "user",
-          });
-          runtime.store.append(boardId, {
-            type: "task/change",
-            action: "add",
-            taskId: entry.id,
-            title: entry.title,
-            status: entry.status,
-            ownerHandle: entry.ownerHandle,
-            requesterHandle: entry.requesterHandle,
-          });
-          return Response.json({ task: entry }, { status: 201 });
-        }
-      } finally {
-        tasks.close();
-      }
-    }
-    const taskOne = /^\/api\/sessions\/([^/]+)\/tasks\/([^/]+)$/.exec(url.pathname);
-    if (taskOne && req.method === "PUT") {
-      const id = asSessionId(decodeURIComponent(taskOne[1] ?? ""));
-      const taskId = decodeURIComponent(taskOne[2] ?? "");
-      const session = runtime.store.get(id);
-      if (!session) {
-        throw new HttpError(404, "unknown session");
-      }
-      const body = await readJson(req);
-      if (!isRecord(body)) {
-        throw new HttpError(400, "invalid JSON");
-      }
-      const boardId = taskBoardId(runtime.store, id);
-      const roster = await listBots(runtime.env.home);
-      const tasks = await TaskStore.open(runtime.env.home);
-      try {
-        const owner =
-          typeof body.ownerHandle === "string" ? ownerFromHandle(roster, body.ownerHandle) : undefined;
-        const entry = tasks.update(taskId, {
-          ...(typeof body.title === "string" ? { title: body.title } : {}),
-          ...(typeof body.detail === "string" ? { detail: body.detail } : {}),
-          ...(typeof body.status === "string" ? { status: body.status as TaskStatus } : {}),
-          ...(owner ? { ownerId: owner.id, ownerHandle: owner.handle } : {}),
-        });
-        if (!entry) {
-          throw new HttpError(404, "unknown task");
-        }
-        runtime.store.append(boardId, {
-          type: "task/change",
-          action: "update",
-          taskId: entry.id,
-          title: entry.title,
-          status: entry.status,
-          ownerHandle: entry.ownerHandle,
-          requesterHandle: entry.requesterHandle,
-        });
-        return Response.json({ task: entry });
+        return Response.json({ tasks: tasks.list(boardId) });
       } finally {
         tasks.close();
       }
@@ -701,18 +630,6 @@ function sessionWorkspace(runtime: Runtime, id: SessionId): string {
     throw new HttpError(400, "workspace required");
   }
   return workspace;
-}
-
-function ownerFromHandle(
-  roster: { id: BotId; handle: string }[],
-  handle: string,
-): { id: BotId; handle: string } {
-  const key = handle.replace(/^@/, "").trim() || "leader";
-  const bot = roster.find((item) => item.handle === key) ?? roster.find((item) => item.handle === "leader");
-  if (!bot) {
-    throw new HttpError(400, "unknown owner");
-  }
-  return { id: bot.id, handle: bot.handle };
 }
 
 async function sessionTeam(

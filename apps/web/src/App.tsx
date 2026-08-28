@@ -575,8 +575,6 @@ export function App() {
       {selectedId && inspectorOpen ? (
         <Inspector
           sessionId={selectedId}
-          owners={bots.map((bot) => bot.handle)}
-          leadHandle={bots.find((bot) => bot.role === "leader")?.handle ?? "leader"}
           refreshKey={inspectorTick}
           onClose={() => setInspectorOpen(false)}
         />

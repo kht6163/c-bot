@@ -237,31 +237,6 @@ export async function fetchTasks(id: SessionId): Promise<TaskView[]> {
   return body.tasks;
 }
 
-export async function createTask(
-  id: SessionId,
-  input: { title: string; detail?: string; ownerHandle?: string },
-): Promise<TaskView> {
-  const body = await api<{ task: TaskView }>(`/api/sessions/${id}/tasks`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return body.task;
-}
-
-export async function updateTask(
-  id: SessionId,
-  taskId: string,
-  input: { title?: string; detail?: string; status?: TaskView["status"]; ownerHandle?: string },
-): Promise<TaskView> {
-  const body = await api<{ task: TaskView }>(`/api/sessions/${id}/tasks/${taskId}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return body.task;
-}
-
 export async function sendMessage(id: SessionId, text: string): Promise<void> {
   await api<{ ok: boolean }>(`/api/sessions/${id}/messages`, {
     method: "POST",

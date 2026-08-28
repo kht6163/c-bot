@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { SessionId } from "@cbot/shared";
-import { createTask, fetchTasks, updateTask, type TaskView } from "../lib/api.ts";
+import { fetchTasks, type TaskView } from "../lib/api.ts";
+import { timeAgo } from "../lib/path.ts";
+
+type Lane = "in_progress" | "pending" | "done";
+
+const LANES: { key: Lane; label: string }[] = [
+  { key: "in_progress", label: "진행 중" },
+  { key: "pending", label: "대기" },
+  { key: "done", label: "끝난 일" },
+];
 
 const STATUS_LABEL: Record<TaskView["status"], string> = {
   pending: "대기",
@@ -11,161 +20,116 @@ const STATUS_LABEL: Record<TaskView["status"], string> = {
 
 interface Props {
   sessionId: SessionId;
-  owners: string[];
-  leadHandle: string;
   refreshKey: number;
 }
 
-export function TasksPane({ sessionId, owners, leadHandle, refreshKey }: Props) {
-  const [items, setItems] = useState<TaskView[]>([]);
-  const [filter, setFilter] = useState("all");
-  const [title, setTitle] = useState("");
-  const [owner, setOwner] = useState(leadHandle);
+/** The board is the bots' — `task` writes it, this pane only watches. */
+export function TasksPane({ sessionId, refreshKey }: Props) {
+  const [items, setItems] = useState<TaskView[] | undefined>();
+  const [owner, setOwner] = useState("");
   const [error, setError] = useState("");
 
-  const handles = useMemo(() => {
-    const next = new Set<string>([leadHandle, ...owners]);
-    return [...next];
-  }, [leadHandle, owners]);
-
-  async function reload(): Promise<void> {
-    const next = await fetchTasks(sessionId);
-    setItems(next);
-  }
+  useEffect(() => {
+    setOwner("");
+  }, [sessionId]);
 
   useEffect(() => {
     setError("");
-    setFilter("all");
-    setOwner(leadHandle);
-    void reload().catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : "failed");
-    });
-  }, [sessionId, refreshKey, leadHandle]);
+    void fetchTasks(sessionId)
+      .then(setItems)
+      .catch((err: unknown) => {
+        setItems([]);
+        setError(err instanceof Error ? err.message : "작업을 읽지 못했습니다");
+      });
+  }, [sessionId, refreshKey]);
 
-  const visible = items.filter((item) => {
-    if (filter === "open") {
-      return item.status === "pending" || item.status === "in_progress";
-    }
-    if (filter === "assigned") {
-      return (
-        item.requesterHandle !== item.ownerHandle &&
-        item.status !== "completed" &&
-        item.status !== "cancelled"
-      );
-    }
-    if (filter.startsWith("@")) {
-      return item.ownerHandle === filter.slice(1);
-    }
-    return true;
-  });
+  const all = items ?? [];
+  const owners = useMemo(() => [...new Set(all.map((item) => item.ownerHandle))].sort(), [all]);
+  const visible = owner ? all.filter((item) => item.ownerHandle === owner) : all;
+  const lanes = LANES.map((lane) => ({
+    ...lane,
+    items: visible.filter((item) => laneOf(item) === lane.key),
+  })).filter((lane) => lane.items.length > 0);
+
+  if (error) {
+    return <p className="hint danger">{error}</p>;
+  }
+  if (!items) {
+    return <p className="empty">불러오는 중</p>;
+  }
+  if (all.length === 0) {
+    return <p className="empty">봇이 맡은 일이 여기 쌓입니다</p>;
+  }
 
   return (
     <div className="tasks-pane">
-      <div className="task-filters">
-        <button
-          type="button"
-          className={filter === "all" ? "chip active" : "chip"}
-          onClick={() => setFilter("all")}
-        >
-          전체
-        </button>
-        <button
-          type="button"
-          className={filter === "open" ? "chip active" : "chip"}
-          onClick={() => setFilter("open")}
-        >
-          미완료
-        </button>
-        <button
-          type="button"
-          className={filter === "assigned" ? "chip active" : "chip"}
-          onClick={() => setFilter("assigned")}
-        >
-          요청 대기
-        </button>
-        {handles.map((handle) => (
+      <p className="task-ledger">
+        {count(all, "in_progress") > 0 ? (
+          <span className="task-ledger-live">진행 {count(all, "in_progress")}</span>
+        ) : null}
+        <span>대기 {count(all, "pending")}</span>
+        <span>완료 {count(all, "completed")}</span>
+      </p>
+      {owners.length > 1 ? (
+        <div className="task-owners">
           <button
-            key={handle}
             type="button"
-            className={filter === `@${handle}` ? "chip active" : "chip"}
-            onClick={() => setFilter(`@${handle}`)}
+            className={owner === "" ? "task-owner active" : "task-owner"}
+            onClick={() => setOwner("")}
           >
-            @{handle}
+            전체
           </button>
-        ))}
-      </div>
-      <form
-        className="task-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!title.trim()) {
-            return;
-          }
-          void (async () => {
-            await createTask(sessionId, { title, ownerHandle: owner });
-            setTitle("");
-            await reload();
-          })().catch((err: unknown) => {
-            setError(err instanceof Error ? err.message : "failed");
-          });
-        }}
-      >
-        <input
-          value={title}
-          placeholder="작업 제목"
-          aria-label="작업 제목"
-          onChange={(event) => setTitle(event.target.value)}
-        />
-        <select
-          className="field-input select-input"
-          aria-label="담당"
-          value={owner}
-          onChange={(event) => setOwner(event.target.value)}
-        >
-          {handles.map((handle) => (
-            <option key={handle} value={handle}>
+          {owners.map((handle) => (
+            <button
+              key={handle}
+              type="button"
+              className={owner === handle ? "task-owner active" : "task-owner"}
+              onClick={() => setOwner(handle)}
+            >
               @{handle}
-            </option>
+            </button>
           ))}
-        </select>
-        <button type="submit">추가</button>
-      </form>
-      {error ? <p className="hint danger">{error}</p> : null}
-      {visible.length === 0 ? (
-        <p className="empty">작업이 없습니다</p>
-      ) : (
-        <ul className="task-list">
-          {visible.map((item) => (
-            <li key={item.id} className={`task-row status-${item.status}`}>
-              <button
-                type="button"
-                className="task-check"
-                aria-label={item.status === "completed" ? "미완료로" : "완료로"}
-                onClick={() => {
-                  const next = item.status === "completed" ? "pending" : "completed";
-                  void updateTask(sessionId, item.id, { status: next })
-                    .then(() => reload())
-                    .catch((err: unknown) => {
-                      setError(err instanceof Error ? err.message : "failed");
-                    });
-                }}
-              >
-                {item.status === "completed" ? "✓" : "○"}
-              </button>
-              <div className="task-main">
-                <p className="task-title">{item.title}</p>
-                <p className="task-meta">
-                  @{item.ownerHandle}
-                  {item.requesterHandle !== item.ownerHandle ? ` ← @${item.requesterHandle}` : ""}
-                  {" · "}
-                  {STATUS_LABEL[item.status]}
-                </p>
-                {item.detail ? <p className="task-detail">{item.detail}</p> : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+        </div>
+      ) : null}
+      {lanes.length === 0 ? <p className="empty">@{owner}가 맡은 일이 없습니다</p> : null}
+      {lanes.map((lane) => (
+        <section key={lane.key} className="task-lane">
+          <p className="section-label">
+            {lane.label} {lane.items.length}
+          </p>
+          <ul className="task-list">
+            {lane.items.map((item) => (
+              <li key={item.id} className={`task-row status-${item.status}`}>
+                <span className="task-dot" aria-hidden="true" />
+                <span className="task-body">
+                  <span className="task-title">{item.title}</span>
+                  <span className="task-meta">
+                    @{item.ownerHandle}
+                    {item.requesterHandle !== item.ownerHandle ? (
+                      <span className="task-from"> ← @{item.requesterHandle}</span>
+                    ) : null}
+                    <span className="task-sep">·</span>
+                    {STATUS_LABEL[item.status]}
+                  </span>
+                  {item.detail ? <span className="task-detail">{item.detail}</span> : null}
+                </span>
+                <span className="task-time">{timeAgo(item.updatedAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   );
+}
+
+function laneOf(item: TaskView): Lane {
+  if (item.status === "in_progress") {
+    return "in_progress";
+  }
+  return item.status === "pending" ? "pending" : "done";
+}
+
+function count(items: readonly TaskView[], status: TaskView["status"]): number {
+  return items.filter((item) => item.status === status).length;
 }

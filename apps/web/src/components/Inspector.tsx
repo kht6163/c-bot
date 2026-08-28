@@ -8,13 +8,11 @@ type Tab = "git" | "files" | "tasks";
 
 interface Props {
   sessionId: SessionId;
-  owners: string[];
-  leadHandle: string;
   refreshKey: number;
   onClose: () => void;
 }
 
-export function Inspector({ sessionId, owners, leadHandle, refreshKey, onClose }: Props) {
+export function Inspector({ sessionId, refreshKey, onClose }: Props) {
   const [tab, setTab] = useState<Tab>("git");
 
   useEffect(() => {
@@ -60,14 +58,7 @@ export function Inspector({ sessionId, owners, leadHandle, refreshKey, onClose }
       <div className="inspector-body">
         {tab === "git" ? <GitPane sessionId={sessionId} refreshKey={refreshKey} /> : null}
         {tab === "files" ? <FilesPane sessionId={sessionId} /> : null}
-        {tab === "tasks" ? (
-          <TasksPane
-            sessionId={sessionId}
-            owners={owners}
-            leadHandle={leadHandle}
-            refreshKey={refreshKey}
-          />
-        ) : null}
+        {tab === "tasks" ? <TasksPane sessionId={sessionId} refreshKey={refreshKey} /> : null}
       </div>
     </aside>
   );
