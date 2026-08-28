@@ -14,12 +14,17 @@ export function taskTool(opts: {
     name: "task",
     ui: "generic",
     description:
-      "Shared task board for this coding session. All bots on the session see the same list. Use list to see work assigned to you (owner=me) or requests from others you have not finished. add registers work. update changes status (pending, in_progress, completed, cancelled). When the lead asks a specialist, add a task owned by that specialist. Break a job into pieces by passing parent: the board is two levels deep, so a subtask cannot have subtasks of its own.",
+      "Shared task board for this coding session. All bots on the session see the same list. Use list to see work assigned to you (owner=me) or requests from others you have not finished. add registers work. update changes title, detail, owner, or status. remove erases a row. When the lead asks a specialist, add a task owned by that specialist. Break a job into pieces by passing parent: the board is two levels deep, so a subtask cannot have subtasks of its own.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["list", "add", "update"] },
-        id: { type: "string", description: "Task id for update." },
+        action: {
+          type: "string",
+          enum: ["list", "add", "update", "remove"],
+          description:
+            "remove erases the row for good, and a job takes its pieces with it. Use it only when the row should not be on the board at all: a mistake, a duplicate, a test row, or the user asked to delete it. Work you finished or decided against is a status change, not a remove. One id per call.",
+        },
+        id: { type: "string", description: "Task id for update or remove." },
         parent: {
           type: "string",
           description:
@@ -27,7 +32,12 @@ export function taskTool(opts: {
         },
         title: { type: "string" },
         detail: { type: "string" },
-        status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"] },
+        status: {
+          type: "string",
+          enum: ["pending", "in_progress", "completed", "cancelled"],
+          description:
+            "completed = the work got done. cancelled = decided not to do it; the row stays on the board as the record of that decision.",
+        },
         owner: { type: "string", description: "Owner handle. Default yourself. Use a teammate handle to assign." },
         query_owner: { type: "string", description: "Filter list by owner handle, or me." },
         query_status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"] },
@@ -117,6 +127,29 @@ export function taskTool(opts: {
             requesterHandle: entry.requesterHandle,
           });
           return JSON.stringify({ ok: true, task: entry });
+        }
+        if (action === "remove" || action === "delete") {
+          const id = String(args.id ?? "").trim();
+          const gone = store.remove(id, boardId);
+          if (gone.length === 0) {
+            return JSON.stringify({ ok: false, error: "unknown task" });
+          }
+          for (const entry of gone) {
+            opts.store.append(boardId, {
+              type: "task/change",
+              action: "remove",
+              taskId: entry.id,
+              title: entry.title,
+              status: entry.status,
+              ownerHandle: entry.ownerHandle,
+              requesterHandle: entry.requesterHandle,
+            });
+          }
+          return JSON.stringify({
+            ok: true,
+            removed: gone.length,
+            tasks: gone.map((entry) => ({ id: entry.id, title: entry.title })),
+          });
         }
         return JSON.stringify({ ok: false, error: "unknown action" });
       } catch (err) {

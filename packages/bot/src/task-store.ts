@@ -97,7 +97,7 @@ export class TaskStore {
   }
 
   get(id: string): TaskEntry | undefined {
-    return this.db
+    return (this.db
       .query(
         `SELECT id, board_id AS boardId, parent_id AS parentId, title, detail, status,
                 owner_id AS ownerId, owner_handle AS ownerHandle,
@@ -105,7 +105,8 @@ export class TaskStore {
                 created_at AS createdAt, updated_at AS updatedAt
          FROM tasks WHERE id = ?`,
       )
-      .get(id) as TaskEntry | undefined;
+      // bun:sqlite hands back null for a miss; the signature says undefined.
+      .get(id) as TaskEntry | null) ?? undefined;
   }
 
   create(input: {
@@ -190,6 +191,24 @@ export class TaskStore {
       )
       .run(parentId, title, detail, status, ownerId, ownerHandle, now, id);
     return this.get(id);
+  }
+
+  /**
+   * Removing a job removes its pieces with it: a piece is the breakdown of a
+   * job, not work that outlives it. Returns the rows that were on the board,
+   * so the caller can name what it erased.
+   */
+  remove(id: string, boardId: SessionId): TaskEntry[] {
+    const current = this.get(id);
+    if (!current || current.boardId !== boardId) {
+      return [];
+    }
+    const gone = [current, ...this.children(id).filter((child) => child.boardId === boardId)];
+    this.db.transaction(() => {
+      this.db.query("DELETE FROM tasks WHERE parent_id = ? AND board_id = ?").run(id, boardId);
+      this.db.query("DELETE FROM tasks WHERE id = ? AND board_id = ?").run(id, boardId);
+    })();
+    return gone;
   }
 
   children(id: string): TaskEntry[] {

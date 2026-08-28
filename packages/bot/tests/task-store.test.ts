@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { SessionStore } from "@cbot/agent";
+import { SessionStore, deriveMessages } from "@cbot/agent";
 import type { BotId, SessionId } from "@cbot/shared";
 import { TaskStore, taskBoardId, tasksDbPath } from "../src/task-store.ts";
 import { taskTool } from "../src/task-tool.ts";
@@ -159,6 +159,55 @@ describe("TaskStore subtasks", () => {
   });
 });
 
+describe("TaskStore remove", () => {
+  test("a job takes its pieces with it, and only on its own board", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tasks-"));
+    const sessions = await SessionStore.open(":memory:");
+    const board = sessions.create({ kind: "coding", workspace: home });
+    const other = sessions.create({ kind: "coding", workspace: home });
+    const bot = await createBot(home, sessions, { handle: "worker", title: "W", description: "W" });
+    const store = await TaskStore.open(home);
+    const who = { ownerId: bot.id, ownerHandle: bot.handle, requesterId: bot.id, requesterHandle: bot.handle };
+
+    const job = store.create({ boardId: board.id, title: "일", ...who });
+    store.create({ boardId: board.id, parentId: job.id, title: "조각1", ...who });
+    store.create({ boardId: board.id, parentId: job.id, title: "조각2", ...who });
+    const keep = store.create({ boardId: board.id, title: "남길 일", ...who });
+    const outsider = store.create({ boardId: other.id, title: "남의 일", ...who });
+
+    expect(store.remove(outsider.id, board.id)).toEqual([]);
+    expect(store.get(outsider.id)?.title).toBe("남의 일");
+    expect(store.remove("task_nope", board.id)).toEqual([]);
+
+    const gone = store.remove(job.id, board.id);
+    expect(gone.map((item) => item.title).sort()).toEqual(["일", "조각1", "조각2"]);
+    expect(store.get(job.id)).toBeUndefined();
+    expect(store.children(job.id)).toEqual([]);
+    expect(store.list(board.id).map((item) => item.title)).toEqual(["남길 일"]);
+    expect(store.get(keep.id)?.title).toBe("남길 일");
+
+    expect(store.remove(job.id, board.id)).toEqual([]);
+    store.close();
+    sessions.close();
+  });
+
+  test("removing a piece leaves its job standing", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tasks-"));
+    const sessions = await SessionStore.open(":memory:");
+    const board = sessions.create({ kind: "coding", workspace: home });
+    const bot = await createBot(home, sessions, { handle: "worker", title: "W", description: "W" });
+    const store = await TaskStore.open(home);
+    const who = { ownerId: bot.id, ownerHandle: bot.handle, requesterId: bot.id, requesterHandle: bot.handle };
+    const job = store.create({ boardId: board.id, title: "일", ...who });
+    const piece = store.create({ boardId: board.id, parentId: job.id, title: "조각", ...who });
+    expect(store.remove(piece.id, board.id).map((item) => item.title)).toEqual(["조각"]);
+    expect(store.get(job.id)?.title).toBe("일");
+    expect(store.children(job.id)).toEqual([]);
+    store.close();
+    sessions.close();
+  });
+});
+
 describe("taskTool", () => {
   test("adds to the parent coding session board from a hop mailbox", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-tasktool-"));
@@ -232,6 +281,30 @@ describe("taskTool", () => {
     ) as { ok: boolean; error?: string };
     expect(tooDeep.ok).toBe(false);
     expect(tooDeep.error).toContain("one level deep");
+
+    const removed = JSON.parse(
+      await tool.execute({ action: "remove", id: job.task.id }, { workspace: home, approvalMode: "allow" }),
+    ) as { ok: boolean; removed: number };
+    expect(removed.ok).toBe(true);
+    expect(removed.removed).toBe(2);
+    const afterRemove = JSON.parse(
+      await tool.execute({ action: "list" }, { workspace: home, approvalMode: "allow" }),
+    ) as { tasks: { title: string }[] };
+    expect(afterRemove.tasks.map((item) => item.title)).not.toContain("큰 일");
+    expect(afterRemove.tasks.map((item) => item.title)).not.toContain("조각");
+    const missing = JSON.parse(
+      await tool.execute({ action: "remove", id: job.task.id }, { workspace: home, approvalMode: "allow" }),
+    ) as { ok: boolean; error?: string };
+    expect(missing.ok).toBe(false);
+    expect(missing.error).toBe("unknown task");
+    const removeEvents = sessions
+      .events(coding.id)
+      .filter((event) => event.type === "task/change" && event.action === "remove");
+    expect(removeEvents).toHaveLength(2);
+    expect(deriveMessages(sessions.events(coding.id)).some((m) => JSON.stringify(m).includes("큰 일"))).toBe(
+      false,
+    );
+
     sessions.close();
   });
 });

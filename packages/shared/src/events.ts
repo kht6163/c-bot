@@ -118,7 +118,7 @@ export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface TaskChangeEvent extends EventEnvelope {
   type: "task/change";
-  action: "add" | "update";
+  action: "add" | "update" | "remove";
   taskId: string;
   title: string;
   status: TaskStatus;
