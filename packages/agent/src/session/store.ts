@@ -17,6 +17,7 @@ export interface CreateSessionInput {
   kind?: SessionKind;
   title?: string;
   botId?: BotId | null;
+  parentId?: SessionId | null;
   workspace?: string | null;
 }
 
@@ -33,6 +34,7 @@ const EVENT_TYPES = new Set([
   "turn/end",
   "user/message",
   "assistant/chunk",
+  "assistant/thinking",
   "assistant/message",
   "tool/call",
   "tool/result",
@@ -65,6 +67,7 @@ export class SessionStore {
         title TEXT NOT NULL,
         kind TEXT NOT NULL,
         bot_id TEXT,
+        parent_id TEXT,
         workspace TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -92,6 +95,10 @@ export class SessionStore {
         `sessions database format ${version.value} is newer than ${SESSION_FORMAT_VERSION}`,
       );
     }
+    const columns = db.query("PRAGMA table_info(sessions)").all() as { name: string }[];
+    if (!columns.some((column) => column.name === "parent_id")) {
+      db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
+    }
     return new SessionStore(db);
   }
 
@@ -113,19 +120,21 @@ export class SessionStore {
       title: input.title?.trim() || "새 세션",
       kind: input.kind ?? "coding",
       botId: input.botId ?? null,
+      parentId: input.parentId ?? null,
       workspace: input.workspace ?? null,
       updatedAt: now,
     };
     this.db
       .query(
-        `INSERT INTO sessions (id, title, kind, bot_id, workspace, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, title, kind, bot_id, parent_id, workspace, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         summary.id,
         summary.title,
         summary.kind,
         summary.botId,
+        summary.parentId,
         summary.workspace,
         now,
         now,
@@ -136,36 +145,25 @@ export class SessionStore {
   get(id: SessionId): SessionSummary | undefined {
     const row = this.db
       .query(
-        `SELECT id, title, kind, bot_id, workspace, updated_at
+        `SELECT id, title, kind, bot_id, parent_id, workspace, updated_at
          FROM sessions WHERE id = ?`,
       )
-      .get(id) as
-      | {
-          id: string;
-          title: string;
-          kind: SessionKind;
-          bot_id: string | null;
-          workspace: string | null;
-          updated_at: string;
-        }
-      | null;
+      .get(id) as SessionRow | null;
     return row ? toSummary(row) : undefined;
   }
 
-  list(filter?: { kind?: SessionKind; workspace?: string }): SessionSummary[] {
+  list(filter?: {
+    kind?: SessionKind;
+    workspace?: string;
+    botId?: BotId;
+    parentId?: SessionId | null;
+  }): SessionSummary[] {
     const rows = this.db
       .query(
-        `SELECT id, title, kind, bot_id, workspace, updated_at
+        `SELECT id, title, kind, bot_id, parent_id, workspace, updated_at
          FROM sessions ORDER BY updated_at DESC`,
       )
-      .all() as {
-      id: string;
-      title: string;
-      kind: SessionKind;
-      bot_id: string | null;
-      workspace: string | null;
-      updated_at: string;
-    }[];
+      .all() as SessionRow[];
     return rows
       .map(toSummary)
       .filter((session) => {
@@ -174,6 +172,18 @@ export class SessionStore {
         }
         if (filter?.workspace !== undefined && session.workspace !== filter.workspace) {
           return false;
+        }
+        if (filter?.botId && session.botId !== filter.botId) {
+          return false;
+        }
+        if (filter && "parentId" in filter) {
+          if (filter.parentId === null) {
+            if (session.parentId !== null) {
+              return false;
+            }
+          } else if (session.parentId !== filter.parentId) {
+            return false;
+          }
         }
         return true;
       });
@@ -198,6 +208,28 @@ export class SessionStore {
       .query("SELECT payload FROM events WHERE session_id = ? ORDER BY seq ASC")
       .all(id) as { payload: string }[];
     return rows.map((row) => parseEvent(row.payload));
+  }
+
+  delete(id: SessionId): boolean {
+    if (!this.get(id)) {
+      return false;
+    }
+    for (const child of this.list({ parentId: id })) {
+      this.delete(child.id);
+    }
+    this.db.transaction(() => {
+      this.db.query("DELETE FROM events WHERE session_id = ?").run(id);
+      this.db.query("DELETE FROM sessions WHERE id = ?").run(id);
+    })();
+    return true;
+  }
+
+  deleteCodingByWorkspace(workspace: string): SessionId[] {
+    const ids = this.list({ kind: "coding", workspace }).map((session) => session.id);
+    for (const id of ids) {
+      this.delete(id);
+    }
+    return ids;
   }
 
   append(id: SessionId, event: SessionEventInput): SessionEvent {
@@ -228,19 +260,23 @@ export class SessionStore {
   }
 }
 
-function toSummary(row: {
+type SessionRow = {
   id: string;
   title: string;
   kind: SessionKind;
   bot_id: string | null;
+  parent_id: string | null;
   workspace: string | null;
   updated_at: string;
-}): SessionSummary {
+};
+
+function toSummary(row: SessionRow): SessionSummary {
   return {
     id: asSessionId(row.id),
     title: row.title,
     kind: row.kind,
     botId: row.bot_id ? asBotId(row.bot_id) : null,
+    parentId: row.parent_id ? asSessionId(row.parent_id) : null,
     workspace: row.workspace,
     updatedAt: row.updated_at,
   };

@@ -1,18 +1,34 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
+  SHIPPED_PROVIDERS,
+  keyEnvName,
+  listRemoteModelCatalog,
   loadConfig,
   loadSecrets,
+  modelsQueryFor,
   probeLlm,
   projectName,
+  providerKey,
+  refreshProviderThinking,
   rememberProject,
+  forgetProject,
+  searchWorkspaceFiles,
+  removeProvider,
   saveConfig,
-  saveXaiApiKey,
+  saveProviderKey,
+  shippedProvider,
+  upsertProvider,
+  validateProviderId,
+  type LlmProvider,
 } from "@cbot/agent";
-import type { ProjectView } from "@cbot/shared";
-import { createBot, listBots } from "@cbot/bot";
-import { asSessionId, asToolCallId } from "@cbot/shared";
+import type { ProjectView, SessionId, SessionTeamMember } from "@cbot/shared";
+import { createBot, deleteBot, listBots, loadBot, updateBot } from "@cbot/bot";
+import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
+import { homedir } from "node:os";
+import { pickNativeDirectory } from "./pick-dir.ts";
+import { resolvePickedDirectory } from "./resolve-dir.ts";
 import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
 
 export async function handleApi(req: Request, runtime: Runtime): Promise<Response> {
@@ -41,13 +57,41 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         toProjectView(updated.project.current, updated.project.recents, runtime.launchDir),
       );
     }
+    if (url.pathname === "/api/project" && req.method === "DELETE") {
+      const body = await readJson(req);
+      if (!isRecord(body) || typeof body.path !== "string" || body.path.trim().length === 0) {
+        throw new HttpError(400, "project required");
+      }
+      const path = resolve(body.path.trim());
+      const config = await loadConfig(runtime.env.home);
+      const sessions = runtime.store.list({ kind: "coding", workspace: path });
+      const known =
+        config.project.current === path ||
+        config.project.recents.includes(path) ||
+        sessions.length > 0;
+      if (!known) {
+        throw new HttpError(404, "unknown project");
+      }
+      await saveConfig(runtime.env.home, forgetProject(config, path));
+      runtime.store.deleteCodingByWorkspace(path);
+      const updated = await loadConfig(runtime.env.home);
+      return Response.json(
+        toProjectView(updated.project.current, updated.project.recents, runtime.launchDir),
+      );
+    }
     if (url.pathname === "/api/sessions" && req.method === "GET") {
       return Response.json({
         sessions: runtime.store.list({ kind: "coding" }),
       });
     }
     if (url.pathname === "/api/bots" && req.method === "GET") {
-      return Response.json({ bots: await listBots(runtime.env.home) });
+      const records = await listBots(runtime.env.home);
+      const bots = [];
+      for (const record of records) {
+        const loaded = await loadBot(runtime.env.home, record.id);
+        bots.push(loaded ?? record);
+      }
+      return Response.json({ bots });
     }
     if (url.pathname === "/api/bots" && req.method === "POST") {
       const body = await readJson(req);
@@ -61,8 +105,46 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         description: typeof body.description === "string" ? body.description : "",
         ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
         workspace: config.project.current,
+        provider: typeof body.provider === "string" ? body.provider : null,
+        model: typeof body.model === "string" ? body.model : null,
+        thinking: typeof body.thinking === "string" ? body.thinking : null,
       });
       return Response.json({ bot }, { status: 201 });
+    }
+    const botMatch = /^\/api\/bots\/([^/]+)$/.exec(url.pathname);
+    if (botMatch && req.method === "PUT") {
+      const id = asBotId(decodeURIComponent(botMatch[1] ?? ""));
+      const body = await readJson(req);
+      if (!isRecord(body)) {
+        throw new HttpError(400, "invalid JSON");
+      }
+      const bot = await updateBot(runtime.env.home, id, {
+        ...(typeof body.title === "string" ? { title: body.title } : {}),
+        ...(typeof body.description === "string" ? { description: body.description } : {}),
+        ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
+        ...(body.provider === null || typeof body.provider === "string" ? { provider: body.provider } : {}),
+        ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
+        ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
+      });
+      if (!bot) {
+        throw new HttpError(404, "unknown bot");
+      }
+      return Response.json({ bot });
+    }
+    if (botMatch && req.method === "DELETE") {
+      const id = asBotId(decodeURIComponent(botMatch[1] ?? ""));
+      try {
+        const ok = await deleteBot(runtime.env.home, id);
+        if (!ok) {
+          throw new HttpError(404, "unknown bot");
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message === "leader cannot be deleted") {
+          throw new HttpError(400, err.message);
+        }
+        throw err;
+      }
+      return Response.json({ ok: true });
     }
     if (url.pathname === "/api/sessions" && req.method === "POST") {
       const body = await readJson(req);
@@ -96,6 +178,71 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
     if (url.pathname === "/api/fs/browse" && req.method === "GET") {
       return Response.json(await browseDir(url.searchParams.get("path"), runtime.launchDir));
     }
+    if (url.pathname === "/api/fs/search" && req.method === "GET") {
+      const config = await loadConfig(runtime.env.home);
+      const requested = url.searchParams.get("workspace")?.trim() || config.project.current;
+      if (!requested) {
+        throw new HttpError(400, "project required");
+      }
+      const workspace = resolve(requested);
+      const allowed = new Set(
+        [config.project.current, ...config.project.recents, runtime.launchDir]
+          .filter((item): item is string => typeof item === "string" && item.length > 0)
+          .map((item) => resolve(item)),
+      );
+      if (!allowed.has(workspace)) {
+        throw new HttpError(400, "workspace is not a known project");
+      }
+      const info = await stat(workspace).catch(() => null);
+      if (!info?.isDirectory()) {
+        throw new HttpError(400, "workspace is not a directory");
+      }
+      const files = await searchWorkspaceFiles(workspace, url.searchParams.get("q") ?? "");
+      return Response.json({ files });
+    }
+    if (url.pathname === "/api/fs/pick-dir" && req.method === "POST") {
+      try {
+        const path = await pickNativeDirectory();
+        if (!path) {
+          return Response.json({ cancelled: true });
+        }
+        const info = await stat(path).catch(() => null);
+        if (!info?.isDirectory()) {
+          throw new HttpError(400, "project is not a directory");
+        }
+        return Response.json({ path });
+      } catch (err) {
+        if (err instanceof HttpError) {
+          throw err;
+        }
+        const message = err instanceof Error ? err.message : "folder picker failed";
+        if (message.includes("unavailable")) {
+          throw new HttpError(501, message);
+        }
+        throw new HttpError(400, message);
+      }
+    }
+    if (url.pathname === "/api/fs/resolve-dir" && req.method === "POST") {
+      const body = await readJson(req);
+      if (!isRecord(body) || typeof body.name !== "string") {
+        throw new HttpError(400, "name required");
+      }
+      const children = Array.isArray(body.children)
+        ? body.children.filter((item): item is string => typeof item === "string")
+        : [];
+      const config = await loadConfig(runtime.env.home);
+      const roots = [
+        config.project.current,
+        ...config.project.recents,
+        runtime.launchDir,
+        homedir(),
+      ].filter((item): item is string => typeof item === "string" && item.length > 0);
+      const path = await resolvePickedDirectory({ name: body.name.trim(), children, roots });
+      if (!path) {
+        throw new HttpError(404, "folder not found");
+      }
+      return Response.json({ path });
+    }
     const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname);
     if (sessionMatch && req.method === "PUT") {
       const id = asSessionId(decodeURIComponent(sessionMatch[1] ?? ""));
@@ -122,7 +269,23 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!session) {
         throw new HttpError(404, "unknown session");
       }
-      return Response.json({ session, events: runtime.store.events(id) });
+      return Response.json({
+        session,
+        events: runtime.store.events(id),
+        team: await sessionTeam(runtime, id, session.kind),
+      });
+    }
+    if (sessionMatch && req.method === "DELETE") {
+      const id = asSessionId(decodeURIComponent(sessionMatch[1] ?? ""));
+      const session = runtime.store.get(id);
+      if (!session) {
+        throw new HttpError(404, "unknown session");
+      }
+      if (session.kind === "bot-chat") {
+        throw new HttpError(400, "bot chat cannot be deleted");
+      }
+      runtime.store.delete(id);
+      return Response.json({ ok: true });
     }
     const approveMatch = /^\/api\/sessions\/([^/]+)\/approvals$/.exec(url.pathname);
     if (approveMatch && req.method === "POST") {
@@ -147,61 +310,235 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
     if (url.pathname === "/api/settings" && req.method === "GET") {
       const config = await loadConfig(runtime.env.home);
       const secrets = await loadSecrets(runtime.env.home);
-      return Response.json({
-        model: config.llm.model,
-        baseURL: config.llm.baseURL,
-        hasApiKey: Boolean(secrets.xaiApiKey),
-      });
+      const refreshed = await refreshProviderThinking(config, secrets);
+      if (refreshed !== config) {
+        await saveConfig(runtime.env.home, refreshed);
+      }
+      return Response.json(toSettingsView(refreshed, secrets));
     }
-    if (url.pathname === "/api/settings" && req.method === "PUT") {
+    if (url.pathname === "/api/settings/active" && req.method === "PUT") {
       const body = await readJson(req);
       if (!isRecord(body)) {
         throw new HttpError(400, "invalid JSON");
       }
       const config = await loadConfig(runtime.env.home);
-      const model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : config.llm.model;
-      const baseURL =
-        typeof body.baseURL === "string" && body.baseURL.trim() ? body.baseURL.trim() : config.llm.baseURL;
-      await saveConfig(runtime.env.home, { ...config, llm: { model, baseURL } });
-      return Response.json({ model, baseURL });
+      const activeProvider =
+        typeof body.provider === "string" && body.provider.trim() ? body.provider.trim() : null;
+      const activeModel = typeof body.model === "string" && body.model.trim() ? body.model.trim() : null;
+      const activeThinking =
+        typeof body.thinking === "string" && body.thinking.trim() ? body.thinking.trim() : null;
+      if (activeProvider && !config.llm.providers.some((item) => item.id === activeProvider)) {
+        throw new HttpError(400, "unknown provider");
+      }
+      await saveConfig(runtime.env.home, {
+        ...config,
+        llm: { ...config.llm, activeProvider, activeModel, activeThinking },
+      });
+      const secrets = await loadSecrets(runtime.env.home);
+      return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets));
+    }
+    if (url.pathname === "/api/providers" && req.method === "POST") {
+      const body = await readJson(req);
+      if (!isRecord(body)) {
+        throw new HttpError(400, "invalid JSON");
+      }
+      let id: string;
+      try {
+        id = validateProviderId(typeof body.id === "string" ? body.id : "");
+      } catch (err) {
+        throw new HttpError(400, err instanceof Error ? err.message : "invalid provider id");
+      }
+      const config = await loadConfig(runtime.env.home);
+      if (config.llm.providers.some((item) => item.id === id)) {
+        throw new HttpError(409, "provider exists");
+      }
+      const provider = providerFromBody(id, body);
+      if (provider.baseURL.length === 0) {
+        throw new HttpError(400, "baseURL required");
+      }
+      if (provider.models.length === 0) {
+        throw new HttpError(400, "at least one model required");
+      }
+      await saveConfig(runtime.env.home, upsertProvider(config, provider));
+      if (typeof body.apiKey === "string" && body.apiKey.trim()) {
+        await saveProviderKey(runtime.env.home, id, body.apiKey.trim());
+      }
+      const secrets = await loadSecrets(runtime.env.home);
+      return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets), { status: 201 });
+    }
+    const providerMatch = /^\/api\/providers\/([^/]+)$/.exec(url.pathname);
+    if (providerMatch && req.method === "PUT") {
+      const id = decodeURIComponent(providerMatch[1] ?? "");
+      const body = await readJson(req);
+      if (!isRecord(body)) {
+        throw new HttpError(400, "invalid JSON");
+      }
+      const config = await loadConfig(runtime.env.home);
+      const existing = config.llm.providers.find((item) => item.id === id);
+      if (!existing) {
+        throw new HttpError(404, "unknown provider");
+      }
+      const provider = providerFromBody(id, body, existing);
+      if (provider.baseURL.length === 0) {
+        throw new HttpError(400, "baseURL required");
+      }
+      if (provider.models.length === 0) {
+        throw new HttpError(400, "at least one model required");
+      }
+      await saveConfig(runtime.env.home, upsertProvider(config, provider));
+      if (typeof body.apiKey === "string") {
+        await saveProviderKey(runtime.env.home, id, body.apiKey.trim());
+      }
+      const secrets = await loadSecrets(runtime.env.home);
+      return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets));
+    }
+    if (providerMatch && req.method === "DELETE") {
+      const id = decodeURIComponent(providerMatch[1] ?? "");
+      const config = await loadConfig(runtime.env.home);
+      if (!config.llm.providers.some((item) => item.id === id)) {
+        throw new HttpError(404, "unknown provider");
+      }
+      await saveProviderKey(runtime.env.home, id, "");
+      await saveConfig(runtime.env.home, removeProvider(config, id));
+      const secrets = await loadSecrets(runtime.env.home);
+      return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets));
+    }
+    if (url.pathname === "/api/llm/models" && req.method === "POST") {
+      const body = await readJson(req);
+      const fromBody = isRecord(body) ? body : {};
+      const target = await resolveProbeTarget(runtime.env.home, fromBody);
+      try {
+        const query = modelsQueryFor(target.providerId, target.baseURL);
+        const models = await listRemoteModelCatalog({
+          baseURL: target.baseURL,
+          apiKey: target.apiKey,
+          ...(query ? { modelsQuery: query } : {}),
+        });
+        return Response.json({ models: models.map((item) => item.id), catalog: models });
+      } catch (err) {
+        throw new HttpError(400, err instanceof Error ? err.message : "list models failed");
+      }
     }
     if (url.pathname === "/api/llm/test" && req.method === "POST") {
       const body = await readJson(req);
-      const config = await loadConfig(runtime.env.home);
-      const secrets = await loadSecrets(runtime.env.home);
       const fromBody = isRecord(body) ? body : {};
-      const apiKey = Object.prototype.hasOwnProperty.call(fromBody, "apiKey")
-        ? typeof fromBody.apiKey === "string"
-          ? fromBody.apiKey.trim()
-          : ""
-        : (secrets.xaiApiKey ?? "");
-      const model =
-        typeof fromBody.model === "string" && fromBody.model.trim().length > 0
-          ? fromBody.model.trim()
-          : config.llm.model;
-      const baseURL =
-        typeof fromBody.baseURL === "string" && fromBody.baseURL.trim().length > 0
-          ? fromBody.baseURL.trim()
-          : config.llm.baseURL;
+      const target = await resolveProbeTarget(runtime.env.home, fromBody);
       const result = await probeLlm({
-        apiKey: apiKey ?? "",
-        model,
-        baseURL,
+        apiKey: target.apiKey,
+        model: target.model,
+        baseURL: target.baseURL,
       });
       return Response.json(result);
-    }
-    if (url.pathname === "/api/secrets" && req.method === "PUT") {
-      const body = await readJson(req);
-      if (!isRecord(body) || typeof body.xaiApiKey !== "string" || body.xaiApiKey.trim().length === 0) {
-        throw new HttpError(400, "xaiApiKey required");
-      }
-      await saveXaiApiKey(runtime.env.home, body.xaiApiKey.trim());
-      return Response.json({ ok: true });
     }
     return Response.json({ error: "not found" }, { status: 404 });
   } catch (err) {
     return jsonError(err);
   }
+}
+
+function toSettingsView(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  secrets: Awaited<ReturnType<typeof loadSecrets>>,
+) {
+  const added = new Set(config.llm.providers.map((item) => item.id));
+  const providers = config.llm.providers.map((provider) => ({
+    id: provider.id,
+    displayName: provider.displayName,
+    baseURL: provider.baseURL,
+    kind: provider.kind,
+    models: provider.models,
+    thinking: provider.thinking,
+    hasApiKey: Boolean(providerKey(secrets, provider.id)),
+    keyEnv: keyEnvName(provider.id),
+  }));
+  return {
+    activeProvider: config.llm.activeProvider,
+    activeModel: config.llm.activeModel,
+    activeThinking: config.llm.activeThinking,
+    hasApiKey: providers.some((item) => item.hasApiKey),
+    providers,
+    catalog: SHIPPED_PROVIDERS.filter((item) => !added.has(item.id)),
+  };
+}
+
+function providerFromBody(id: string, body: Record<string, unknown>, existing?: LlmProvider): LlmProvider {
+  const catalog = shippedProvider(id);
+  const models = Array.isArray(body.models)
+    ? body.models.filter((item): item is string => typeof item === "string")
+    : (existing?.models ?? []);
+  const thinking = isRecord(body.thinking)
+    ? Object.fromEntries(
+        Object.entries(body.thinking).filter(
+          (entry): entry is [string, string[]] => Array.isArray(entry[1]),
+        ),
+      )
+    : (existing?.thinking ?? {});
+  return {
+    id,
+    displayName:
+      typeof body.displayName === "string" && body.displayName.trim()
+        ? body.displayName.trim()
+        : (existing?.displayName ?? catalog?.displayName ?? id),
+    baseURL:
+      typeof body.baseURL === "string" && body.baseURL.trim()
+        ? body.baseURL.trim()
+        : (existing?.baseURL ?? catalog?.baseURL ?? ""),
+    kind: existing?.kind ?? (catalog ? "shipped" : "custom"),
+    models,
+    thinking,
+  };
+}
+
+async function resolveProbeTarget(
+  home: string,
+  body: Record<string, unknown>,
+): Promise<{ baseURL: string; apiKey: string; model: string; providerId: string }> {
+  const config = await loadConfig(home);
+  const secrets = await loadSecrets(home);
+  const providerId = typeof body.provider === "string" ? body.provider.trim() : "";
+  const provider = providerId ? config.llm.providers.find((item) => item.id === providerId) : undefined;
+  const baseURL =
+    typeof body.baseURL === "string" && body.baseURL.trim()
+      ? body.baseURL.trim()
+      : (provider?.baseURL ?? "");
+  const model =
+    typeof body.model === "string" && body.model.trim()
+      ? body.model.trim()
+      : (provider?.models[0] ?? config.llm.activeModel ?? "");
+  const apiKey =
+    typeof body.apiKey === "string"
+      ? body.apiKey.trim()
+      : provider
+        ? (providerKey(secrets, provider.id) ?? "")
+        : "";
+  return { baseURL, apiKey, model, providerId };
+}
+
+async function sessionTeam(
+  runtime: Runtime,
+  id: SessionId,
+  kind: string,
+): Promise<SessionTeamMember[]> {
+  if (kind !== "coding") {
+    return [];
+  }
+  const hops = runtime.store.list({ kind: "bot-chat", parentId: id });
+  const bots = await listBots(runtime.env.home);
+  const team: SessionTeamMember[] = [];
+  for (const hop of hops) {
+    const bot = bots.find((item) => item.id === hop.botId);
+    if (!bot || bot.role === "leader") {
+      continue;
+    }
+    team.push({
+      id: bot.id,
+      handle: bot.handle,
+      title: bot.title,
+      role: bot.role,
+      sessionId: hop.id,
+    });
+  }
+  return team;
 }
 
 function toProjectView(current: string | null, recents: string[], launchDir: string): ProjectView {

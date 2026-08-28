@@ -34,6 +34,9 @@ export function jsonError(err: unknown): Response {
     message === "empty message" ||
     message === "workspace required" ||
     message === "project required" ||
+    message === "direct bot chat is disabled" ||
+    message === "leader cannot be deleted" ||
+    message === "handle leader is reserved" ||
     message.startsWith("handle")
       ? 400
       : 500;

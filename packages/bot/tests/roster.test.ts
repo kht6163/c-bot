@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { SessionStore } from "@cbot/agent";
-import { createBot, listBots, loadBot } from "../src/roster.ts";
+import { createBot, deleteBot, ensureLeaderBot, listBots, loadBot } from "../src/roster.ts";
 import { protocolSection } from "../src/protocol.ts";
 import { PROTOCOL_HEADING } from "../src/types.ts";
-import { messageAgentTool } from "../src/message-agent.ts";
+import { messageAgentTool, workspaceForMailbox } from "../src/message-agent.ts";
 import { deriveMessages } from "@cbot/agent";
 
 describe("roster", () => {
@@ -31,6 +31,33 @@ describe("roster", () => {
     expect(session?.botId).toBe(researcher.id);
     const loaded = await loadBot(home, writer.id);
     expect(loaded?.soul).toContain("Writer");
+    const pinned = await createBot(home, store, {
+      handle: "coder",
+      title: "Coder",
+      description: "writes",
+      provider: "acme",
+      model: "alpha",
+      thinking: "xhigh",
+    });
+    expect(pinned.provider).toBe("acme");
+    expect(pinned.model).toBe("alpha");
+    expect(pinned.thinking).toBe("xhigh");
+    const reloaded = await loadBot(home, pinned.id);
+    expect(reloaded?.thinking).toBe("xhigh");
+    expect(await deleteBot(home, writer.id)).toBe(true);
+    expect((await listBots(home)).map((b) => b.handle)).toEqual(["coder", "researcher"]);
+    store.close();
+  });
+
+  test("ensures a leader that cannot be deleted", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-leader-"));
+    const store = await SessionStore.open(join(home, "sessions", "sessions.sqlite"));
+    const leader = await ensureLeaderBot(home, store);
+    expect(leader.handle).toBe("leader");
+    expect(leader.role).toBe("leader");
+    const again = await ensureLeaderBot(home, store);
+    expect(again.id).toBe(leader.id);
+    await expect(deleteBot(home, leader.id)).rejects.toThrow("leader cannot be deleted");
     store.close();
   });
 });
@@ -81,7 +108,7 @@ describe("message_agent", () => {
     const incoming = events.find((e) => e.type === "bot/message");
     expect(incoming?.type === "bot/message" && incoming.text).toContain("Message from 🤖 Alpha (@alpha)");
     expect(incoming?.type === "bot/message" && incoming.text).toContain("please review");
-    const blocked = messageAgentTool({
+    const fromCoding = messageAgentTool({
       home,
       store,
       sessionId: a.sessionId,
@@ -89,10 +116,10 @@ describe("message_agent", () => {
       fromBotId: a.id,
       wake: () => {},
     });
-    const denied = JSON.parse(
-      await blocked.execute({ target: "beta", message: "nope" }, { workspace: "", approvalMode: "allow" }),
-    ) as { ok: boolean; reason: string };
-    expect(denied.reason).toBe("not_bot_chat");
+    const fromLead = JSON.parse(
+      await fromCoding.execute({ target: "beta", message: "from coding" }, { workspace: "", approvalMode: "allow" }),
+    ) as { ok: boolean };
+    expect(fromLead.ok).toBe(true);
     expect(deriveMessages(store.events(b.sessionId)).some((m) => m.role === "user")).toBe(true);
     store.close();
   });
@@ -117,6 +144,97 @@ describe("message_agent", () => {
       await tool.execute({ target: "ghost", message: "hi" }, { workspace: "", approvalMode: "allow" }),
     ) as { reason: string };
     expect(missing.reason).toBe("target_not_found");
+    store.close();
+  });
+
+  test("specialist reply to the lead lands on the originating coding session", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-hop-"));
+    const store = await SessionStore.open(join(home, "sessions", "sessions.sqlite"));
+    const leader = await ensureLeaderBot(home, store);
+    const researcher = await createBot(home, store, {
+      handle: "researcher",
+      title: "Researcher",
+      description: "looks things up",
+    });
+    const coding = store.create({
+      kind: "coding",
+      workspace: "/Users/hantaekim/project/test",
+    });
+    const woken: string[] = [];
+    const fromLead = messageAgentTool({
+      home,
+      store,
+      sessionId: coding.id,
+      sessionKind: "coding",
+      fromBotId: leader.id,
+      wake: (id) => {
+        woken.push(id);
+      },
+    });
+    const outbound = JSON.parse(
+      await fromLead.execute(
+        { target: "researcher", message: "please inspect test.txt" },
+        { workspace: coding.workspace ?? "", approvalMode: "allow" },
+      ),
+    ) as { ok: boolean };
+    expect(outbound.ok).toBe(true);
+    const hop = store.list({ kind: "bot-chat", parentId: coding.id, botId: researcher.id })[0];
+    expect(hop?.id).toBeDefined();
+    expect(hop?.id).not.toBe(researcher.sessionId);
+    const inbound = store.events(hop!.id).find((event) => event.type === "bot/message");
+    expect(inbound?.type === "bot/message" && inbound.replyToSessionId).toBe(coding.id);
+    expect(inbound?.type === "bot/message" && inbound.text).toContain(
+      "Message from 🤖 Leader (@leader)",
+    );
+    expect(store.events(researcher.sessionId).some((event) => event.type === "bot/message")).toBe(
+      false,
+    );
+    const fromSpecialist = messageAgentTool({
+      home,
+      store,
+      sessionId: hop!.id,
+      sessionKind: "bot-chat",
+      fromBotId: researcher.id,
+      wake: (id) => {
+        woken.push(id);
+      },
+    });
+    const reply = JSON.parse(
+      await fromSpecialist.execute(
+        { target: "leader", message: "first line is 테스트 파일입니다." },
+        { workspace: "", approvalMode: "allow" },
+      ),
+    ) as { ok: boolean };
+    expect(reply.ok).toBe(true);
+    const onCoding = store.events(coding.id).filter((event) => event.type === "bot/message");
+    expect(onCoding).toHaveLength(1);
+    expect(onCoding[0]?.type === "bot/message" && onCoding[0].text).toContain(
+      "Message from 🤖 Researcher (@researcher)",
+    );
+    expect(onCoding[0]?.type === "bot/message" && onCoding[0].text).toContain("테스트 파일입니다.");
+    expect(woken).toEqual([hop!.id, coding.id]);
+    expect(workspaceForMailbox(store, hop!.id)).toBe("/Users/hantaekim/project/test");
+
+    const other = store.create({
+      kind: "coding",
+      workspace: "/Users/hantaekim/project/test",
+    });
+    const fromLeadOther = messageAgentTool({
+      home,
+      store,
+      sessionId: other.id,
+      sessionKind: "coding",
+      fromBotId: leader.id,
+      wake: () => {},
+    });
+    await fromLeadOther.execute(
+      { target: "researcher", message: "second coding session" },
+      { workspace: other.workspace ?? "", approvalMode: "allow" },
+    );
+    const otherHop = store.list({ kind: "bot-chat", parentId: other.id, botId: researcher.id })[0];
+    expect(otherHop?.id).not.toBe(hop?.id);
+    expect(store.events(otherHop!.id).some((event) => event.type === "bot/message")).toBe(true);
+    expect(store.events(hop!.id).filter((event) => event.type === "bot/message")).toHaveLength(1);
     store.close();
   });
 });

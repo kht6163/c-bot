@@ -16,8 +16,17 @@ export interface SessionSummary {
   title: string;
   kind: SessionKind;
   botId: BotId | null;
+  parentId: SessionId | null;
   workspace: string | null;
   updatedAt: string;
+}
+
+export interface SessionTeamMember {
+  id: BotId;
+  handle: string;
+  title: string;
+  role: "leader" | "specialist";
+  sessionId: SessionId;
 }
 
 export type ClientFrame =

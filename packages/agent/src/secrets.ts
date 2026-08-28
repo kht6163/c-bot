@@ -1,8 +1,8 @@
 import { chmod } from "node:fs/promises";
-import { secretsPath } from "./config.ts";
+import { keyEnvName, secretsPath, type AppConfig } from "./config.ts";
 
 export interface Secrets {
-  xaiApiKey: string | undefined;
+  keys: Record<string, string>;
 }
 
 export async function loadSecrets(
@@ -10,8 +10,45 @@ export async function loadSecrets(
   processEnv: Record<string, string | undefined> = process.env,
 ): Promise<Secrets> {
   const fromFile = await readEnvFile(secretsPath(home));
-  const xaiApiKey = firstNonEmpty(processEnv.XAI_API_KEY, fromFile.XAI_API_KEY);
-  return { xaiApiKey };
+  const keys: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fromFile)) {
+    if (key.endsWith("_API_KEY") && value.trim()) {
+      keys[key] = value.trim();
+    }
+  }
+  for (const [key, value] of Object.entries(processEnv)) {
+    if (key.endsWith("_API_KEY") && value && value.trim()) {
+      keys[key] = value.trim();
+    }
+  }
+  return { keys };
+}
+
+export function providerKey(secrets: Secrets, providerId: string): string | undefined {
+  const name = keyEnvName(providerId);
+  const value = secrets.keys[name];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
+export function resolveLlmEndpoint(
+  config: AppConfig,
+  secrets: Secrets,
+  pin?: { provider?: string | null; model?: string | null },
+): { baseURL: string; apiKey: string; model: string } | undefined {
+  const providerId = pin?.provider || config.llm.activeProvider;
+  const model = pin?.model || config.llm.activeModel;
+  if (!providerId || !model) {
+    return undefined;
+  }
+  const provider = config.llm.providers.find((item) => item.id === providerId);
+  if (!provider) {
+    return undefined;
+  }
+  const apiKey = providerKey(secrets, provider.id);
+  if (!apiKey) {
+    return undefined;
+  }
+  return { baseURL: provider.baseURL, apiKey, model };
 }
 
 /** Fill empty keys on `target` from a dotenv file. Existing non-empty values win. */
@@ -28,10 +65,15 @@ export async function applyEnvFile(
   }
 }
 
-export async function saveXaiApiKey(home: string, key: string): Promise<void> {
+export async function saveProviderKey(home: string, providerId: string, key: string): Promise<void> {
   const path = secretsPath(home);
   const current = await readEnvFile(path);
-  current.XAI_API_KEY = key;
+  const envName = keyEnvName(providerId);
+  if (key.trim()) {
+    current[envName] = key.trim();
+  } else {
+    delete current[envName];
+  }
   const body = Object.entries(current)
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")
@@ -67,13 +109,4 @@ async function readEnvFile(path: string): Promise<Record<string, string>> {
     out[key] = value;
   }
   return out;
-}
-
-function firstNonEmpty(...values: (string | undefined)[]): string | undefined {
-  for (const value of values) {
-    if (value && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return undefined;
 }

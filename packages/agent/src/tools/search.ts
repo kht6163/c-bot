@@ -3,7 +3,15 @@ import { join, relative } from "node:path";
 import { asOptionalString, asString, type ToolDefinition } from "./types.ts";
 import { resolveWorkspacePath } from "./path.ts";
 
-const SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".vite", "example-project"]);
+export const SKIP_DIR_NAMES = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "coverage",
+  ".vite",
+  "example-project",
+]);
+const SKIP = SKIP_DIR_NAMES;
 const GREP_CAP = 50;
 const GLOB_CAP = 200;
 const FILE_CAP = 256 * 1024;

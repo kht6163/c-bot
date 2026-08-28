@@ -1,4 +1,4 @@
-import type { BotId, DeliveryId, ToolCallId, TurnId } from "./ids.ts";
+import type { BotId, DeliveryId, SessionId, ToolCallId, TurnId } from "./ids.ts";
 import type { DeliveryReason } from "./reasons.ts";
 
 /** Bump only when the durable event JSON cannot be read by this code. */
@@ -18,6 +18,11 @@ export interface EventEnvelope {
 export interface Mention {
   handle: string;
   botId: BotId;
+}
+
+export interface AttachedFile {
+  path: string;
+  content: string;
 }
 
 export interface LoggedToolCall {
@@ -41,6 +46,7 @@ export interface UserMessageEvent extends EventEnvelope {
   type: "user/message";
   text: string;
   mentions: readonly Mention[];
+  files?: readonly AttachedFile[];
 }
 
 export interface AssistantChunkEvent extends EventEnvelope {
@@ -78,6 +84,13 @@ export interface BotMessageEvent extends EventEnvelope {
   fromHandle: string;
   fromTitle: string;
   text: string;
+  replyToSessionId?: SessionId;
+}
+
+export interface AssistantThinkingEvent extends EventEnvelope {
+  type: "assistant/thinking";
+  turnId: TurnId;
+  text: string;
 }
 
 export interface BotDeliveryEvent extends EventEnvelope {
@@ -93,6 +106,7 @@ export type SessionEvent =
   | TurnEndEvent
   | UserMessageEvent
   | AssistantChunkEvent
+  | AssistantThinkingEvent
   | AssistantMessageEvent
   | ToolCallEvent
   | ToolResultEvent

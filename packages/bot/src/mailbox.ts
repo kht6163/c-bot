@@ -8,6 +8,7 @@ export interface MailboxSend {
   fromTitle: string;
   toSessionId: SessionId;
   text: string;
+  replyToSessionId?: SessionId;
 }
 
 export interface MailboxAck {
@@ -29,6 +30,7 @@ export function deliver(store: SessionStore, send: MailboxSend): MailboxAck {
     fromHandle: send.fromHandle,
     fromTitle: send.fromTitle,
     text: attributedText(send.fromTitle, send.fromHandle, send.text),
+    ...(send.replyToSessionId ? { replyToSessionId: send.replyToSessionId } : {}),
   });
   return { ok: true, deliveryId };
 }

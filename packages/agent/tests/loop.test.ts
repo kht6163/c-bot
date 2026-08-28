@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { asBotId, asDeliveryId, asTurnId } from "@cbot/shared";
 import { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { LlmClient, LlmStreamEvent } from "../src/llm/client.ts";
@@ -27,8 +28,8 @@ function turnCtx(
   return {
     store,
     llm,
-    baseURL: "https://api.x.ai/v1",
-    model: "grok-4.6",
+    baseURL: "https://llm.example/v1",
+    model: "demo",
     workspace: extra.workspace ?? null,
     approvalMode: extra.approvalMode ?? "allow",
     approvals: extra.approvals ?? new ApprovalGate(),
@@ -106,6 +107,25 @@ describe("sessionNeedsTurn", () => {
     const store = await SessionStore.open(":memory:");
     const session = store.create();
     store.append(session.id, { type: "user/message", text: "a", mentions: [] });
+    expect(sessionNeedsTurn(store.events(session.id))).toBe(true);
+    store.close();
+  });
+
+  test("a mailbox delivery during a turn still owes a follow-up turn", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create();
+    store.append(session.id, { type: "user/message", text: "a", mentions: [] });
+    store.append(session.id, { type: "turn/start", turnId: asTurnId("trn_1") });
+    store.append(session.id, {
+      type: "bot/message",
+      deliveryId: asDeliveryId("dlv_1"),
+      fromBotId: asBotId("bot_1"),
+      fromHandle: "researcher",
+      fromTitle: "Researcher",
+      text: "Message from 🤖 Researcher (@researcher):\n\nreport",
+    });
+    expect(sessionNeedsTurn(store.events(session.id))).toBe(false);
+    store.append(session.id, { type: "turn/end", turnId: asTurnId("trn_1") });
     expect(sessionNeedsTurn(store.events(session.id))).toBe(true);
     store.close();
   });

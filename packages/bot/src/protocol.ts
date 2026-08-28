@@ -1,5 +1,4 @@
-import type { BotRecord } from "./types.ts";
-import { PROTOCOL_HEADING } from "./types.ts";
+import { LEADER_HANDLE, PROTOCOL_HEADING, type BotRecord } from "./types.ts";
 
 export function protocolSection(me: BotRecord, roster: readonly BotRecord[], soul: string): string {
   if (soul.includes(PROTOCOL_HEADING)) {
@@ -8,15 +7,29 @@ export function protocolSection(me: BotRecord, roster: readonly BotRecord[], sou
   const others = roster.filter((bot) => bot.id !== me.id && !bot.hidden);
   const lines = others.map((bot) => {
     const role = [bot.title, bot.description].filter((part) => part.length > 0).join(" — ");
-    return `- \`@${bot.handle}\`${role ? ` — ${role}` : ""}`;
+    const tag = bot.role === "leader" ? " (lead)" : "";
+    return `- \`@${bot.handle}\`${tag}${role ? ` — ${role}` : ""}`;
   });
+  if (me.role === "leader") {
+    return [
+      PROTOCOL_HEADING,
+      "",
+      `You are \`@${LEADER_HANDLE}\`, the lead. The user talks only to you.`,
+      "Specialists (live roster):",
+      lines.length > 0 ? lines.join("\n") : "- (none)",
+      "",
+      "To use a specialist, call `message_agent`. It is fire-and-forget: you get a delivery acknowledgement, you finish your turn, and their reply arrives later as a notification in this conversation. Compose the message yourself; never paste the user's words verbatim.",
+      "",
+    ].join("\n");
+  }
   return [
     PROTOCOL_HEADING,
     "",
-    `You are \`@${me.handle}\`. Your teammates (live roster):`,
+    `You are \`@${me.handle}\`. The user does not talk to you directly. The lead is \`@${LEADER_HANDLE}\`.`,
+    "Teammates:",
     lines.length > 0 ? lines.join("\n") : "- (none)",
     "",
-    "To message a teammate, call `message_agent`. It is fire-and-forget: you get a delivery acknowledgement, you finish your turn, and their reply arrives later as a notification. Compose the message yourself; never paste the user's words verbatim. Message one relevant teammate unless the user asked to fan out.",
+    "When you finish, call `message_agent` targeting `leader` with your result. Do not wait for a further reply unless you need another specialist.",
     "",
   ].join("\n");
 }

@@ -1,3 +1,4 @@
+export { atTokens, findActiveAt } from "./at.ts";
 export { brand, type Brand } from "./brand.ts";
 export {
   asBotId,
@@ -32,6 +33,7 @@ export {
   type EventEnvelope,
   type IsoTime,
   type LoggedToolCall,
+  type AttachedFile,
   type Mention,
   type SessionEvent,
   type SessionKind,
@@ -49,4 +51,5 @@ export {
   type ProjectView,
   type ServerFrame,
   type SessionSummary,
+  type SessionTeamMember,
 } from "./protocol.ts";

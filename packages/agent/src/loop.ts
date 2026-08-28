@@ -29,6 +29,7 @@ export interface TurnContext {
   approvals: ApprovalGate;
   extraTools?: ToolDefinition[];
   systemPrompt?: string;
+  reasoningEffort?: string;
 }
 
 export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<void> {
@@ -38,7 +39,7 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
     ctx.store.append(sessionId, {
       type: "assistant/message",
       turnId,
-      text: "[reason: missing_config] XAI_API_KEY가 없습니다. 설정에서 키를 넣으세요.",
+      text: "[reason: missing_config] LLM 프로바이더가 없습니다. 설정에서 프로바이더와 키를 넣으세요.",
       toolCalls: [],
     });
     ctx.store.append(sessionId, { type: "turn/end", turnId });
@@ -65,6 +66,9 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
       toolCalls: [],
     });
   } catch (err) {
+    if (!ctx.store.get(sessionId)) {
+      return;
+    }
     const reason = err instanceof LlmError ? err.reason : "unknown";
     const detail = err instanceof Error ? err.message : String(err);
     ctx.store.append(sessionId, {
@@ -73,6 +77,9 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
       text: `[reason: ${reason}] ${detail}`,
       toolCalls: [],
     });
+  }
+  if (!ctx.store.get(sessionId)) {
+    return;
   }
   ctx.store.append(sessionId, { type: "turn/end", turnId });
 }
@@ -88,18 +95,22 @@ async function runStep(
   const history = deriveMessages(ctx.store.events(sessionId));
   let full = "";
   let pending = "";
+  let thinkingPending = "";
   let lastFlush = Date.now();
   const toolCalls: LoggedToolCall[] = [];
   const flush = (force: boolean) => {
-    if (pending.length === 0) {
-      return;
-    }
     const now = Date.now();
     if (!force && now - lastFlush < CHUNK_FLUSH_MS) {
       return;
     }
-    ctx.store.append(sessionId, { type: "assistant/chunk", turnId, text: pending });
-    pending = "";
+    if (thinkingPending.length > 0) {
+      ctx.store.append(sessionId, { type: "assistant/thinking", turnId, text: thinkingPending });
+      thinkingPending = "";
+    }
+    if (pending.length > 0) {
+      ctx.store.append(sessionId, { type: "assistant/chunk", turnId, text: pending });
+      pending = "";
+    }
     lastFlush = now;
   };
   for await (const event of ctx.llm.stream({
@@ -109,8 +120,12 @@ async function runStep(
     system,
     messages: history,
     ...(tools.length > 0 ? { tools } : {}),
+    ...(ctx.reasoningEffort ? { reasoningEffort: ctx.reasoningEffort } : {}),
   })) {
-    if (event.type === "text") {
+    if (event.type === "thinking") {
+      thinkingPending += event.text;
+      flush(false);
+    } else if (event.type === "text") {
       full += event.text;
       pending += event.text;
       flush(false);
@@ -229,11 +244,19 @@ function parseArgs(raw: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-/** True when a user or bot message sits after the last finished turn. */
+/**
+ * True when a user or bot message arrived after the last completed turn
+ * began. A mailbox delivery that lands during an open turn therefore still
+ * owes a follow-up turn once that turn ends.
+ */
 export function sessionNeedsTurn(events: readonly SessionEvent[]): boolean {
+  let lastTurnStart = 0;
   let lastTurnEnd = 0;
   let lastInput = 0;
   for (const event of events) {
+    if (event.type === "turn/start") {
+      lastTurnStart = event.seq;
+    }
     if (event.type === "turn/end") {
       lastTurnEnd = event.seq;
     }
@@ -241,7 +264,16 @@ export function sessionNeedsTurn(events: readonly SessionEvent[]): boolean {
       lastInput = event.seq;
     }
   }
-  return lastInput > lastTurnEnd;
+  if (lastInput === 0) {
+    return false;
+  }
+  if (lastTurnStart === 0) {
+    return true;
+  }
+  if (lastTurnEnd < lastTurnStart) {
+    return false;
+  }
+  return lastInput > lastTurnStart;
 }
 
 export function titleFromText(text: string): string {

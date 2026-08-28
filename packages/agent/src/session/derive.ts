@@ -1,4 +1,4 @@
-import { assertNever, type SessionEvent } from "@cbot/shared";
+import { assertNever, type AttachedFile, type SessionEvent } from "@cbot/shared";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -21,7 +21,7 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
   for (const event of events) {
     switch (event.type) {
       case "user/message":
-        messages.push({ role: "user", content: event.text });
+        messages.push({ role: "user", content: userContent(event.text, event.files) });
         break;
       case "bot/message":
         messages.push({ role: "user", content: event.text });
@@ -54,6 +54,7 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
       case "turn/start":
       case "turn/end":
       case "assistant/chunk":
+      case "assistant/thinking":
       case "tool/call":
       case "bot/delivery":
         break;
@@ -62,4 +63,14 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
     }
   }
   return messages;
+}
+
+function userContent(text: string, files: readonly AttachedFile[] | undefined): string {
+  if (!files || files.length === 0) {
+    return text;
+  }
+  const attached = files
+    .map((file) => `Referenced file \`${file.path}\`:\n\`\`\`\n${file.content}\n\`\`\``)
+    .join("\n\n");
+  return `${text}\n\n${attached}`;
 }

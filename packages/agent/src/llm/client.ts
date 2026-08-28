@@ -1,4 +1,7 @@
 import type { DeliveryReason } from "@cbot/shared";
+import { defaultThinking, modelsQueryFor, sanitizeThinking } from "../catalog.ts";
+import type { AppConfig, LlmProvider } from "../config.ts";
+import { providerKey, type Secrets } from "../secrets.ts";
 import type { ChatMessage } from "../session/derive.ts";
 import type { ToolSchema } from "../tools/types.ts";
 
@@ -14,6 +17,7 @@ export class LlmError extends Error {
 
 export type LlmStreamEvent =
   | { type: "text"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "tool_call"; id: string; name: string; arguments: string }
   | { type: "done"; finishReason: string };
 
@@ -24,6 +28,7 @@ export interface LlmRequest {
   system: string;
   messages: readonly ChatMessage[];
   tools?: readonly ToolSchema[];
+  reasoningEffort?: string;
 }
 
 export interface LlmClient {
@@ -53,6 +58,9 @@ export class OpenAiCompatClient implements LlmClient {
           model: request.model,
           stream: true,
           messages,
+          ...(request.reasoningEffort && request.reasoningEffort !== "off"
+            ? { reasoning_effort: request.reasoningEffort }
+            : {}),
           ...(request.tools && request.tools.length > 0
             ? {
                 tools: request.tools.map((tool) => ({
@@ -92,6 +100,10 @@ export class OpenAiCompatClient implements LlmClient {
       const text = deltaText(parsed);
       if (text) {
         yield { type: "text", text };
+      }
+      const thinking = deltaThinking(parsed);
+      if (thinking) {
+        yield { type: "thinking", text: thinking };
       }
       mergeToolDelta(acc, parsed);
       const nextFinish = finishReason(parsed);
@@ -184,6 +196,30 @@ function mergeToolDelta(
   }
 }
 
+function deltaThinking(parsed: unknown): string {
+  if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+    return "";
+  }
+  const choice = parsed.choices[0];
+  if (!isRecord(choice) || !isRecord(choice.delta)) {
+    return "";
+  }
+  const delta = choice.delta;
+  if (typeof delta.reasoning_content === "string") {
+    return delta.reasoning_content;
+  }
+  if (typeof delta.reasoning === "string") {
+    return delta.reasoning;
+  }
+  if (typeof delta.thinking === "string") {
+    return delta.thinking;
+  }
+  if (isRecord(delta.thinking) && typeof delta.thinking.text === "string") {
+    return delta.thinking.text;
+  }
+  return "";
+}
+
 function deltaText(parsed: unknown): string {
   if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
     return "";
@@ -232,6 +268,46 @@ async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<string
   }
 }
 
+function catalogRows(body: unknown): unknown[] {
+  if (Array.isArray(body)) {
+    return body;
+  }
+  if (!isRecord(body)) {
+    return [];
+  }
+  if (Array.isArray(body.models)) {
+    return body.models;
+  }
+  if (Array.isArray(body.data)) {
+    return body.data;
+  }
+  return [];
+}
+
+function parseRemoteModel(raw: unknown): RemoteModel | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  if (raw.visibility === "hide") {
+    return undefined;
+  }
+  const id =
+    typeof raw.slug === "string" && raw.slug.trim()
+      ? raw.slug.trim()
+      : typeof raw.id === "string"
+        ? raw.id.trim()
+        : "";
+  if (id.length === 0) {
+    return undefined;
+  }
+  const thinking = sanitizeThinking(
+    raw.supported_reasoning_levels ??
+      (isRecord(raw.thinking) ? raw.thinking.levels : undefined) ??
+      raw.thinking_levels,
+  );
+  return { id, thinking };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -253,6 +329,108 @@ export interface LlmProbeResult {
  * Checks that the OpenAI-compatible endpoint accepts this key.
  * Prefers GET /models; falls back to a tiny chat completion.
  */
+export interface RemoteModel {
+  id: string;
+  thinking: string[];
+}
+
+export async function listRemoteModels(
+  input: { baseURL: string; apiKey: string; modelsQuery?: string },
+  fetchFn: FetchLike = fetch,
+): Promise<string[]> {
+  return (await listRemoteModelCatalog(input, fetchFn)).map((item) => item.id);
+}
+
+export async function listRemoteModelCatalog(
+  input: { baseURL: string; apiKey: string; modelsQuery?: string },
+  fetchFn: FetchLike = fetch,
+): Promise<RemoteModel[]> {
+  const key = input.apiKey.trim();
+  const baseURL = trimSlash(input.baseURL.trim());
+  if (key.length === 0 || baseURL.length === 0) {
+    return [];
+  }
+  const headers = { authorization: `Bearer ${key}` };
+  const primary = input.modelsQuery ? `${baseURL}/models?${input.modelsQuery}` : `${baseURL}/models`;
+  let res = await fetchFn(primary, { headers });
+  if (!res.ok && input.modelsQuery) {
+    res = await fetchFn(`${baseURL}/models`, { headers });
+  }
+  if (!res.ok) {
+    throw new LlmError(res.statusText, statusReason(res.status));
+  }
+  const body: unknown = await res.json().catch(() => null);
+  const rows = catalogRows(body);
+  const out: RemoteModel[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const parsed = parseRemoteModel(row);
+    if (!parsed || seen.has(parsed.id)) {
+      continue;
+    }
+    seen.add(parsed.id);
+    out.push(parsed);
+  }
+  return out;
+}
+
+export function needsThinkingRefresh(provider: LlmProvider): boolean {
+  if (!modelsQueryFor(provider.id, provider.baseURL) || provider.models.length === 0) {
+    return false;
+  }
+  return provider.models.some((model) => (provider.thinking[model] ?? []).length === 0);
+}
+
+export async function refreshProviderThinking(
+  config: AppConfig,
+  secrets: Secrets,
+  fetchFn: FetchLike = fetch,
+): Promise<AppConfig> {
+  let next = config;
+  for (const provider of config.llm.providers) {
+    const query = modelsQueryFor(provider.id, provider.baseURL);
+    const apiKey = providerKey(secrets, provider.id);
+    if (!query || !apiKey || !needsThinkingRefresh(provider)) {
+      continue;
+    }
+    try {
+      const catalog = await listRemoteModelCatalog(
+        { baseURL: provider.baseURL, apiKey, modelsQuery: query },
+        fetchFn,
+      );
+      const thinking = { ...provider.thinking };
+      let changed = false;
+      for (const item of catalog) {
+        if (item.thinking.length === 0) {
+          continue;
+        }
+        const prev = thinking[item.id] ?? [];
+        if (prev.length === item.thinking.length && prev.every((level, i) => level === item.thinking[i])) {
+          continue;
+        }
+        thinking[item.id] = item.thinking;
+        changed = true;
+      }
+      if (!changed) {
+        continue;
+      }
+      const providers = next.llm.providers.map((item) =>
+        item.id === provider.id ? { ...item, thinking } : item,
+      );
+      const active = providers.find((item) => item.id === next.llm.activeProvider);
+      const levels = active && next.llm.activeModel ? (active.thinking[next.llm.activeModel] ?? []) : [];
+      const activeThinking =
+        next.llm.activeThinking && levels.includes(next.llm.activeThinking)
+          ? next.llm.activeThinking
+          : defaultThinking(levels);
+      next = { ...next, llm: { ...next.llm, providers, activeThinking } };
+    } catch {
+      /* keep stored thinking */
+    }
+  }
+  return next;
+}
+
 export async function probeLlm(
   input: LlmProbeInput,
   fetchFn: FetchLike = fetch,
