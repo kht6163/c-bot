@@ -1912,11 +1912,27 @@ select.field-input {
   max-height: min(80vh, 720px);
 }
 
+.memory-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.memory-panel .modal-actions {
+  margin-top: 0;
+}
+
+.memory-delete {
+  margin-right: auto;
+}
+
 .memory-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 12px;
   min-height: 280px;
+  align-items: stretch;
 }
 
 .memory-list-pane {
@@ -1924,6 +1940,24 @@ select.field-input {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
+}
+
+.memory-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.memory-toolbar input {
+  flex: 1;
+  min-width: 0;
+}
+
+.memory-toolbar .text-btn {
+  flex: none;
+  white-space: nowrap;
+  height: 36px;
+  padding: 0 8px;
 }
 
 .memory-list {
@@ -1970,6 +2004,17 @@ select.field-input {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+.memory-body-field {
+  flex: 1;
+  min-height: 0;
+}
+
+.memory-body-field textarea {
+  flex: 1;
+  min-height: 8em;
 }
 
 .memory-chip {

@@ -8,7 +8,7 @@ import {
   type MemoryView,
 } from "../lib/api.ts";
 
-export function BotMemoryPanel({ bot }: { bot: BotView }) {
+export function BotMemoryPanel({ bot, onClose }: { bot: BotView; onClose: () => void }) {
   const [items, setItems] = useState<MemoryView[]>([]);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | undefined>();
@@ -35,108 +35,115 @@ export function BotMemoryPanel({ bot }: { bot: BotView }) {
   }
 
   return (
-    <div className="memory-layout">
-      <div className="memory-list-pane">
-        <input
-          value={query}
-          placeholder="검색"
-          aria-label="메모리 검색"
-          onChange={(event) => {
-            const next = event.target.value;
-            setQuery(next);
-            void reload(next);
-          }}
-        />
-        <ul className="memory-list">
-          {items.length === 0 ? (
-            <li className="empty">메모리가 없습니다</li>
-          ) : (
-            items.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className={item.id === selectedId ? "memory-item active" : "memory-item"}
-                  onClick={() => {
-                    setSelectedId(item.id);
-                    setTitle(item.title);
-                    setBody(item.body);
-                    setError("");
-                  }}
-                >
-                  <span className="row-title">{item.title}</span>
-                  <span className="row-meta">{item.body}</span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => {
-            setSelectedId(undefined);
-            setTitle("");
-            setBody("");
-            setError("");
-          }}
-        >
-          새로 만들기
-        </button>
-      </div>
-      <div className="memory-form">
-        <label>
-          제목
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <label>
-          내용
-          <textarea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
-        </label>
-        {error ? <p className="hint danger">{error}</p> : null}
-        <div className="modal-actions">
-          {selected ? (
+    <div className="memory-panel">
+      <div className="memory-layout">
+        <div className="memory-list-pane">
+          <div className="memory-toolbar">
+            <input
+              value={query}
+              placeholder="검색"
+              aria-label="메모리 검색"
+              onChange={(event) => {
+                const next = event.target.value;
+                setQuery(next);
+                void reload(next);
+              }}
+            />
             <button
               type="button"
-              className="ghost"
+              className="text-btn"
               onClick={() => {
-                void (async () => {
-                  await deleteMemory(bot.id, selected.id);
-                  setSelectedId(undefined);
-                  setTitle("");
-                  setBody("");
-                  await reload();
-                })().catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : "failed");
-                });
+                setSelectedId(undefined);
+                setTitle("");
+                setBody("");
+                setError("");
               }}
             >
-              삭제
+              추가
             </button>
-          ) : null}
+          </div>
+          <ul className="memory-list">
+            {items.length === 0 ? (
+              <li className="empty">메모리가 없습니다</li>
+            ) : (
+              items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={item.id === selectedId ? "memory-item active" : "memory-item"}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setTitle(item.title);
+                      setBody(item.body);
+                      setError("");
+                    }}
+                  >
+                    <span className="row-title">{item.title}</span>
+                    <span className="row-meta">{item.body}</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div className="memory-form">
+          <label>
+            제목
+            <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label className="memory-body-field">
+            내용
+            <textarea rows={8} value={body} onChange={(event) => setBody(event.target.value)} />
+          </label>
+          {error ? <p className="hint danger">{error}</p> : null}
+        </div>
+      </div>
+      <div className="modal-actions">
+        {selected ? (
           <button
             type="button"
+            className="ghost memory-delete"
             onClick={() => {
               void (async () => {
-                if (selected) {
-                  const saved = await updateMemory(bot.id, selected.id, { title, body });
-                  setSelectedId(saved.id);
-                  setTitle(saved.title);
-                  setBody(saved.body);
-                } else {
-                  const saved = await createMemory(bot.id, { title, body });
-                  setSelectedId(saved.id);
-                  setTitle(saved.title);
-                  setBody(saved.body);
-                }
+                await deleteMemory(bot.id, selected.id);
+                setSelectedId(undefined);
+                setTitle("");
+                setBody("");
                 await reload();
               })().catch((err: unknown) => {
                 setError(err instanceof Error ? err.message : "failed");
               });
             }}
           >
-            저장
+            삭제
           </button>
-        </div>
+        ) : null}
+        <button type="button" className="ghost" onClick={onClose}>
+          닫기
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void (async () => {
+              if (selected) {
+                const saved = await updateMemory(bot.id, selected.id, { title, body });
+                setSelectedId(saved.id);
+                setTitle(saved.title);
+                setBody(saved.body);
+              } else {
+                const saved = await createMemory(bot.id, { title, body });
+                setSelectedId(saved.id);
+                setTitle(saved.title);
+                setBody(saved.body);
+              }
+              await reload();
+            })().catch((err: unknown) => {
+              setError(err instanceof Error ? err.message : "failed");
+            });
+          }}
+        >
+          저장
+        </button>
       </div>
     </div>
   );

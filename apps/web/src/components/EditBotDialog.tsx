@@ -166,12 +166,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
         ) : (
           <>
             <p className="hint-static">이 봇만 쓰는 기억입니다. 한글은 CJK 바이그램으로 찾습니다.</p>
-            <BotMemoryPanel bot={bot} />
-            <div className="modal-actions">
-              <button type="button" className="ghost" onClick={onClose}>
-                닫기
-              </button>
-            </div>
+            <BotMemoryPanel bot={bot} onClose={onClose} />
           </>
         )}
       </div>
