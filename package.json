@@ -6,7 +6,7 @@
   },
   "private": true,
   "scripts": {
-    "dev": "bun run --filter @cbot/server dev",
+    "dev": "bun run --filter @cbot/server --filter @cbot/web dev",
     "test": "bun test --path-ignore-patterns=example-project",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' typecheck"

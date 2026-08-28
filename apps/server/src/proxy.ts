@@ -23,10 +23,12 @@ export async function proxyVite(req: Request): Promise<Response> {
       duplex: "half",
     } as RequestInit);
   } catch {
-    return new Response("c-bot web UI is starting…", {
-      status: 503,
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
+    // The Vite worker is a sibling process, so it can still be binding :5173
+    // when the first request arrives. Retry the page instead of stranding it.
+    return new Response(
+      `<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="1">c-bot web UI is starting…`,
+      { status: 503, headers: { "content-type": "text/html; charset=utf-8" } },
+    );
   }
 }
 
