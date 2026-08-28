@@ -2558,6 +2558,7 @@ select.field-input {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
   padding: 4px 10px;
   border-radius: 8px;
   font-size: 12px;
@@ -2585,8 +2586,8 @@ select.field-input {
 }
 
 .git-name {
-  flex: none;
-  max-width: 100%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   color: var(--text);
   font-family: var(--mono);
@@ -2594,8 +2595,10 @@ select.field-input {
   white-space: nowrap;
 }
 
+/* The huge shrink factor spends the directory first, so a long basename still
+   ellipsizes inside the row instead of pushing past the pane edge. */
 .git-dir {
-  flex: 0 1 auto;
+  flex: 0 999 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--quiet);

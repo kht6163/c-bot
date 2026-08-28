@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SessionId } from "@cbot/shared";
-import { fetchGitStatus, type GitFileView, type GitStatusView } from "../lib/api.ts";
-
-type Group = { key: string; label: string; files: GitFileView[]; column: "index" | "worktree" };
+import { fetchGitStatus, type GitStatusView } from "../lib/api.ts";
+import { codeOf, groupFiles, splitPath, toneOf } from "../lib/git-rows.ts";
 
 export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
   const [git, setGit] = useState<GitStatusView | undefined>();
@@ -48,7 +47,7 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
             </p>
             <ul className="git-files">
               {group.files.map((file) => {
-                const name = renameOf(file.path);
+                const name = splitPath(file);
                 return (
                   <li
                     key={`${group.key}:${file.path}`}
@@ -69,75 +68,4 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
       )}
     </div>
   );
-}
-
-/**
- * `index` and `worktree` are the two porcelain columns: staged and unstaged.
- * A file changed in both shows up twice, which is what git actually reports.
- */
-function groupFiles(files: readonly GitFileView[]): Group[] {
-  const conflict = files.filter((file) => isConflict(file));
-  const rest = files.filter((file) => !isConflict(file));
-  const groups: Group[] = [
-    { key: "conflict", label: "충돌", column: "worktree", files: conflict },
-    {
-      key: "staged",
-      label: "스테이지됨",
-      column: "index",
-      files: rest.filter((file) => marked(file.index)),
-    },
-    {
-      key: "worktree",
-      label: "변경됨",
-      column: "worktree",
-      files: rest.filter((file) => marked(file.worktree)),
-    },
-    {
-      key: "untracked",
-      label: "추적 안 함",
-      column: "worktree",
-      files: rest.filter((file) => file.index === "?" && file.worktree === "?"),
-    },
-  ];
-  return groups.filter((group) => group.files.length > 0);
-}
-
-function marked(code: string): boolean {
-  return code.trim().length > 0 && code !== "?";
-}
-
-function isConflict(file: GitFileView): boolean {
-  const pair = `${file.index}${file.worktree}`;
-  return pair === "UU" || pair === "AA" || pair === "DD" || file.index === "U" || file.worktree === "U";
-}
-
-function codeOf(file: GitFileView, column: Group["column"]): string {
-  const code = (column === "index" ? file.index : file.worktree).trim();
-  return code || "·";
-}
-
-/** A class name cannot carry `?`, so the porcelain letter maps to a tone. */
-function toneOf(file: GitFileView, column: Group["column"]): string {
-  const code = codeOf(file, column);
-  if (code === "A") {
-    return "tone-add";
-  }
-  if (code === "D" || code === "U") {
-    return "tone-drop";
-  }
-  return code === "?" ? "tone-new" : "";
-}
-
-/**
- * The basename leads so it survives truncation at the 300px pane width; the
- * directory trails and is the part allowed to be cut. A rename shows its new
- * name — the old one stays in the row title.
- */
-function renameOf(path: string): { dir: string; base: string } {
-  const target = (path.includes(" -> ") ? path.split(" -> ").pop() : path) ?? path;
-  const trimmed = target.replace(/\/$/, "");
-  const cut = trimmed.lastIndexOf("/");
-  return cut < 0
-    ? { dir: "", base: trimmed }
-    : { dir: trimmed.slice(0, cut), base: trimmed.slice(cut + 1) };
 }
