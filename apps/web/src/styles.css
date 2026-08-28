@@ -2481,7 +2481,11 @@ select.field-input {
   font-size: 12px;
 }
 
-.inspector-tab:hover,
+.inspector-tab:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
 .inspector-tab.active {
   background: var(--row-active);
   color: var(--text);
