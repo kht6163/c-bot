@@ -36,6 +36,10 @@ describe("loadProcessEnv", () => {
     expect(() => loadProcessEnv({ CBOT_PORT: "nope" })).toThrow(/CBOT_PORT/);
   });
 
+  test("rejects ports browsers block as unsafe", () => {
+    expect(() => loadProcessEnv({ CBOT_PORT: "6000" })).toThrow(/ERR_UNSAFE_PORT/);
+  });
+
   test("honors CBOT_HOME and CBOT_HOST", () => {
     const env = loadProcessEnv({
       CBOT_HOME: "/tmp/cbot-home",

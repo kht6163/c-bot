@@ -45,3 +45,6 @@ const server = Bun.serve({
 });
 
 console.log(`c-bot listening on http://${server.hostname}:${server.port}`);
+if (web === "vite") {
+  console.log("Open that URL in the browser. Vite :5173 is only the UI hot-reload worker.");
+}
