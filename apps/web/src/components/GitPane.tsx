@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SessionId } from "@cbot/shared";
-import { fetchGitStatus, type GitStatusView } from "../lib/api.ts";
-import { codeOf, groupFiles, splitPath, toneOf } from "../lib/git-rows.ts";
+import { fetchGitStatus, type GitCommitView, type GitStatusView } from "../lib/api.ts";
+import { codeOf, commitDate, groupFiles, groupRefs, splitPath, toneOf } from "../lib/git-rows.ts";
 
 export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
   const [git, setGit] = useState<GitStatusView | undefined>();
@@ -28,6 +28,7 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
   }
 
   const groups = groupFiles(git.files);
+  const refGroups = groupRefs(git.refs);
 
   return (
     <div className="git-pane">
@@ -66,6 +67,62 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
           </section>
         ))
       )}
+      {refGroups.map((group) => (
+        <details key={group.key} className="git-group" open={group.key === "local"}>
+          <summary className="section-label git-summary">
+            {group.label} {group.refs.length}
+          </summary>
+          <ul className="git-refs">
+            {group.refs.map((ref) => (
+              <li
+                key={`${group.key}:${ref.name}`}
+                className={ref.head ? "git-ref current" : "git-ref"}
+                title={ref.upstream ? `${ref.name} → ${ref.upstream}` : ref.name}
+              >
+                <span className="git-ref-mark">{ref.head ? "✓" : ""}</span>
+                <span className="git-ref-name">{ref.name}</span>
+                <span className="git-sha">{ref.sha}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ))}
+      <section className="git-group">
+        <p className="section-label">커밋</p>
+        {git.commits.length === 0 ? (
+          <p className="empty">커밋이 없습니다</p>
+        ) : (
+          <ul className="git-commits">
+            {git.commits.map((commit) => (
+              <CommitRow key={commit.sha} commit={commit} />
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
+  );
+}
+
+function CommitRow({ commit }: { commit: GitCommitView }) {
+  return (
+    <li className="git-commit" title={`${commit.short} · ${commit.author}\n${commit.subject}`}>
+      {commit.refs.length > 0 ? (
+        <p className="git-commit-refs">
+          {commit.refs.map((ref) => (
+            <span key={ref} className="git-ref-badge">
+              {ref}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      <p className="git-commit-head">
+        <span className="git-commit-subject">{commit.subject}</span>
+      </p>
+      <p className="git-commit-meta">
+        <span className="git-sha">{commit.short}</span>
+        <span className="git-commit-author">{commit.author}</span>
+        <span className="git-commit-date">{commitDate(commit.date)}</span>
+      </p>
+    </li>
   );
 }

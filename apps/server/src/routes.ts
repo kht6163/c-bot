@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   SHIPPED_PROVIDERS,
-  gitStatus,
+  gitView,
   keyEnvName,
   listRemoteModelCatalog,
   listWorkspaceDir,
@@ -315,7 +315,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
     if (inspectGit && req.method === "GET") {
       const id = asSessionId(decodeURIComponent(inspectGit[1] ?? ""));
       const workspace = sessionWorkspace(runtime, id);
-      return Response.json({ git: await gitStatus(workspace) });
+      return Response.json({ git: await gitView(workspace) });
     }
     const inspectFiles = /^\/api\/sessions\/([^/]+)\/files$/.exec(url.pathname);
     if (inspectFiles && req.method === "GET") {

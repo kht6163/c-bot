@@ -1,4 +1,4 @@
-import type { GitFileView } from "./api.ts";
+import type { GitFileView, GitRefKind, GitRefView } from "./api.ts";
 
 export type GitColumn = "index" | "worktree";
 
@@ -75,4 +75,44 @@ export function splitPath(file: GitFileView): { dir: string; base: string } {
 
 function isRename(code: string): boolean {
   return code === "R" || code === "C";
+}
+
+export interface GitRefGroup {
+  key: GitRefKind;
+  label: string;
+  refs: GitRefView[];
+}
+
+const REF_LABELS: Record<GitRefKind, string> = {
+  local: "브랜치",
+  remote: "리모트",
+  tag: "태그",
+};
+
+/** The checked-out branch leads its group; the rest keep git's recency order. */
+export function groupRefs(refs: readonly GitRefView[]): GitRefGroup[] {
+  const kinds: GitRefKind[] = ["local", "remote", "tag"];
+  return kinds
+    .map((kind) => {
+      const mine = refs.filter((ref) => ref.kind === kind);
+      const head = mine.filter((ref) => ref.head);
+      return { key: kind, label: REF_LABELS[kind], refs: [...head, ...mine.filter((ref) => !ref.head)] };
+    })
+    .filter((group) => group.refs.length > 0);
+}
+
+/**
+ * The pane is narrow, so a commit date spends no room on the time. This year
+ * prints month and day; an older commit adds the year it belongs to.
+ */
+export function commitDate(iso: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) {
+    return "";
+  }
+  const month = at.getMonth() + 1;
+  const day = at.getDate();
+  return at.getFullYear() === now.getFullYear()
+    ? `${month}월 ${day}일`
+    : `${at.getFullYear()}. ${month}. ${day}.`;
 }

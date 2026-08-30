@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { codeOf, groupFiles, isConflict, splitPath, toneOf } from "./git-rows.ts";
-import type { GitFileView } from "./api.ts";
+import { codeOf, commitDate, groupFiles, groupRefs, isConflict, splitPath, toneOf } from "./git-rows.ts";
+import type { GitFileView, GitRefKind, GitRefView } from "./api.ts";
 
 function file(index: string, worktree: string, path: string): GitFileView {
   return { index, worktree, path, label: "" };
@@ -97,5 +97,40 @@ describe("isConflict", () => {
   test("does not flag an ordinary staged add", () => {
     expect(isConflict(file("A", " ", "x"))).toBe(false);
     expect(isConflict(file("A", "A", "x"))).toBe(true);
+  });
+});
+
+describe("groupRefs", () => {
+  function ref(name: string, kind: GitRefKind, head = false): GitRefView {
+    return { name, kind, head, sha: "abc1234", upstream: null };
+  }
+
+  test("splits the three ref kinds and drops the empty ones", () => {
+    const groups = groupRefs([ref("main", "local"), ref("origin/main", "remote")]);
+    expect(groups.map((group) => [group.key, group.refs.length])).toEqual([
+      ["local", 1],
+      ["remote", 1],
+    ]);
+  });
+
+  test("the checked-out branch leads its group", () => {
+    const groups = groupRefs([ref("work", "local"), ref("main", "local", true)]);
+    expect(groups[0]?.refs.map((item) => item.name)).toEqual(["main", "work"]);
+  });
+});
+
+describe("commitDate", () => {
+  const now = new Date(2026, 7, 31);
+
+  test("this year drops the year", () => {
+    expect(commitDate(new Date(2026, 7, 28, 16, 36).toISOString(), now)).toBe("8월 28일");
+  });
+
+  test("an older commit keeps the year it belongs to", () => {
+    expect(commitDate(new Date(2025, 0, 3).toISOString(), now)).toBe("2025. 1. 3.");
+  });
+
+  test("an unreadable date prints nothing", () => {
+    expect(commitDate("", now)).toBe("");
   });
 });

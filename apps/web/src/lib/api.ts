@@ -178,6 +178,25 @@ export interface GitFileView {
   label: string;
 }
 
+export type GitRefKind = "local" | "remote" | "tag";
+
+export interface GitRefView {
+  name: string;
+  kind: GitRefKind;
+  head: boolean;
+  sha: string;
+  upstream: string | null;
+}
+
+export interface GitCommitView {
+  sha: string;
+  short: string;
+  subject: string;
+  author: string;
+  date: string;
+  refs: string[];
+}
+
 export interface GitStatusView {
   repo: boolean;
   branch: string;
@@ -185,6 +204,8 @@ export interface GitStatusView {
   ahead: number;
   behind: number;
   files: GitFileView[];
+  refs: GitRefView[];
+  commits: GitCommitView[];
 }
 
 export interface DirEntryView {

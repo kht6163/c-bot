@@ -64,7 +64,19 @@ export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";
 export { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";
 export { loadMentionedFiles, searchWorkspaceFiles } from "./workspace-files.ts";
-export { gitStatus, parseGitStatus, type GitFile, type GitStatusView } from "./git-status.ts";
+export {
+  gitStatus,
+  gitView,
+  parseGitLog,
+  parseGitRefs,
+  parseGitStatus,
+  type GitCommit,
+  type GitFile,
+  type GitRef,
+  type GitRefKind,
+  type GitStatusView,
+  type GitView,
+} from "./git-status.ts";
 export {
   listWorkspaceDir,
   readWorkspacePreview,
