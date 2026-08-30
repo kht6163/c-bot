@@ -307,20 +307,6 @@ button {
   background: var(--bg);
 }
 
-.inspector-open {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 2;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .hero {
   flex: 1;
   display: flex;
@@ -2226,6 +2212,11 @@ select.field-input {
   min-height: 36px;
   padding: 4px 16px 0 20px;
   border-bottom: 1px solid var(--border);
+}
+
+.stage-fill {
+  flex: 1;
+  min-width: 0;
 }
 
 .stage-split-label {

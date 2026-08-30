@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import type { SessionEvent, SessionId, ToolCallId } from "@cbot/shared";
 import { visibleRows, type ChatRow } from "../lib/rows.ts";
 import {
@@ -41,6 +48,8 @@ interface Props {
   onViewMode: (mode: ViewMode) => void;
   onFocus: (key: string) => void;
   onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean) => void;
+  /** Trailing slot of the stage bar, so a session control shares the row instead of covering it. */
+  barEnd?: ReactNode;
 }
 
 export function TeamStage({
@@ -56,6 +65,7 @@ export function TeamStage({
   onViewMode,
   onFocus,
   onApprove,
+  barEnd,
 }: Props) {
   const panes = useMemo(
     () => teamPanes(codingSessionId, bots, leadHandle, leadTitle),
@@ -67,9 +77,11 @@ export function TeamStage({
 
   return (
     <div className="team-stage">
-      {canSplit ? (
+      {canSplit || barEnd ? (
         <div className="stage-bar">
-          {mode === "split" ? (
+          {!canSplit ? (
+            <div className="stage-fill" />
+          ) : mode === "split" ? (
             <p className="stage-split-label">분할 · {panes.length} 봇</p>
           ) : (
             <div className="agent-tabs" role="tablist" aria-label="봇 세션">
@@ -89,14 +101,17 @@ export function TeamStage({
               ))}
             </div>
           )}
-          <button
-            type="button"
-            className="view-toggle"
-            aria-pressed={mode === "split"}
-            onClick={() => onViewMode(mode === "split" ? "agent" : "split")}
-          >
-            {mode === "split" ? "한 화면" : "분할"}
-          </button>
+          {canSplit ? (
+            <button
+              type="button"
+              className="view-toggle"
+              aria-pressed={mode === "split"}
+              onClick={() => onViewMode(mode === "split" ? "agent" : "split")}
+            >
+              {mode === "split" ? "한 화면" : "분할"}
+            </button>
+          ) : null}
+          {barEnd}
         </div>
       ) : null}
       {mode === "split" ? (

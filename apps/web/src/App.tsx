@@ -514,6 +514,13 @@ export function App() {
             onApprove={(sessionId, callId, allow) => {
               void sendApproval(sessionId, callId, allow);
             }}
+            barEnd={
+              inspectorOpen ? null : (
+                <button type="button" className="view-toggle" onClick={() => setInspectorOpen(true)}>
+                  패널
+                </button>
+              )
+            }
           />
         ) : (
           <div className="hero">
@@ -548,15 +555,6 @@ export function App() {
             />
           </div>
         )}
-        {selectedId && !inspectorOpen ? (
-          <button
-            type="button"
-            className="inspector-open"
-            onClick={() => setInspectorOpen(true)}
-          >
-            패널
-          </button>
-        ) : null}
         {selectedId ? (
           <Composer
             busy={busy}
