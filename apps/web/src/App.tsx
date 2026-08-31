@@ -530,7 +530,17 @@ export function App() {
           />
         ) : (
           <div className="hero">
+            <svg className="hero-mark" width="52" height="52" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+              <path
+                d="M11 2.2 19 6.6v8.8L11 19.8 3 15.4V6.6z"
+                stroke="var(--accent)"
+                strokeWidth="1"
+                strokeLinejoin="round"
+              />
+              <circle cx="11" cy="11" r="2.5" fill="var(--accent)" />
+            </svg>
             <h1>c-bot</h1>
+            <p className="hero-sub">웹 브라우저에서 쓰는 코딩 에이전트</p>
             {project?.current ? (
               <p className="hero-chip">
                 <button type="button" className="ghost" onClick={openNativeProject}>

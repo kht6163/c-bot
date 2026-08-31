@@ -48,6 +48,7 @@ export function Sidebar({
   return (
     <aside className="rail">
       <div className="brand-row">
+        <BrandMark />
         <div className="brand">c-bot</div>
       </div>
       <button
@@ -186,7 +187,11 @@ export function Sidebar({
                     onClick={() => onEditBot(bot.id)}
                   >
                     <span className="row-title">@{bot.handle}</span>
-                    <span className="row-meta">{bot.role === "leader" ? "Lead" : bot.title}</span>
+                    {bot.role === "leader" ? (
+                      <span className="row-badge">LEAD</span>
+                    ) : (
+                      <span className="row-meta">{bot.title}</span>
+                    )}
                   </button>
                   {bot.role === "leader" ? (
                     <span className="caret-slot" />
@@ -221,6 +226,20 @@ export function Sidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+function BrandMark() {
+  return (
+    <svg className="brand-mark" width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path
+        d="M11 2.2 19 6.6v8.8L11 19.8 3 15.4V6.6z"
+        stroke="var(--accent)"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <circle cx="11" cy="11" r="2.5" fill="var(--accent)" />
+    </svg>
   );
 }
 
