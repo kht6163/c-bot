@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   PROTOCOL_VERSION,
   type ProjectView,
@@ -15,6 +15,7 @@ import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TeamStage } from "./components/TeamStage.tsx";
 import { Inspector } from "./components/Inspector.tsx";
+import { loadInspectorWidth, saveInspectorWidth } from "./lib/inspector.ts";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
   createBot,
@@ -65,6 +66,9 @@ export function App() {
   const [team, setTeam] = useState<SessionTeamMember[]>([]);
   const [botEvents, setBotEvents] = useState<Record<string, SessionEvent[]>>({});
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorWidth, setInspectorWidth] = useState(() =>
+    loadInspectorWidth(window.localStorage, window.innerWidth),
+  );
   const [inspectorTick, setInspectorTick] = useState(0);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
@@ -401,6 +405,8 @@ export function App() {
     <>
     <div
       className={selectedId && inspectorOpen ? "app has-inspector" : "app"}
+      // The width is a custom property so the narrow-window media query can still win.
+      style={{ "--inspector-w": `${inspectorWidth}px` } as CSSProperties}
       {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}
     >
       <Sidebar
@@ -574,6 +580,11 @@ export function App() {
         <Inspector
           sessionId={selectedId}
           refreshKey={inspectorTick}
+          width={inspectorWidth}
+          onWidth={(px) => {
+            setInspectorWidth(px);
+            saveInspectorWidth(px, window.localStorage);
+          }}
           onClose={() => setInspectorOpen(false)}
         />
       ) : null}
