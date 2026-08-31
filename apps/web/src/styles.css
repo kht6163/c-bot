@@ -797,16 +797,37 @@ button {
   padding: 24px 32px 12px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 4px;
   max-width: 844px;
   width: 100%;
   margin: 0 auto;
 }
 
+/* The base gap is the one between calls inside a trace. Everything else asks
+   for its own air. */
+.log > .bubble,
+.log > .thinking,
+.log > .scaffold,
+.log > .memory-chip,
+.log > .tool-card:not(.tool-card + .tool-card) {
+  margin-top: 14px;
+}
+
+.log > :first-child {
+  margin-top: 0;
+}
+
 .log.pane {
   max-width: none;
   padding: 8px 10px 12px;
-  gap: 10px;
+}
+
+.log.pane > .bubble,
+.log.pane > .thinking,
+.log.pane > .scaffold,
+.log.pane > .memory-chip,
+.log.pane > .tool-card:not(.tool-card + .tool-card) {
+  margin-top: 10px;
 }
 
 .empty-log {
@@ -1141,46 +1162,164 @@ button {
   color: var(--danger);
 }
 
+/* A run of tool calls reads as one trace: the marks line up on a spine that
+   bridges the gap to the next call, and stops at the last one. */
 .tool-card {
+  position: relative;
   align-self: stretch;
-  padding: 4px 0;
   color: var(--muted);
 }
 
-.tool-card.live .who {
-  animation: scaffold-pulse 1s ease-in-out infinite alternate;
+.tool-card::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 22px;
+  bottom: -4px;
+  width: 1px;
+  background: rgb(255 255 255 / 13%);
+}
+
+.tool-card:not(:has(+ .tool-card))::before {
+  display: none;
+}
+
+.tool-head {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 11px;
+  min-height: 30px;
+  padding-right: 9px;
+  border-radius: 8px;
+}
+
+.tool-head:hover {
+  background: rgb(255 255 255 / 4%);
+}
+
+.tool-mark {
+  justify-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+
+.tool-mark.is-ok {
+  background: var(--live);
+}
+
+.tool-mark.is-failed {
+  background: var(--danger);
+}
+
+.tool-mark.is-waiting {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn) 22%, transparent);
+}
+
+.tool-mark.is-running {
+  background: transparent;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-top-color: var(--accent);
+  animation: tool-spin 0.9s linear infinite;
+}
+
+@keyframes tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.tool-arg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--quiet);
+}
+
+.tool-head:has(.tool-arg) {
+  grid-template-columns: 15px auto minmax(0, 1fr);
+}
+
+.tool-out {
+  margin: 5px 0 3px 26px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 2.5%);
 }
 
 .tool-card pre {
-  margin: 6px 0 0;
+  margin: 0;
+  padding: 10px 13px;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--mono);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.7;
   max-height: 240px;
   overflow: auto;
 }
 
-.tool-card.ui-terminal pre {
-  background: #0f0f0f;
-  color: #e8eaed;
-  padding: 10px 12px;
-  border-radius: 12px;
+.tool-card.ui-terminal .tool-out {
+  background: var(--sunken);
 }
 
+.tool-card.ui-terminal pre {
+  color: #c4cfe2;
+}
+
+/* The card that is holding the turn: the only place accent framing is worth
+   spending, since nothing moves until the answer. */
 .approval {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin: 6px 0 3px 26px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 13%, transparent),
+    rgb(255 255 255 / 3%)
+  );
+  box-shadow: var(--hi), 0 16px 36px -24px var(--accent);
+}
+
+.approval-label {
+  margin-right: auto;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
 }
 
 .approval button:not(.ghost) {
   border: 0;
-  border-radius: 999px;
-  padding: 6px 12px;
+  border-radius: 8px;
+  padding: 7px 14px;
   background: var(--send);
-  color: #fff;
+  color: #08101e;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.approval .ghost {
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
   font-weight: 500;
 }
 
@@ -1281,6 +1420,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .send-btn,
   .scaffold-pulse,
+  .tool-mark.is-running,
   .bubble.live pre::after,
   .customized-summary::before,
   .model-chip-chevron {

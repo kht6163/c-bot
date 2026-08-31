@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { SessionId, ToolCallId } from "@cbot/shared";
 import type { ChatRow } from "../lib/rows.ts";
+import { toolBody, toolHeadline, toolMark } from "../lib/tool-row.ts";
 import { MarkdownView } from "./MarkdownView.tsx";
 
 interface Props {
@@ -40,20 +41,12 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
               {row.text}
             </article>
           ) : row.kind === "tool" ? (
-            <article key={row.key} className={`tool-card ui-${row.ui}${row.live ? " live" : ""}`}>
-              <span className="who">{row.name}</span>
-              <pre>{row.content || row.arguments}</pre>
-              {row.pendingApproval && sessionId && onApprove ? (
-                <div className="approval">
-                  <button type="button" onClick={() => onApprove(row.callId, true)}>
-                    허용
-                  </button>
-                  <button type="button" className="ghost" onClick={() => onApprove(row.callId, false)}>
-                    거절
-                  </button>
-                </div>
-              ) : null}
-            </article>
+            <ToolRow
+              key={row.key}
+              row={row}
+              sessionId={sessionId}
+              onApprove={onApprove}
+            />
           ) : (
             <article key={row.key} className={`bubble ${row.kind}${row.live ? " live" : ""}`}>
               {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
@@ -67,5 +60,45 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
         )
       )}
     </div>
+  );
+}
+
+function ToolRow({
+  row,
+  sessionId,
+  onApprove,
+}: {
+  row: Extract<ChatRow, { kind: "tool" }>;
+  sessionId: SessionId | undefined;
+  onApprove: ((callId: ToolCallId, allow: boolean) => void) | undefined;
+}) {
+  const mark = toolMark(row);
+  const headline = toolHeadline(row.arguments);
+  const body = toolBody(row.arguments, row.content);
+
+  return (
+    <article className={`tool-card ui-${row.ui} is-${mark}`}>
+      <div className="tool-head">
+        <span className={`tool-mark is-${mark}`} aria-hidden="true" />
+        <span className="tool-name">{row.name}</span>
+        {headline ? <span className="tool-arg">{headline}</span> : null}
+      </div>
+      {body ? (
+        <div className="tool-out">
+          <pre>{body}</pre>
+        </div>
+      ) : null}
+      {row.pendingApproval && sessionId && onApprove ? (
+        <div className="approval">
+          <span className="approval-label">승인 대기</span>
+          <button type="button" onClick={() => onApprove(row.callId, true)}>
+            허용
+          </button>
+          <button type="button" className="ghost" onClick={() => onApprove(row.callId, false)}>
+            거절
+          </button>
+        </div>
+      ) : null}
+    </article>
   );
 }
