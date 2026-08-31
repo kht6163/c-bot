@@ -2,7 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gitStatus, gitView, parseGitLog, parseGitRefs, parseGitStatus } from "../src/git-status.ts";
+import {
+  gitCommit,
+  gitStatus,
+  gitView,
+  isCommitSha,
+  parseGitLog,
+  parseGitNumstat,
+  parseGitRefs,
+  parseGitShow,
+  parseGitStatus,
+} from "../src/git-status.ts";
 
 describe("parseGitStatus", () => {
   test("reads branch, ahead, and porcelain files", () => {
@@ -98,5 +108,86 @@ describe("gitView", () => {
     expect(view.refs[0]?.head).toBe(true);
     expect(view.commits[0]?.subject).toBe("첫 커밋");
     expect(view.commits[0]?.refs).toContain("main");
+  });
+});
+
+describe("parseGitShow", () => {
+  test("keeps a multi-line body whole", () => {
+    const detail = parseGitShow(
+      [
+        "e9f786bfull",
+        "e9f786b",
+        "hantaekim",
+        "kht@example.com",
+        "2026-08-28T16:36:00+09:00",
+        "HEAD -> main",
+        "fix(bot): 조각",
+        "왜 이렇게 했는지\n\n두 번째 줄\n",
+      ].join("\x1f"),
+    );
+    expect(detail?.email).toBe("kht@example.com");
+    expect(detail?.refs).toEqual(["main"]);
+    expect(detail?.body).toBe("왜 이렇게 했는지\n\n두 번째 줄");
+  });
+
+  test("an empty answer is no commit", () => {
+    expect(parseGitShow("")).toBeUndefined();
+  });
+});
+
+describe("parseGitNumstat", () => {
+  test("reads counts and marks a binary file", () => {
+    const files = parseGitNumstat(["4\t2\tapps/web/src/App.tsx", "-\t-\tdocs/logo.png"].join("\n"));
+    expect(files[0]).toEqual({ path: "apps/web/src/App.tsx", added: 4, removed: 2 });
+    expect(files[1]).toEqual({ path: "docs/logo.png", added: null, removed: null });
+  });
+});
+
+describe("isCommitSha", () => {
+  test("only a hex object name passes", () => {
+    expect(isCommitSha("e9f786b")).toBe(true);
+    expect(isCommitSha("main")).toBe(false);
+    expect(isCommitSha("HEAD~1")).toBe(false);
+    expect(isCommitSha("--all")).toBe(false);
+    expect(isCommitSha("a..b")).toBe(false);
+  });
+});
+
+describe("gitCommit", () => {
+  test("reads the message body and the files a commit touched", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cbot-git-"));
+    await Bun.spawn(["git", "init", "-q", "-b", "main", "."], { cwd: dir }).exited;
+    await writeFile(join(dir, "note.md"), "한 줄\n두 줄\n");
+    await Bun.spawn(["git", "add", "."], { cwd: dir }).exited;
+    await Bun.spawn(
+      [
+        "git",
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "-m",
+        "첫 커밋",
+        "-m",
+        "본문 줄",
+      ],
+      { cwd: dir },
+    ).exited;
+    const view = await gitView(dir);
+    const sha = view.commits[0]?.sha ?? "";
+    const detail = await gitCommit(dir, sha);
+    expect(detail?.subject).toBe("첫 커밋");
+    expect(detail?.body).toBe("본문 줄");
+    expect(detail?.email).toBe("t@t");
+    expect(detail?.files).toEqual([{ path: "note.md", added: 2, removed: 0 }]);
+  });
+
+  test("an unknown revision is no commit, not an error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cbot-git-"));
+    await Bun.spawn(["git", "init", "-q", "."], { cwd: dir }).exited;
+    expect(await gitCommit(dir, "0123456")).toBeUndefined();
+    expect(await gitCommit(dir, "HEAD")).toBeUndefined();
   });
 });

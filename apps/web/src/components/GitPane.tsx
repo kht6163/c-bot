@@ -1,14 +1,31 @@
 import { useEffect, useState } from "react";
 import type { SessionId } from "@cbot/shared";
-import { fetchGitStatus, type GitCommitView, type GitStatusView } from "../lib/api.ts";
-import { codeOf, commitDate, groupFiles, groupRefs, splitPath, toneOf } from "../lib/git-rows.ts";
+import {
+  fetchGitCommit,
+  fetchGitStatus,
+  type GitCommitDetailView,
+  type GitCommitView,
+  type GitStatusView,
+} from "../lib/api.ts";
+import {
+  codeOf,
+  commitDate,
+  commitStat,
+  groupFiles,
+  groupRefs,
+  splitPath,
+  splitPathText,
+  toneOf,
+} from "../lib/git-rows.ts";
 
 export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
   const [git, setGit] = useState<GitStatusView | undefined>();
   const [error, setError] = useState("");
+  const [openSha, setOpenSha] = useState("");
 
   useEffect(() => {
     setError("");
+    setOpenSha("");
     void fetchGitStatus(sessionId)
       .then(setGit)
       .catch((err: unknown) => {
@@ -94,7 +111,13 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
         ) : (
           <ul className="git-commits">
             {git.commits.map((commit) => (
-              <CommitRow key={commit.sha} commit={commit} />
+              <CommitRow
+                key={commit.sha}
+                sessionId={sessionId}
+                commit={commit}
+                open={commit.sha === openSha}
+                onToggle={() => setOpenSha(commit.sha === openSha ? "" : commit.sha)}
+              />
             ))}
           </ul>
         )}
@@ -103,26 +126,101 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
   );
 }
 
-function CommitRow({ commit }: { commit: GitCommitView }) {
+function CommitRow({
+  sessionId,
+  commit,
+  open,
+  onToggle,
+}: {
+  sessionId: SessionId;
+  commit: GitCommitView;
+  open: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <li className="git-commit" title={`${commit.short} · ${commit.author}\n${commit.subject}`}>
-      {commit.refs.length > 0 ? (
-        <p className="git-commit-refs">
-          {commit.refs.map((ref) => (
-            <span key={ref} className="git-ref-badge">
-              {ref}
-            </span>
-          ))}
-        </p>
-      ) : null}
-      <p className="git-commit-head">
-        <span className="git-commit-subject">{commit.subject}</span>
-      </p>
-      <p className="git-commit-meta">
-        <span className="git-sha">{commit.short}</span>
-        <span className="git-commit-author">{commit.author}</span>
-        <span className="git-commit-date">{commitDate(commit.date)}</span>
-      </p>
+    <li className={open ? "git-commit open" : "git-commit"}>
+      <button type="button" className="git-commit-btn" aria-expanded={open} onClick={onToggle}>
+        {commit.refs.length > 0 ? (
+          <span className="git-commit-refs">
+            {commit.refs.map((ref) => (
+              <span key={ref} className="git-ref-badge">
+                {ref}
+              </span>
+            ))}
+          </span>
+        ) : null}
+        <span className="git-commit-head">
+          <span className="git-commit-subject">{commit.subject}</span>
+        </span>
+        <span className="git-commit-meta">
+          <span className="git-sha">{commit.short}</span>
+          <span className="git-commit-author">{commit.author}</span>
+          <span className="git-commit-date">{commitDate(commit.date)}</span>
+        </span>
+      </button>
+      {open ? <CommitDetail sessionId={sessionId} sha={commit.sha} /> : null}
     </li>
+  );
+}
+
+function CommitDetail({ sessionId, sha }: { sessionId: SessionId; sha: string }) {
+  const [detail, setDetail] = useState<GitCommitDetailView | undefined>();
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    setError("");
+    setDetail(undefined);
+    void fetchGitCommit(sessionId, sha)
+      .then((next) => {
+        if (live) {
+          setDetail(next);
+        }
+      })
+      .catch((err: unknown) => {
+        if (live) {
+          setError(err instanceof Error ? err.message : "커밋을 읽지 못했습니다");
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [sessionId, sha]);
+
+  if (error) {
+    return <p className="hint danger git-detail">{error}</p>;
+  }
+  if (!detail) {
+    return <p className="empty git-detail">불러오는 중</p>;
+  }
+
+  return (
+    <div className="git-detail">
+      <p className="git-detail-line">
+        <span className="git-detail-author">{detail.author}</span>
+        <span className="git-detail-email">{detail.email}</span>
+      </p>
+      <p className="git-detail-line">
+        <span className="git-sha">{detail.sha}</span>
+      </p>
+      {detail.body ? <p className="git-detail-body">{detail.body}</p> : null}
+      <p className="section-label git-detail-label">파일 {detail.files.length}</p>
+      {detail.files.length === 0 ? (
+        <p className="empty">바뀐 파일이 없습니다</p>
+      ) : (
+        <ul className="git-files">
+          {detail.files.map((file) => {
+            const name = splitPathText(file.path);
+            return (
+              <li key={file.path} className="git-file" title={file.path}>
+                <span className="git-name">{name.base}</span>
+                {name.dir ? <span className="git-dir">{name.dir}</span> : null}
+                <span className="git-stat">{commitStat(file)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

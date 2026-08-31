@@ -1,4 +1,4 @@
-import type { GitFileView, GitRefKind, GitRefView } from "./api.ts";
+import type { GitCommitFileView, GitFileView, GitRefKind, GitRefView } from "./api.ts";
 
 export type GitColumn = "index" | "worktree";
 
@@ -65,8 +65,11 @@ export function toneOf(file: GitFileView, column: GitColumn): string {
 export function splitPath(file: GitFileView): { dir: string; base: string } {
   const renamed = isRename(file.index) || isRename(file.worktree);
   const arrow = renamed ? file.path.indexOf(" -> ") : -1;
-  const target = arrow < 0 ? file.path : file.path.slice(arrow + 4);
-  const trimmed = target.replace(/\/$/, "");
+  return splitPathText(arrow < 0 ? file.path : file.path.slice(arrow + 4));
+}
+
+export function splitPathText(path: string): { dir: string; base: string } {
+  const trimmed = path.replace(/\/$/, "");
   const cut = trimmed.lastIndexOf("/");
   return cut < 0
     ? { dir: "", base: trimmed }
@@ -115,4 +118,11 @@ export function commitDate(iso: string, now: Date = new Date()): string {
   return at.getFullYear() === now.getFullYear()
     ? `${month}월 ${day}일`
     : `${at.getFullYear()}. ${month}. ${day}.`;
+}
+
+/** numstat has no count for a binary file, so the row says so instead of `+0 −0`. */
+export function commitStat(file: GitCommitFileView): string {
+  return file.added === null || file.removed === null
+    ? "바이너리"
+    : `+${file.added} −${file.removed}`;
 }

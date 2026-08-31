@@ -2,6 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   SHIPPED_PROVIDERS,
+  gitCommit,
   gitView,
   keyEnvName,
   listRemoteModelCatalog,
@@ -316,6 +317,16 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const id = asSessionId(decodeURIComponent(inspectGit[1] ?? ""));
       const workspace = sessionWorkspace(runtime, id);
       return Response.json({ git: await gitView(workspace) });
+    }
+    const inspectCommit = /^\/api\/sessions\/([^/]+)\/git\/commit$/.exec(url.pathname);
+    if (inspectCommit && req.method === "GET") {
+      const id = asSessionId(decodeURIComponent(inspectCommit[1] ?? ""));
+      const workspace = sessionWorkspace(runtime, id);
+      const commit = await gitCommit(workspace, url.searchParams.get("sha") ?? "");
+      if (!commit) {
+        throw new HttpError(404, "unknown commit");
+      }
+      return Response.json({ commit });
     }
     const inspectFiles = /^\/api\/sessions\/([^/]+)\/files$/.exec(url.pathname);
     if (inspectFiles && req.method === "GET") {

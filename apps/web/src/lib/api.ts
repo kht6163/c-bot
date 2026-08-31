@@ -197,6 +197,18 @@ export interface GitCommitView {
   refs: string[];
 }
 
+export interface GitCommitFileView {
+  path: string;
+  added: number | null;
+  removed: number | null;
+}
+
+export interface GitCommitDetailView extends GitCommitView {
+  email: string;
+  body: string;
+  files: GitCommitFileView[];
+}
+
 export interface GitStatusView {
   repo: boolean;
   branch: string;
@@ -239,6 +251,13 @@ export interface TaskView {
 export async function fetchGitStatus(id: SessionId): Promise<GitStatusView> {
   const body = await api<{ git: GitStatusView }>(`/api/sessions/${id}/git`);
   return body.git;
+}
+
+export async function fetchGitCommit(id: SessionId, sha: string): Promise<GitCommitDetailView> {
+  const body = await api<{ commit: GitCommitDetailView }>(
+    `/api/sessions/${id}/git/commit?sha=${encodeURIComponent(sha)}`,
+  );
+  return body.commit;
 }
 
 export async function fetchWorkspaceDir(id: SessionId, path = "."): Promise<DirEntryView[]> {

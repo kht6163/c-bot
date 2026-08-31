@@ -65,12 +65,18 @@ export { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from
 export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";
 export { loadMentionedFiles, searchWorkspaceFiles } from "./workspace-files.ts";
 export {
+  gitCommit,
   gitStatus,
   gitView,
+  isCommitSha,
+  parseGitNumstat,
+  parseGitShow,
   parseGitLog,
   parseGitRefs,
   parseGitStatus,
   type GitCommit,
+  type GitCommitDetail,
+  type GitCommitFile,
   type GitFile,
   type GitRef,
   type GitRefKind,

@@ -33,6 +33,19 @@ export interface GitCommit {
   refs: string[];
 }
 
+export interface GitCommitFile {
+  path: string;
+  /** `null` on a binary file, which numstat reports as `-`. */
+  added: number | null;
+  removed: number | null;
+}
+
+export interface GitCommitDetail extends GitCommit {
+  email: string;
+  body: string;
+  files: GitCommitFile[];
+}
+
 /** Status plus the two read-only views the panel draws beside it. */
 export interface GitView extends GitStatusView {
   refs: GitRef[];
@@ -140,6 +153,75 @@ function refKind(refname: string): GitRefKind | undefined {
     return "remote";
   }
   return refname.startsWith("refs/tags/") ? "tag" : undefined;
+}
+
+// Unit separators keep a multi-line body from being mistaken for a new field.
+const SHOW_FORMAT = "%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1f%b";
+
+export function parseGitShow(out: string): Omit<GitCommitDetail, "files"> | undefined {
+  const [sha, short, author, email, date, decoration, subject, body] = out.split("\x1f");
+  if (!sha || sha.length === 0) {
+    return undefined;
+  }
+  return {
+    sha,
+    short: short ?? "",
+    author: author ?? "",
+    email: email ?? "",
+    date: date ?? "",
+    refs: parseDecoration(decoration ?? ""),
+    subject: subject ?? "",
+    body: (body ?? "").trim(),
+  };
+}
+
+/** numstat prints `added\tremoved\tpath`, with `-` for a binary file. */
+export function parseGitNumstat(out: string): GitCommitFile[] {
+  const files: GitCommitFile[] = [];
+  for (const line of out.split("\n")) {
+    if (line.length === 0) {
+      continue;
+    }
+    const [added = "", removed = "", ...rest] = line.split("\t");
+    const path = rest.join("\t");
+    if (path.length === 0) {
+      continue;
+    }
+    files.push({ path, added: countOf(added), removed: countOf(removed) });
+  }
+  return files;
+}
+
+function countOf(field: string): number | null {
+  const value = Number(field);
+  return field === "-" || Number.isNaN(value) ? null : value;
+}
+
+/**
+ * A revision reaches this from the browser, so only a hex object name is
+ * accepted: no ranges, no `--flags`, no `..` walks.
+ */
+export function isCommitSha(sha: string): boolean {
+  return /^[0-9a-f]{4,40}$/.test(sha);
+}
+
+export async function gitCommit(
+  workspace: string,
+  sha: string,
+): Promise<GitCommitDetail | undefined> {
+  if (!isCommitSha(sha)) {
+    return undefined;
+  }
+  const [head, numstat] = await Promise.all([
+    runGit(workspace, ["show", "--no-patch", `--format=${SHOW_FORMAT}`, sha]),
+    // A merge commit lists no files here, which is the honest empty answer.
+    runGit(workspace, ["show", "--numstat", "--format=", sha]),
+  ]);
+  if (!head.ok) {
+    return undefined;
+  }
+  const detail = parseGitShow(head.out);
+  return detail ? { ...detail, files: numstat.ok ? parseGitNumstat(numstat.out) : [] } : undefined;
 }
 
 export async function gitStatus(workspace: string): Promise<GitStatusView> {

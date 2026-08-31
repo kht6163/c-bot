@@ -2660,11 +2660,24 @@ select.field-input {
 
 .git-commit {
   min-width: 0;
-  padding: 5px 10px;
   border-radius: 8px;
 }
 
-.git-commit:hover {
+.git-commit.open {
+  background: var(--row-active);
+}
+
+.git-commit-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.git-commit-btn:hover {
   background: var(--row-hover);
 }
 
@@ -2728,6 +2741,67 @@ select.field-input {
 .git-commit-date {
   flex: none;
   margin-left: auto;
+}
+
+.git-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 10px 8px;
+}
+
+.git-detail-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--quiet);
+}
+
+.git-detail-author {
+  flex: none;
+  color: var(--muted);
+}
+
+.git-detail-email {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-detail .git-sha {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-detail-body {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.git-detail-label {
+  padding-left: 0;
+}
+
+.git-detail .git-file {
+  padding: 3px 0;
+}
+
+.git-stat {
+  flex: none;
+  margin-left: auto;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .files-pane {
