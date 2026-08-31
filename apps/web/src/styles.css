@@ -28,9 +28,6 @@
 
   /* Older names kept so rules that only asked for "a border" or "muted text"
      follow the new system without being touched. */
-  --bg: transparent;
-  --bg-rail: var(--glass-1);
-  --bg-raised: var(--raised);
   --text: var(--ink);
   --muted: var(--ink-2);
   --quiet: var(--ink-3);
@@ -1751,7 +1748,7 @@ button {
 
 .add-card {
   border-radius: 12px;
-  background: var(--bg-raised);
+  background: var(--raised);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -1815,7 +1812,7 @@ button {
 
 .editor {
   border-radius: 12px;
-  background: var(--bg-raised);
+  background: var(--raised);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
