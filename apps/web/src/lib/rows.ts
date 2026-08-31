@@ -112,9 +112,14 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
         ok: true,
         live: true,
       });
-    } else if (event.type === "turn/end" && event.aborted) {
+    } else if (event.type === "turn/end") {
+      // A turn can end while thinking is still pending (interrupted, or the
+      // stream stopped before an answer). Its place in the log is here, not
+      // at the bottom of every later turn.
       flushThinking(event.turnId, false);
-      rows.push({ key: `x-${event.seq}`, kind: "notice", text: "중단됨", live: false });
+      if (event.aborted) {
+        rows.push({ key: `x-${event.seq}`, kind: "notice", text: "중단됨", live: false });
+      }
     } else if (event.type === "tool/result") {
       const existing = toolAt.get(event.callId);
       const previous = existing !== undefined ? rows[existing] : undefined;

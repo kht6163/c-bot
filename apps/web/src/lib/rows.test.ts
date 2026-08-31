@@ -177,6 +177,55 @@ describe("visibleRows", () => {
     ]);
   });
 
+  test("a turn that ends while still thinking keeps that thinking in its own turn", () => {
+    const t1 = asTurnId("trn_cut");
+    const t2 = asTurnId("trn_next");
+    const events: SessionEvent[] = [
+      { ...envelope(1), type: "user/message", text: "목록 지워", mentions: [] },
+      { ...envelope(2), type: "turn/start", turnId: t1 },
+      { ...envelope(3), type: "assistant/thinking", turnId: t1, text: "비어 있는 것 같은데" },
+      { ...envelope(4), type: "turn/end", turnId: t1, aborted: true },
+      { ...envelope(5), type: "user/message", text: "10개 만들어", mentions: [] },
+      { ...envelope(6), type: "turn/start", turnId: t2 },
+      {
+        ...envelope(7),
+        type: "assistant/message",
+        turnId: t2,
+        text: "만들었습니다",
+        toolCalls: [],
+      },
+      { ...envelope(8), type: "turn/end", turnId: t2 },
+    ];
+    expect(visibleRows(events).map((row) => `${row.kind}:${"text" in row ? row.text : ""}`)).toEqual([
+      "user:목록 지워",
+      "thinking:비어 있는 것 같은데",
+      "notice:중단됨",
+      "user:10개 만들어",
+      "assistant:만들었습니다",
+    ]);
+  });
+
+  test("a turn that stops with no answer at all still leaves its thinking in place", () => {
+    const t1 = asTurnId("trn_stop");
+    const t2 = asTurnId("trn_after");
+    const events: SessionEvent[] = [
+      { ...envelope(1), type: "user/message", text: "첫", mentions: [] },
+      { ...envelope(2), type: "turn/start", turnId: t1 },
+      { ...envelope(3), type: "assistant/thinking", turnId: t1, text: "끊긴 생각" },
+      { ...envelope(4), type: "turn/end", turnId: t1 },
+      { ...envelope(5), type: "user/message", text: "둘", mentions: [] },
+      { ...envelope(6), type: "turn/start", turnId: t2 },
+      { ...envelope(7), type: "assistant/message", turnId: t2, text: "답", toolCalls: [] },
+      { ...envelope(8), type: "turn/end", turnId: t2 },
+    ];
+    expect(visibleRows(events).map((row) => `${row.kind}:${"text" in row ? row.text : ""}`)).toEqual([
+      "user:첫",
+      "thinking:끊긴 생각",
+      "user:둘",
+      "assistant:답",
+    ]);
+  });
+
   test("shows 생각 중 again after a tool result while the turn is still open", () => {
     const turnId = asTurnId("trn_gap");
     const callId = asToolCallId("call_gap");
