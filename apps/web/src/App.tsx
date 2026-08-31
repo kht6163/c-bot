@@ -30,6 +30,7 @@ import {
   fetchSession,
   fetchSessions,
   fetchSettings,
+  interruptSession,
   openEvents,
   openProject,
   pickNativeFolder,
@@ -424,6 +425,26 @@ export function App() {
     setQueues((current) => dropQueued(current, id, itemId));
   }, []);
 
+  const handleInterrupt = useCallback(
+    (text: string | null) => {
+      const id = selectedRef.current;
+      if (!id) {
+        return;
+      }
+      void (async () => {
+        try {
+          await interruptSession(id);
+        } catch {
+          /* the turn may have ended on its own; the queue still drains */
+        }
+        if (text) {
+          handleSend(text);
+        }
+      })();
+    },
+    [handleSend],
+  );
+
   // The queue is a draft list: one message leaves it only once the session is idle again.
   useEffect(() => {
     if (busy || !selectedId) {
@@ -650,6 +671,7 @@ export function App() {
             onSend={handleSend}
             onQueue={handleQueue}
             onDrop={handleDropQueued}
+            onInterrupt={handleInterrupt}
           />
         ) : null}
       </section>

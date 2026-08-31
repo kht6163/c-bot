@@ -445,6 +445,14 @@ export async function browseDir(path?: string): Promise<{
   return api<{ path: string; parent: string | null; entries: FsEntry[] }>(`/api/fs/browse${q}`);
 }
 
+/** Stops the running turn. False when the turn had already ended. */
+export async function interruptSession(id: SessionId): Promise<boolean> {
+  const body = await api<{ ok: boolean; interrupted: boolean }>(`/api/sessions/${id}/interrupt`, {
+    method: "POST",
+  });
+  return body.interrupted;
+}
+
 export async function sendApproval(id: SessionId, callId: ToolCallId, allow: boolean): Promise<void> {
   await api<{ ok: boolean }>(`/api/sessions/${id}/approvals`, {
     method: "POST",

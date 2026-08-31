@@ -17,6 +17,7 @@ export type ChatRow =
       live: boolean;
     }
   | { key: string; kind: "status"; text: string; live: true }
+  | { key: string; kind: "notice"; text: string; live: false }
   | { key: string; kind: "thinking"; text: string; live: boolean }
   | { key: string; kind: "memory"; text: string; live: false };
 
@@ -111,6 +112,9 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
         ok: true,
         live: true,
       });
+    } else if (event.type === "turn/end" && event.aborted) {
+      flushThinking(event.turnId, false);
+      rows.push({ key: `x-${event.seq}`, kind: "notice", text: "중단됨", live: false });
     } else if (event.type === "tool/result") {
       const existing = toolAt.get(event.callId);
       const previous = existing !== undefined ? rows[existing] : undefined;

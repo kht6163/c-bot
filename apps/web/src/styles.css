@@ -842,6 +842,29 @@ button {
   cursor: default;
 }
 
+.stop-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  transform: translateY(-2px);
+}
+
+.stop-btn:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.log-notice {
+  margin: 2px 0 6px;
+  padding-left: 2px;
+  color: var(--quiet);
+  font-size: 12px;
+}
 
 .ghost {
   padding: 4px 8px;

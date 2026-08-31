@@ -47,6 +47,7 @@ export interface Runtime {
 
 const busy = new Set<string>();
 const pendingWake = new Set<string>();
+const running = new Map<string, AbortController>();
 
 async function adoptLegacyApiKey(home: string): Promise<void> {
   const config = await loadConfig(home);
@@ -133,6 +134,16 @@ export async function acceptUserMessage(
 
 export function settleApproval(runtime: Runtime, callId: ToolCallId, allow: boolean): boolean {
   return runtime.approvals.settle(callId, allow);
+}
+
+/** Stops the turn this session is running. False when no turn was open. */
+export function interruptSession(sessionId: SessionId): boolean {
+  const controller = running.get(sessionId);
+  if (!controller) {
+    return false;
+  }
+  controller.abort();
+  return true;
 }
 
 export function wakeSession(runtime: Runtime, sessionId: SessionId): void {
@@ -230,19 +241,28 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           ? config.llm.activeThinking
           : null;
       const reasoningEffort = pinnedEffort ?? globalEffort ?? defaultThinking(levels);
-      await runTurn(sessionId, {
-        store: runtime.store,
-        llm: runtime.llm,
-        apiKey: endpoint?.apiKey,
-        baseURL: endpoint?.baseURL ?? "",
-        model: modelId,
-        workspace,
-        approvalMode: config.approval.mode,
-        approvals: runtime.approvals,
-        extraTools,
-        ...(systemPrompt !== undefined ? { systemPrompt } : {}),
-        ...(reasoningEffort && reasoningEffort !== "off" ? { reasoningEffort } : {}),
-      });
+      const controller = new AbortController();
+      running.set(sessionId, controller);
+      try {
+        await runTurn(sessionId, {
+          store: runtime.store,
+          llm: runtime.llm,
+          apiKey: endpoint?.apiKey,
+          baseURL: endpoint?.baseURL ?? "",
+          model: modelId,
+          workspace,
+          approvalMode: config.approval.mode,
+          approvals: runtime.approvals,
+          extraTools,
+          signal: controller.signal,
+          ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+          ...(reasoningEffort && reasoningEffort !== "off" ? { reasoningEffort } : {}),
+        });
+      } finally {
+        if (running.get(sessionId) === controller) {
+          running.delete(sessionId);
+        }
+      }
     }
   } finally {
     busy.delete(sessionId);

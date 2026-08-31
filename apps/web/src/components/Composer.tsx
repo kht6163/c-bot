@@ -24,6 +24,7 @@ interface Props {
   onSend: (text: string) => void;
   onQueue?: (text: string) => void;
   onDrop?: (id: string) => void;
+  onInterrupt?: (text: string | null) => void;
 }
 
 function ComposerInner({
@@ -39,10 +40,12 @@ function ComposerInner({
   onSend,
   onQueue,
   onDrop,
+  onInterrupt,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const onSendRef = useRef(onSend);
   const onQueueRef = useRef(onQueue);
+  const onInterruptRef = useRef(onInterrupt);
   const onDropRef = useRef(onDrop);
   const composing = useRef(false);
   const skipCompositionEnd = useRef(false);
@@ -58,6 +61,7 @@ function ComposerInner({
   const [active, setActive] = useState(0);
   onSendRef.current = onSend;
   onQueueRef.current = onQueue;
+  onInterruptRef.current = onInterrupt;
   onDropRef.current = onDrop;
 
   useEffect(() => {
@@ -77,6 +81,7 @@ function ComposerInner({
 
   const canQueue = busy && Boolean(onQueueRef.current);
   const canSend = !blocked && !empty && (!busy || canQueue);
+  const canInterrupt = busy && Boolean(onInterruptRef.current);
   const menuOpen = mention !== null && options.length > 0;
 
   function syncMention() {
@@ -148,6 +153,17 @@ function ComposerInner({
     onDropRef.current?.(item.id);
     el.focus();
     el.setSelectionRange(next.length, next.length);
+  }
+
+  function interrupt() {
+    if (!canInterrupt) {
+      return;
+    }
+    const text = ref.current?.value.trim() ?? "";
+    if (text.length > 0) {
+      clearInput();
+    }
+    onInterruptRef.current?.(text.length > 0 ? text : null);
   }
 
   return (
@@ -308,6 +324,11 @@ function ComposerInner({
                 return;
               }
             }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canInterrupt) {
+              e.preventDefault();
+              interrupt();
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               e.currentTarget.form?.requestSubmit();
@@ -323,6 +344,19 @@ function ComposerInner({
                 : "@ 로 파일·봇 멘션"}
           </span>
           {picker}
+          {canInterrupt ? (
+            <button
+              type="button"
+              className="stop-btn"
+              onClick={interrupt}
+              title="중단하고 바로 보내기"
+              aria-label="턴 중단"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" fill="currentColor" />
+              </svg>
+            </button>
+          ) : null}
           <button
             type="submit"
             className="send-btn"

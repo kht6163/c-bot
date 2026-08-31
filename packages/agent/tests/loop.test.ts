@@ -130,3 +130,117 @@ describe("sessionNeedsTurn", () => {
     store.close();
   });
 });
+
+class AbortingLlm implements LlmClient {
+  constructor(
+    private readonly before: LlmStreamEvent[],
+    private readonly abort: () => void,
+    private readonly after: LlmStreamEvent[] = [],
+  ) {}
+
+  async *stream(): AsyncIterable<LlmStreamEvent> {
+    for (const event of this.before) {
+      yield event;
+    }
+    this.abort();
+    for (const event of this.after) {
+      yield event;
+    }
+  }
+}
+
+describe("interrupting a turn", () => {
+  test("keeps the streamed text, ends the turn as aborted, and runs no tool", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ workspace: "/tmp" });
+    store.append(session.id, { type: "user/message", text: "긴 작업", mentions: [] });
+    const controller = new AbortController();
+    await runTurn(
+      session.id,
+      turnCtx(
+        store,
+        new AbortingLlm(
+          [{ type: "text", text: "시작합" }],
+          () => controller.abort(),
+          [
+            { type: "tool_call", id: "call-1", name: "bash", arguments: '{"command":"rm -rf /"}' },
+            { type: "done", finishReason: "tool_calls" },
+          ],
+        ),
+        { apiKey: "test", workspace: "/tmp", signal: controller.signal },
+      ),
+    );
+    const events = store.events(session.id);
+    const end = events.find((e) => e.type === "turn/end");
+    expect(end?.type === "turn/end" && end.aborted).toBe(true);
+    expect(events.some((e) => e.type === "tool/call")).toBe(false);
+    expect(deriveMessages(events)).toEqual([
+      { role: "user", content: "긴 작업" },
+      { role: "assistant", content: "시작합" },
+      { role: "user", content: "[사용자가 위 턴을 중단했습니다.]" },
+    ]);
+    expect(sessionNeedsTurn(events)).toBe(false);
+    store.close();
+  });
+
+  test("an aborted turn owes the next queued message a turn", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ workspace: "/tmp" });
+    store.append(session.id, { type: "user/message", text: "첫", mentions: [] });
+    const controller = new AbortController();
+    await runTurn(
+      session.id,
+      turnCtx(store, new AbortingLlm([], () => controller.abort()), {
+        apiKey: "test",
+        signal: controller.signal,
+      }),
+    );
+    store.append(session.id, { type: "user/message", text: "둘", mentions: [] });
+    expect(sessionNeedsTurn(store.events(session.id))).toBe(true);
+    store.close();
+  });
+
+  test("a turn waiting on approval stops without executing the tool", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ workspace: "/tmp" });
+    store.append(session.id, { type: "user/message", text: "지워", mentions: [] });
+    const controller = new AbortController();
+    const approvals = new ApprovalGate();
+    const turn = runTurn(
+      session.id,
+      turnCtx(
+        store,
+        new ScriptedLlm([
+          { type: "tool_call", id: "call-1", name: "bash", arguments: '{"command":"echo hi"}' },
+          { type: "done", finishReason: "tool_calls" },
+        ]),
+        {
+          apiKey: "test",
+          workspace: "/tmp",
+          approvalMode: "prompt",
+          approvals,
+          signal: controller.signal,
+        },
+      ),
+    );
+    for (let i = 0; i < 50; i++) {
+      if (store.events(session.id).some((e) => e.type === "tool/result" && e.pendingApproval)) {
+        break;
+      }
+      await Bun.sleep(5);
+    }
+    controller.abort();
+    await turn;
+    const events = store.events(session.id);
+    const end = events.find((e) => e.type === "turn/end");
+    expect(end?.type === "turn/end" && end.aborted).toBe(true);
+    const results = events.filter((e) => e.type === "tool/result");
+    expect(results.at(-1)).toMatchObject({ ok: false });
+    // Every logged call still answers, so the derived history stays sendable.
+    const derived = deriveMessages(events);
+    const assistant = derived.find((message) => message.toolCalls);
+    expect(assistant?.toolCalls).toHaveLength(1);
+    expect(derived.filter((message) => message.role === "tool")).toHaveLength(1);
+    store.close();
+  });
+});

@@ -40,6 +40,8 @@ export interface TurnStartEvent extends EventEnvelope {
 export interface TurnEndEvent extends EventEnvelope {
   type: "turn/end";
   turnId: TurnId;
+  /** The user stopped this turn; the model never saw the step it was running. */
+  aborted?: boolean;
 }
 
 export interface UserMessageEvent extends EventEnvelope {

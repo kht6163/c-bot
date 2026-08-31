@@ -24,6 +24,17 @@ class ScriptedLlm implements LlmClient {
   }
 }
 
+/** Streams one chunk and then waits, so the test can interrupt a turn that is really running. */
+class HangingLlm implements LlmClient {
+  async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+    yield { type: "text", text: "생각" };
+    await new Promise<void>((resolve) => {
+      request.signal?.addEventListener("abort", () => resolve(), { once: true });
+    });
+    throw new Error("aborted");
+  }
+}
+
 async function seedProvider(home: string): Promise<void> {
   const config = await loadConfig(home);
   await saveConfig(
@@ -107,6 +118,73 @@ describe("sessions API", () => {
     expect(body.session.title).toBe("ping");
     const assistant = body.events.find((e) => e.type === "assistant/message");
     expect(assistant?.text).toBe("hello");
+    runtime.store.close();
+  });
+
+  test("interrupt ends the running turn and reports nothing to stop afterwards", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-interrupt-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    await seedProvider(home);
+    const runtime = await createRuntime(env, new HangingLlm());
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const sent = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "오래 걸리는 일" }),
+      }),
+      opts,
+    );
+    expect(sent.status).toBe(202);
+
+    const readEvents = async () => {
+      const res = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}`), opts);
+      return ((await res.json()) as { events: { type: string; aborted?: boolean }[] }).events;
+    };
+    for (let i = 0; i < 50; i++) {
+      if ((await readEvents()).some((e) => e.type === "assistant/chunk")) {
+        break;
+      }
+      await Bun.sleep(20);
+    }
+
+    const stopped = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/interrupt`, { method: "POST" }),
+      opts,
+    );
+    expect(stopped.status).toBe(200);
+    expect(await stopped.json()).toEqual({ ok: true, interrupted: true });
+
+    await waitForTurnEnd(async () => ({ events: await readEvents() }));
+    const events = await readEvents();
+    expect(events.find((e) => e.type === "turn/end")?.aborted).toBe(true);
+
+    const again = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/interrupt`, { method: "POST" }),
+      opts,
+    );
+    expect(await again.json()).toEqual({ ok: true, interrupted: false });
+    runtime.store.close();
+  });
+
+  test("interrupting an unknown session is 404", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-interrupt-404-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const res = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions/nope/interrupt", { method: "POST" }),
+      opts,
+    );
+    expect(res.status).toBe(404);
     runtime.store.close();
   });
 

@@ -1,5 +1,7 @@
 import { assertNever, type AttachedFile, type SessionEvent } from "@cbot/shared";
 
+const ABORTED_TURN = "[사용자가 위 턴을 중단했습니다.]";
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
@@ -56,8 +58,13 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
           toolCallId: event.callId,
         });
         break;
-      case "turn/start":
       case "turn/end":
+        // The model must know its own answer was cut short, not merely short.
+        if (event.aborted) {
+          messages.push({ role: "user", content: ABORTED_TURN });
+        }
+        break;
+      case "turn/start":
       case "assistant/chunk":
       case "assistant/thinking":
       case "tool/call":

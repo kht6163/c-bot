@@ -29,6 +29,7 @@ export interface LlmRequest {
   messages: readonly ChatMessage[];
   tools?: readonly ToolSchema[];
   reasoningEffort?: string;
+  signal?: AbortSignal;
 }
 
 export interface LlmClient {
@@ -50,6 +51,7 @@ export class OpenAiCompatClient implements LlmClient {
     try {
       res = await this.fetchFn(url, {
         method: "POST",
+        ...(request.signal ? { signal: request.signal } : {}),
         headers: {
           authorization: `Bearer ${request.apiKey}`,
           "content-type": "application/json",

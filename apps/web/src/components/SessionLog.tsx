@@ -30,6 +30,10 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
               <span className="scaffold-pulse" aria-hidden="true" />
               {row.text}
             </div>
+          ) : row.kind === "notice" ? (
+            <p key={row.key} className="log-notice">
+              {row.text}
+            </p>
           ) : row.kind === "thinking" ? (
             <article key={row.key} className={`thinking${row.live ? " live" : ""}`}>
               <span className="who">thinking</span>

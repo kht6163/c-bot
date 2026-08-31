@@ -17,6 +17,7 @@ import { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from
 
 const CHUNK_FLUSH_MS = 40;
 const MAX_STEPS = 40;
+const ABORTED_TOOL = "사용자가 턴을 중단해 실행하지 않았습니다.";
 
 export interface TurnContext {
   store: SessionStore;
@@ -30,6 +31,8 @@ export interface TurnContext {
   extraTools?: ToolDefinition[];
   systemPrompt?: string;
   reasoningEffort?: string;
+  /** Aborting ends the turn at the next step boundary; a tool already running still finishes. */
+  signal?: AbortSignal;
 }
 
 export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<void> {
@@ -53,9 +56,17 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
   const system = ctx.systemPrompt ?? codingSystemPrompt(ctx.workspace);
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (ctx.signal?.aborted) {
+        endTurn(ctx, sessionId, turnId, true);
+        return;
+      }
       const outcome = await runStep(sessionId, turnId, ctx, system, tools, extraTools);
+      if (outcome === "aborted") {
+        endTurn(ctx, sessionId, turnId, true);
+        return;
+      }
       if (outcome === "stop") {
-        ctx.store.append(sessionId, { type: "turn/end", turnId });
+        endTurn(ctx, sessionId, turnId, false);
         return;
       }
     }
@@ -67,6 +78,10 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
     });
   } catch (err) {
     if (!ctx.store.get(sessionId)) {
+      return;
+    }
+    if (ctx.signal?.aborted) {
+      endTurn(ctx, sessionId, turnId, true);
       return;
     }
     const reason = err instanceof LlmError ? err.reason : "unknown";
@@ -81,7 +96,20 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
   if (!ctx.store.get(sessionId)) {
     return;
   }
-  ctx.store.append(sessionId, { type: "turn/end", turnId });
+  endTurn(ctx, sessionId, turnId, ctx.signal?.aborted === true);
+}
+
+function endTurn(
+  ctx: TurnContext,
+  sessionId: SessionId,
+  turnId: ReturnType<typeof newTurnId>,
+  aborted: boolean,
+): void {
+  ctx.store.append(sessionId, {
+    type: "turn/end",
+    turnId,
+    ...(aborted ? { aborted: true } : {}),
+  });
 }
 
 async function runStep(
@@ -91,7 +119,7 @@ async function runStep(
   system: string,
   tools: ToolSchema[],
   extraTools: readonly ToolDefinition[],
-): Promise<"stop" | "continue"> {
+): Promise<"stop" | "continue" | "aborted"> {
   const history = deriveMessages(ctx.store.events(sessionId));
   let full = "";
   let pending = "";
@@ -113,31 +141,51 @@ async function runStep(
     }
     lastFlush = now;
   };
-  for await (const event of ctx.llm.stream({
-    baseURL: ctx.baseURL,
-    apiKey: ctx.apiKey ?? "",
-    model: ctx.model,
-    system,
-    messages: history,
-    ...(tools.length > 0 ? { tools } : {}),
-    ...(ctx.reasoningEffort ? { reasoningEffort: ctx.reasoningEffort } : {}),
-  })) {
-    if (event.type === "thinking") {
-      thinkingPending += event.text;
-      flush(false);
-    } else if (event.type === "text") {
-      full += event.text;
-      pending += event.text;
-      flush(false);
-    } else if (event.type === "tool_call") {
-      const tool = extraTools.find((item) => item.name === event.name) ?? findTool(event.name);
-      toolCalls.push({
-        id: event.id ? asToolCallId(event.id) : newToolCallId(),
-        name: event.name,
-        arguments: event.arguments,
-        ui: tool?.ui ?? "generic",
-      });
+  const sealAborted = () => {
+    flush(true);
+    // Tool calls the model had started are dropped: an aborted turn runs none of them.
+    if (full.length > 0) {
+      ctx.store.append(sessionId, { type: "assistant/message", turnId, text: full, toolCalls: [] });
     }
+  };
+  try {
+    for await (const event of ctx.llm.stream({
+      baseURL: ctx.baseURL,
+      apiKey: ctx.apiKey ?? "",
+      model: ctx.model,
+      system,
+      messages: history,
+      ...(tools.length > 0 ? { tools } : {}),
+      ...(ctx.reasoningEffort ? { reasoningEffort: ctx.reasoningEffort } : {}),
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+    })) {
+      if (event.type === "thinking") {
+        thinkingPending += event.text;
+        flush(false);
+      } else if (event.type === "text") {
+        full += event.text;
+        pending += event.text;
+        flush(false);
+      } else if (event.type === "tool_call") {
+        const tool = extraTools.find((item) => item.name === event.name) ?? findTool(event.name);
+        toolCalls.push({
+          id: event.id ? asToolCallId(event.id) : newToolCallId(),
+          name: event.name,
+          arguments: event.arguments,
+          ui: tool?.ui ?? "generic",
+        });
+      }
+    }
+  } catch (err) {
+    if (!ctx.signal?.aborted) {
+      throw err;
+    }
+    sealAborted();
+    return "aborted";
+  }
+  if (ctx.signal?.aborted) {
+    sealAborted();
+    return "aborted";
   }
   flush(true);
   ctx.store.append(sessionId, {
@@ -154,6 +202,17 @@ async function runStep(
     : undefined;
   for (const call of toolCalls) {
     ctx.store.append(sessionId, { type: "tool/call", turnId, call });
+    // Every logged call needs a result, or the derived history loses its tool pairing.
+    if (ctx.signal?.aborted) {
+      ctx.store.append(sessionId, {
+        type: "tool/result",
+        turnId,
+        callId: call.id,
+        ok: false,
+        content: ABORTED_TOOL,
+      });
+      continue;
+    }
     const tool = extraTools.find((item) => item.name === call.name) ?? findTool(call.name);
     const extra = extraTools.some((item) => item.name === call.name);
     if (!tool) {
@@ -199,7 +258,17 @@ async function runStep(
         content: "승인 대기 중",
         pendingApproval: true,
       });
-      const allowed = await ctx.approvals.wait(call.id);
+      const allowed = await ctx.approvals.wait(call.id, ctx.signal);
+      if (ctx.signal?.aborted) {
+        ctx.store.append(sessionId, {
+          type: "tool/result",
+          turnId,
+          callId: call.id,
+          ok: false,
+          content: ABORTED_TOOL,
+        });
+        continue;
+      }
       if (!allowed) {
         ctx.store.append(sessionId, {
           type: "tool/result",
@@ -230,7 +299,7 @@ async function runStep(
       });
     }
   }
-  return "continue";
+  return ctx.signal?.aborted ? "aborted" : "continue";
 }
 
 function parseArgs(raw: string): Record<string, unknown> {

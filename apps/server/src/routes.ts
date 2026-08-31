@@ -33,7 +33,12 @@ import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
 import { homedir } from "node:os";
 import { pickNativeDirectory } from "./pick-dir.ts";
 import { resolvePickedDirectory } from "./resolve-dir.ts";
-import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
+import {
+  acceptUserMessage,
+  interruptSession,
+  settleApproval,
+  type Runtime,
+} from "./runtime.ts";
 
 export async function handleApi(req: Request, runtime: Runtime): Promise<Response> {
   const url = new URL(req.url);
@@ -414,6 +419,14 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         throw new HttpError(404, "unknown approval");
       }
       return Response.json({ ok: true });
+    }
+    const interruptMatch = /^\/api\/sessions\/([^/]+)\/interrupt$/.exec(url.pathname);
+    if (interruptMatch && req.method === "POST") {
+      const id = asSessionId(decodeURIComponent(interruptMatch[1] ?? ""));
+      if (!runtime.store.get(id)) {
+        throw new HttpError(404, "unknown session");
+      }
+      return Response.json({ ok: true, interrupted: interruptSession(id) });
     }
     const messageMatch = /^\/api\/sessions\/([^/]+)\/messages$/.exec(url.pathname);
     if (messageMatch && req.method === "POST") {
