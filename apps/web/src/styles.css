@@ -2847,16 +2847,26 @@ body.resizing {
 
 .git-head {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 0 8px 8px;
-  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: 8px;
+  padding: 10px 11px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 11px;
+  background: var(--raised);
+  box-shadow: var(--hi);
+}
+
+.git-icon {
+  flex: none;
+  display: block;
 }
 
 .git-branch {
   min-width: 0;
   overflow: hidden;
+  font-family: var(--mono);
   font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2864,15 +2874,30 @@ body.resizing {
 
 .git-count {
   flex: none;
-  font-size: 11px;
-  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.git-count.ahead {
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  color: color-mix(in oklab, var(--accent) 70%, white);
+}
+
+.git-count.behind {
+  background: color-mix(in oklab, var(--warn) 18%, transparent);
+  color: color-mix(in oklab, var(--warn) 70%, white);
 }
 
 .git-upstream {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
   color: var(--quiet);
   text-align: right;
   text-overflow: ellipsis;
@@ -2894,28 +2919,38 @@ body.resizing {
 .git-file {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 9px;
   min-width: 0;
-  padding: 4px 10px;
+  min-height: 29px;
+  padding: 5px 8px;
   border-radius: 8px;
   font-size: 12px;
 }
 
+.git-file:hover {
+  background: var(--row-hover);
+}
+
 .git-code {
   flex: none;
-  width: 12px;
+  width: 14px;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
+  font-weight: 500;
   text-align: center;
 }
 
 .git-code.tone-add {
-  color: var(--ok);
+  color: var(--live);
 }
 
 .git-code.tone-drop {
   color: var(--danger);
+}
+
+.git-code.tone-mod {
+  color: var(--warn);
 }
 
 .git-code.tone-new {
@@ -2928,6 +2963,7 @@ body.resizing {
   overflow: hidden;
   color: var(--text);
   font-family: var(--mono);
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2946,9 +2982,14 @@ body.resizing {
 }
 
 .git-summary {
-  padding: 4px 0 4px 8px;
+  padding: 5px 0 5px 6px;
+  border-radius: 7px;
   cursor: pointer;
   list-style-position: inside;
+}
+
+.git-summary:hover {
+  background: var(--row-hover);
 }
 
 .git-summary::marker {
@@ -2966,9 +3007,10 @@ body.resizing {
 .git-ref {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  padding: 4px 10px;
+  min-height: 29px;
+  padding: 5px 8px;
   border-radius: 8px;
   font-size: 12px;
 }
@@ -2980,7 +3022,7 @@ body.resizing {
 .git-ref-mark {
   flex: none;
   width: 10px;
-  color: var(--ok);
+  color: var(--live);
   font-size: 10px;
 }
 
@@ -2989,6 +3031,8 @@ body.resizing {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3001,30 +3045,32 @@ body.resizing {
   flex: none;
   color: var(--quiet);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .git-commit {
   min-width: 0;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .git-commit.open {
   background: var(--row-active);
+  box-shadow: var(--hi);
 }
 
 .git-commit-btn {
   display: block;
   width: 100%;
-  padding: 5px 10px;
-  border: 0;
-  border-radius: 8px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: transparent;
   text-align: left;
 }
 
 .git-commit-btn:hover {
-  background: var(--row-hover);
+  background: rgb(255 255 255 / 4%);
+  border-color: var(--edge-soft);
 }
 
 .git-commit-head {
@@ -3040,7 +3086,7 @@ body.resizing {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 12px;
+  font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3057,11 +3103,14 @@ body.resizing {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  padding: 0 5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in oklab, var(--accent) 32%, transparent);
+  border-radius: 4px;
+  color: color-mix(in oklab, var(--accent) 68%, white);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3069,10 +3118,11 @@ body.resizing {
 .git-commit-meta {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  margin: 1px 0 0;
+  gap: 8px;
+  margin: 4px 0 0;
   min-width: 0;
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
   color: var(--quiet);
 }
 

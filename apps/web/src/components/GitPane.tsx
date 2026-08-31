@@ -50,9 +50,10 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
   return (
     <div className="git-pane">
       <div className="git-head">
+        <BranchIcon />
         <span className="git-branch">{git.branch || "HEAD"}</span>
-        {git.ahead > 0 ? <span className="git-count">↑{git.ahead}</span> : null}
-        {git.behind > 0 ? <span className="git-count">↓{git.behind}</span> : null}
+        {git.ahead > 0 ? <span className="git-count ahead">↑{git.ahead}</span> : null}
+        {git.behind > 0 ? <span className="git-count behind">↓{git.behind}</span> : null}
         <span className="git-upstream">{git.upstream ?? "업스트림 없음"}</span>
       </div>
       {groups.length === 0 ? (
@@ -123,6 +124,19 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
         )}
       </section>
     </div>
+  );
+}
+
+function BranchIcon() {
+  return (
+    <svg className="git-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <g stroke="var(--accent)" strokeWidth="1.3">
+        <circle cx="4" cy="3.4" r="1.7" />
+        <circle cx="4" cy="10.6" r="1.7" />
+        <circle cx="10.2" cy="3.4" r="1.7" />
+        <path d="M4 5.1v3.8M10.2 5.1c0 2.4-1.9 3.1-4.4 3.6" strokeLinecap="round" />
+      </g>
+    </svg>
   );
 }
 

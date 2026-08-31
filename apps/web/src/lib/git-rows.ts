@@ -53,6 +53,9 @@ export function toneOf(file: GitFileView, column: GitColumn): string {
   if (code === "D" || code === "U") {
     return "tone-drop";
   }
+  if (code === "M") {
+    return "tone-mod";
+  }
   return code === "?" ? "tone-new" : "";
 }
 

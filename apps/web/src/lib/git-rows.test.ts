@@ -84,12 +84,14 @@ describe("codeOf and toneOf", () => {
     expect(codeOf(file("M", " ", "x.ts"), "worktree")).toBe("·");
   });
 
-  test("colours add, drop, and untracked apart", () => {
+  test("colours add, drop, modify, and untracked apart", () => {
     expect(toneOf(file("A", " ", "x"), "index")).toBe("tone-add");
     expect(toneOf(file("D", " ", "x"), "index")).toBe("tone-drop");
     expect(toneOf(file("U", "U", "x"), "worktree")).toBe("tone-drop");
     expect(toneOf(file("?", "?", "x"), "worktree")).toBe("tone-new");
-    expect(toneOf(file(" ", "M", "x"), "worktree")).toBe("");
+    expect(toneOf(file(" ", "M", "x"), "worktree")).toBe("tone-mod");
+    expect(toneOf(file("M", " ", "x"), "index")).toBe("tone-mod");
+    expect(toneOf(file("R", " ", "x"), "index")).toBe("");
   });
 });
 
