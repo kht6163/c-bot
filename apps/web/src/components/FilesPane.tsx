@@ -90,9 +90,22 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
                 <EntryIcon dir={entry.kind === "dir"} />
                 <span className="file-name">{entry.name}</span>
                 {entry.kind === "dir" ? (
-                  <span className="file-chevron" aria-hidden="true">
-                    ›
-                  </span>
+                  <svg
+                    className="file-chevron"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M4.5 3 7.5 6 4.5 9"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                 ) : null}
               </button>
             </li>
