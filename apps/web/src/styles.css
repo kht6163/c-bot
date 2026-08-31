@@ -463,6 +463,72 @@ button {
   padding: 0 32px 18px;
 }
 
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.queue-index {
+  flex: none;
+  color: var(--ink-4);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 30px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-text:hover {
+  color: var(--text);
+}
+
+.queue-drop {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-4);
+}
+
+.queue-drop:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
 .composer-card {
   position: relative;
   display: flex;
@@ -775,6 +841,7 @@ button {
   opacity: 0.4;
   cursor: default;
 }
+
 
 .ghost {
   padding: 4px 8px;

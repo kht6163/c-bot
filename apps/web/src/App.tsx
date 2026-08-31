@@ -44,6 +44,13 @@ import {
   type ViewMode,
 } from "./lib/team.ts";
 import { reconnectDelay } from "./lib/reconnect.ts";
+import {
+  clearQueue,
+  dropQueued,
+  enqueue,
+  queuedFor,
+  type Queues,
+} from "./lib/queue.ts";
 
 type LinkState = "connecting" | "ok" | "down";
 
@@ -61,6 +68,7 @@ export function App() {
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
+  const [queues, setQueues] = useState<Queues>({});
   const [viewMode, setViewMode] = useState<ViewMode>("agent");
   const [focusedKey, setFocusedKey] = useState("lead");
   const [team, setTeam] = useState<SessionTeamMember[]>([]);
@@ -337,8 +345,8 @@ export function App() {
       return;
     }
     const after = sendSeqRef.current;
-    const started = events.some((event) => event.type === "turn/start" && event.seq > after);
-    if (started || turnSettledAfter(events, after)) {
+    // A turn that was already open when we sent does not clear the wait: ours has not started.
+    if (events.some((event) => event.type === "turn/start" && event.seq > after)) {
       setPendingSend(false);
     }
   }, [events, pendingSend]);
@@ -398,6 +406,37 @@ export function App() {
     [loadList, openSession, selected],
   );
 
+  const queued = queuedFor(queues, selectedId);
+
+  const handleQueue = useCallback((text: string) => {
+    const id = selectedRef.current;
+    if (!id) {
+      return;
+    }
+    setQueues((current) => enqueue(current, id, { id: newQueueId(), text }));
+  }, []);
+
+  const handleDropQueued = useCallback((itemId: string) => {
+    const id = selectedRef.current;
+    if (!id) {
+      return;
+    }
+    setQueues((current) => dropQueued(current, id, itemId));
+  }, []);
+
+  // The queue is a draft list: one message leaves it only once the session is idle again.
+  useEffect(() => {
+    if (busy || !selectedId) {
+      return;
+    }
+    const next = queuedFor(queues, selectedId)[0];
+    if (!next) {
+      return;
+    }
+    setQueues((current) => dropQueued(current, selectedId, next.id));
+    handleSend(next.text);
+  }, [busy, selectedId, queues, handleSend]);
+
   const overlayOpen = settingsOpen || workspaceOpen || newBotOpen || Boolean(editBotId);
   const editBot = bots.find((item) => item.id === editBotId);
 
@@ -435,6 +474,7 @@ export function App() {
         onDeleteSession={(session) => {
           void (async () => {
             await deleteSession(session.id);
+            setQueues((current) => clearQueue(current, session.id));
             const remaining = sessions.filter((item) => item.id !== session.id);
             setSessions(remaining);
             const next = fallbackAfterDelete(session, selectedId, remaining);
@@ -457,6 +497,11 @@ export function App() {
             const nextProject = await deleteProject(path);
             setProject(nextProject);
             const remaining = sessions.filter((item) => item.workspace !== path);
+            setQueues((current) =>
+              sessions
+                .filter((item) => item.workspace === path)
+                .reduce((acc, item) => clearQueue(acc, item.id), current),
+            );
             setSessions(remaining);
             if (selected?.workspace === path) {
               const next = remaining[0];
@@ -597,11 +642,14 @@ export function App() {
             resetKey={selectedId}
             variant="dock"
             placeholder={
-              busy ? "생각 중" : focusedKey === "lead" ? "에이전트에게 메시지" : "리드에게 메시지"
+              busy ? "다음 메시지를 미리 적어 두세요" : focusedKey === "lead" ? "에이전트에게 메시지" : "리드에게 메시지"
             }
             workspace={selected?.workspace ?? project?.current ?? null}
             bots={bots}
+            queued={queued}
             onSend={handleSend}
+            onQueue={handleQueue}
+            onDrop={handleDropQueued}
           />
         ) : null}
       </section>
@@ -664,6 +712,10 @@ export function App() {
   );
 }
 
+function newQueueId(): string {
+  return crypto.randomUUID();
+}
+
 function isTeamSignal(event: SessionEvent): boolean {
   return (
     event.type === "bot/delivery" ||
@@ -694,23 +746,5 @@ function hasOpenTurn(events: readonly SessionEvent[]): boolean {
   return open.size > 0;
 }
 
-function turnSettledAfter(events: readonly SessionEvent[], afterSeq: number): boolean {
-  const open = new Set<string>();
-  let saw = false;
-  for (const event of events) {
-    if (event.seq <= afterSeq) {
-      continue;
-    }
-    if (event.type === "turn/start") {
-      saw = true;
-      open.add(event.turnId);
-    }
-    if (event.type === "turn/end") {
-      saw = true;
-      open.delete(event.turnId);
-    }
-  }
-  return saw && open.size === 0;
-}
 
 

@@ -3,6 +3,7 @@ import { findActiveAt } from "@cbot/shared";
 import { searchProjectFiles } from "../lib/api.ts";
 import { isImeKeyboardEvent } from "../lib/ime.ts";
 import { filterMentionOptions, insertMention, type MentionOption } from "../lib/mention.ts";
+import type { QueuedMessage } from "../lib/queue.ts";
 
 interface BotHint {
   handle: string;
@@ -19,7 +20,10 @@ interface Props {
   picker?: ReactNode;
   workspace?: string | null;
   bots?: readonly BotHint[];
+  queued?: readonly QueuedMessage[];
   onSend: (text: string) => void;
+  onQueue?: (text: string) => void;
+  onDrop?: (id: string) => void;
 }
 
 function ComposerInner({
@@ -31,10 +35,15 @@ function ComposerInner({
   picker,
   workspace,
   bots = [],
+  queued = [],
   onSend,
+  onQueue,
+  onDrop,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const onSendRef = useRef(onSend);
+  const onQueueRef = useRef(onQueue);
+  const onDropRef = useRef(onDrop);
   const composing = useRef(false);
   const skipCompositionEnd = useRef(false);
   const searchTimer = useRef<number>(0);
@@ -48,6 +57,8 @@ function ComposerInner({
   const [options, setOptions] = useState<MentionOption[]>([]);
   const [active, setActive] = useState(0);
   onSendRef.current = onSend;
+  onQueueRef.current = onQueue;
+  onDropRef.current = onDrop;
 
   useEffect(() => {
     if (ref.current) {
@@ -64,8 +75,8 @@ function ComposerInner({
     return () => window.clearTimeout(searchTimer.current);
   }, []);
 
-  const locked = busy || blocked;
-  const canSend = !locked && !empty;
+  const canQueue = busy && Boolean(onQueueRef.current);
+  const canSend = !blocked && !empty && (!busy || canQueue);
   const menuOpen = mention !== null && options.length > 0;
 
   function syncMention() {
@@ -113,6 +124,32 @@ function ComposerInner({
     el.focus();
   }
 
+  function clearInput() {
+    skipCompositionEnd.current = composing.current;
+    composing.current = false;
+    if (ref.current) {
+      ref.current.value = "";
+    }
+    setEmpty(true);
+    setMention(null);
+    setOptions([]);
+  }
+
+  /** Pulls a queued message back into the composer; an existing draft keeps its place above it. */
+  function restore(item: QueuedMessage) {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const draft = el.value.replace(/\s+$/, "");
+    const next = draft.length === 0 ? item.text : `${draft}\n${item.text}`;
+    el.value = next;
+    setEmpty(!next.trim());
+    onDropRef.current?.(item.id);
+    el.focus();
+    el.setSelectionRange(next.length, next.length);
+  }
+
   return (
     <form
       className={variant === "hero" ? "composer hero-composer" : "composer dock"}
@@ -125,17 +162,49 @@ function ComposerInner({
         if (text.length === 0) {
           return;
         }
-        skipCompositionEnd.current = composing.current;
-        composing.current = false;
-        if (ref.current) {
-          ref.current.value = "";
+        clearInput();
+        if (busy) {
+          onQueueRef.current?.(text);
+        } else {
+          onSendRef.current(text);
         }
-        setEmpty(true);
-        setMention(null);
-        setOptions([]);
-        onSendRef.current(text);
       }}
     >
+      {queued.length > 0 ? (
+        <ul className="queue-list" aria-label="대기 중인 메시지">
+          {queued.map((item, index) => (
+            <li key={item.id} className="queue-item">
+              <span className="queue-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <button
+                type="button"
+                className="queue-text"
+                title="편집으로 되돌리기"
+                onClick={() => restore(item)}
+              >
+                {item.text}
+              </button>
+              <button
+                type="button"
+                className="queue-drop"
+                aria-label="대기열에서 빼기"
+                onClick={() => onDropRef.current?.(item.id)}
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                  <path
+                    d="M3 3l6 6M9 3l-6 6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="composer-card">
         {menuOpen ? (
           <ul className="mention-menu" role="listbox" aria-label="멘션">
@@ -168,7 +237,7 @@ function ComposerInner({
         <textarea
           ref={ref}
           rows={2}
-          disabled={busy}
+          disabled={blocked}
           placeholder={placeholder}
           autoComplete="off"
           autoCorrect="off"
@@ -247,10 +316,19 @@ function ComposerInner({
         />
         <div className="composer-row">
           <span className="composer-hint">
-            {blocked ? "프로젝트를 먼저 여세요" : busy ? "생각 중" : "@ 로 파일·봇 멘션"}
+            {blocked
+              ? "프로젝트를 먼저 여세요"
+              : busy
+                ? "생각 중 · Enter 는 대기열"
+                : "@ 로 파일·봇 멘션"}
           </span>
           {picker}
-          <button type="submit" className="send-btn" disabled={!canSend} aria-label="보내기">
+          <button
+            type="submit"
+            className="send-btn"
+            disabled={!canSend}
+            aria-label={busy ? "대기열에 넣기" : "보내기"}
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path
                 d="M8 3.2v9.6M4.2 7l3.8-3.8L11.8 7"
@@ -277,6 +355,7 @@ export const Composer = memo(ComposerInner, (prev, next) => {
     prev.variant === next.variant &&
     prev.picker === next.picker &&
     prev.workspace === next.workspace &&
-    prev.bots === next.bots
+    prev.bots === next.bots &&
+    prev.queued === next.queued
   );
 });
