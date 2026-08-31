@@ -108,6 +108,7 @@ export function TeamStage({
               aria-pressed={mode === "split"}
               onClick={() => onViewMode(mode === "split" ? "agent" : "split")}
             >
+              <SplitIcon single={mode === "split"} />
               {mode === "split" ? "한 화면" : "분할"}
             </button>
           ) : null}
@@ -137,6 +138,30 @@ export function TeamStage({
         <p className="stage-hint">보기 전용 · 메시지는 리드에게 보냅니다</p>
       ) : null}
     </div>
+  );
+}
+
+function Chevron({ down }: { down: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path
+        d={down ? "M3 4.5 6 7.5 9 4.5" : "M3 7.5 6 4.5 9 7.5"}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** One frame or two: the icon says what the click gives you, not where you are. */
+function SplitIcon({ single }: { single: boolean }) {
+  return (
+    <svg className="bar-icon" width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
+      {single ? null : <path d="M7 2.6v8.8" stroke="currentColor" strokeWidth="1.3" />}
+    </svg>
   );
 }
 
@@ -314,11 +339,12 @@ function NoteBoard({
                   patchNote(pane.key, toggleCollapsed(note));
                 }}
               >
+                <span
+                  className={`agent-dot${paneBusy(pane, codingEvents, botEvents) ? " live" : ""}`}
+                  aria-hidden="true"
+                />
                 <span className="bot-pane-name">@{pane.handle}</span>
                 {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
-                {paneBusy(pane, codingEvents, botEvents) ? (
-                  <span className="scaffold-pulse" aria-hidden="true" />
-                ) : null}
                 <button
                   type="button"
                   className="note-fold"
@@ -329,7 +355,7 @@ function NoteBoard({
                     patchNote(pane.key, toggleCollapsed(note));
                   }}
                 >
-                  {note.collapsed ? "펼치기" : "접기"}
+                  <Chevron down={note.collapsed} />
                 </button>
               </header>
               {note.collapsed ? null : (

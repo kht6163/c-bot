@@ -523,6 +523,25 @@ export function App() {
             barEnd={
               inspectorOpen ? null : (
                 <button type="button" className="view-toggle" onClick={() => setInspectorOpen(true)}>
+                  <svg
+                    className="bar-icon"
+                    width="13"
+                    height="13"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="1.6"
+                      y="2.6"
+                      width="10.8"
+                      height="8.8"
+                      rx="1.6"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                    />
+                    <path d="M9.2 2.6v8.8" stroke="currentColor" strokeWidth="1.3" />
+                  </svg>
                   패널
                 </button>
               )

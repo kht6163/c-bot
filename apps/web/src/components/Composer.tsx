@@ -247,7 +247,7 @@ function ComposerInner({
         />
         <div className="composer-row">
           <span className="composer-hint">
-            {blocked ? "프로젝트를 먼저 여세요" : busy ? "생각 중" : ""}
+            {blocked ? "프로젝트를 먼저 여세요" : busy ? "생각 중" : "@ 로 파일·봇 멘션"}
           </span>
           {picker}
           <button type="submit" className="send-btn" disabled={!canSend} aria-label="보내기">
