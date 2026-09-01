@@ -1,6 +1,7 @@
 import { assertNever, type AttachedFile, type SessionEvent } from "@cbot/shared";
 
 const ABORTED_TURN = "[사용자가 위 턴을 중단했습니다.]";
+const SUMMARY_HEAD = "이전 대화 요약 (원문은 세션 로그에 남아 있다):";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -20,7 +21,14 @@ export interface ChatMessage {
  */
 export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
   const messages: ChatMessage[] = [];
+  const window = contextWindow(events);
+  if (window.summary) {
+    messages.push({ role: "user", content: `${SUMMARY_HEAD}\n${window.summary}` });
+  }
   for (const event of events) {
+    if (event.seq <= window.fromSeq) {
+      continue;
+    }
     switch (event.type) {
       case "user/message":
         messages.push({ role: "user", content: userContent(event.text, event.files) });
@@ -70,12 +78,33 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
       case "tool/call":
       case "bot/delivery":
       case "task/change":
+      case "context/compact":
+      case "context/clear":
         break;
       default:
         assertNever(event);
     }
   }
   return messages;
+}
+
+/**
+ * The span of log the model still sees. `/compact` replaces everything up to
+ * `fromSeq` with one summary; `/clear` drops it with no summary at all.
+ */
+function contextWindow(events: readonly SessionEvent[]): { fromSeq: number; summary: string | null } {
+  let fromSeq = 0;
+  let summary: string | null = null;
+  for (const event of events) {
+    if (event.type === "context/clear") {
+      fromSeq = event.seq;
+      summary = null;
+    } else if (event.type === "context/compact") {
+      fromSeq = event.throughSeq;
+      summary = event.summary;
+    }
+  }
+  return { fromSeq, summary };
 }
 
 function formatRecalledMemory(items: readonly { title: string; body: string }[]): string {

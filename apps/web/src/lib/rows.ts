@@ -17,9 +17,13 @@ export type ChatRow =
       live: boolean;
     }
   | { key: string; kind: "status"; text: string; live: true }
-  | { key: string; kind: "notice"; text: string; live: false }
+  | { key: string; kind: "notice"; text: string; live: false; detail?: string }
   | { key: string; kind: "thinking"; text: string; live: boolean }
   | { key: string; kind: "memory"; text: string; live: false };
+
+export function formatTokens(tokens: number): string {
+  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+}
 
 export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
   const openTurns = new Set<string>();
@@ -120,6 +124,21 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
       if (event.aborted) {
         rows.push({ key: `x-${event.seq}`, kind: "notice", text: "중단됨", live: false });
       }
+    } else if (event.type === "context/compact") {
+      rows.push({
+        key: `c-${event.seq}`,
+        kind: "notice",
+        text: `${event.auto ? "컨텍스트가 차서 자동으로" : "대화를"} 요약했습니다 · 약 ${formatTokens(event.tokensBefore)} 토큰 정리`,
+        live: false,
+        detail: event.summary,
+      });
+    } else if (event.type === "context/clear") {
+      rows.push({
+        key: `c-${event.seq}`,
+        kind: "notice",
+        text: "컨텍스트를 비웠습니다 · 아래부터 다시 시작합니다",
+        live: false,
+      });
     } else if (event.type === "tool/result") {
       const existing = toolAt.get(event.callId);
       const previous = existing !== undefined ? rows[existing] : undefined;

@@ -866,6 +866,31 @@ button {
   font-size: 12px;
 }
 
+.notice-detail > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.notice-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.notice-detail > summary::before {
+  content: "▸ ";
+  color: var(--ink-4);
+}
+
+.notice-detail[open] > summary::before {
+  content: "▾ ";
+}
+
+.notice-detail > :not(summary) {
+  margin-top: 6px;
+  padding-left: 12px;
+  border-left: 1px solid var(--edge-soft);
+  color: var(--muted);
+}
+
 .ghost {
   padding: 4px 8px;
   border-radius: 8px;

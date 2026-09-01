@@ -7,6 +7,8 @@ import {
   type SessionId,
 } from "@cbot/shared";
 import type { ApprovalGate } from "./approval.ts";
+import { compactSession } from "./compact.ts";
+import { historyTokens } from "./context.ts";
 import type { LlmClient } from "./llm/client.ts";
 import { LlmError } from "./llm/client.ts";
 import { codingSystemPrompt } from "./prompt.ts";
@@ -31,8 +33,17 @@ export interface TurnContext {
   extraTools?: ToolDefinition[];
   systemPrompt?: string;
   reasoningEffort?: string;
+  /** Absent means never compact on its own. */
+  context?: AutoCompactPolicy;
   /** Aborting ends the turn at the next step boundary; a tool already running still finishes. */
   signal?: AbortSignal;
+}
+
+export interface AutoCompactPolicy {
+  autoCompact: boolean;
+  maxTokens: number;
+  compactAt: number;
+  keepRecentTurns: number;
 }
 
 export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<void> {
@@ -54,13 +65,35 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
     ...extraTools.map(schemaOf),
   ];
   const system = ctx.systemPrompt ?? codingSystemPrompt(ctx.workspace);
+  let overflowRetried = false;
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (ctx.signal?.aborted) {
         endTurn(ctx, sessionId, turnId, true);
         return;
       }
-      const outcome = await runStep(sessionId, turnId, ctx, system, tools, extraTools);
+      await autoCompact(sessionId, ctx);
+      let outcome: "stop" | "continue" | "aborted";
+      try {
+        outcome = await runStep(sessionId, turnId, ctx, system, tools, extraTools);
+      } catch (err) {
+        // The estimate can sit under the threshold and the provider still say
+        // no. One forced compaction is the retry; a second failure is real.
+        if (
+          !overflowRetried &&
+          err instanceof LlmError &&
+          err.reason === "context_overflow" &&
+          ctx.context?.autoCompact === true &&
+          !ctx.signal?.aborted
+        ) {
+          overflowRetried = true;
+          const compacted = await compact(sessionId, ctx, 0);
+          if (compacted) {
+            continue;
+          }
+        }
+        throw err;
+      }
       if (outcome === "aborted") {
         endTurn(ctx, sessionId, turnId, true);
         return;
@@ -110,6 +143,41 @@ function endTurn(
     turnId,
     ...(aborted ? { aborted: true } : {}),
   });
+}
+
+/** Compacts before a step when the derived history is close to the limit. */
+async function autoCompact(sessionId: SessionId, ctx: TurnContext): Promise<void> {
+  const policy = ctx.context;
+  if (!policy?.autoCompact) {
+    return;
+  }
+  const tokens = historyTokens(deriveMessages(ctx.store.events(sessionId)));
+  if (tokens < policy.maxTokens * policy.compactAt) {
+    return;
+  }
+  await compact(sessionId, ctx, policy.keepRecentTurns);
+}
+
+/**
+ * A compaction that cannot run leaves the turn alone: the provider error the
+ * caller was already heading for is the honest outcome, not a second failure.
+ */
+async function compact(
+  sessionId: SessionId,
+  ctx: TurnContext,
+  keepRecentTurns: number,
+): Promise<boolean> {
+  const result = await compactSession(sessionId, {
+    store: ctx.store,
+    llm: ctx.llm,
+    apiKey: ctx.apiKey,
+    baseURL: ctx.baseURL,
+    model: ctx.model,
+    keepRecentTurns,
+    auto: true,
+    ...(ctx.signal ? { signal: ctx.signal } : {}),
+  });
+  return result.ok;
 }
 
 async function runStep(

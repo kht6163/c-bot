@@ -41,6 +41,13 @@ export {
   type Secrets,
 } from "./secrets.ts";
 export { SessionStore, type CreateSessionInput } from "./session/store.ts";
+export {
+  COMPACT_SYSTEM,
+  compactSession,
+  type CompactInput,
+  type CompactResult,
+} from "./compact.ts";
+export { compactBoundary, contextStart, estimateTokens, historyTokens } from "./context.ts";
 export { deriveMessages, type ChatMessage } from "./session/derive.ts";
 export {
   LlmError,
@@ -57,7 +64,13 @@ export {
   type RemoteModel,
 } from "./llm/client.ts";
 
-export { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "./loop.ts";
+export {
+  runTurn,
+  sessionNeedsTurn,
+  titleFromText,
+  type AutoCompactPolicy,
+  type TurnContext,
+} from "./loop.ts";
 export { CODING_SYSTEM_PROMPT, codingSystemPrompt } from "./prompt.ts";
 export { ApprovalGate } from "./approval.ts";
 export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";

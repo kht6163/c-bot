@@ -254,6 +254,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           approvalMode: config.approval.mode,
           approvals: runtime.approvals,
           extraTools,
+          context: config.context,
           signal: controller.signal,
           ...(systemPrompt !== undefined ? { systemPrompt } : {}),
           ...(reasoningEffort && reasoningEffort !== "off" ? { reasoningEffort } : {}),

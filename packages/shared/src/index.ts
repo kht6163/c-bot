@@ -27,6 +27,8 @@ export {
 export {
   SESSION_FORMAT_VERSION,
   type AssistantChunkEvent,
+  type ContextClearEvent,
+  type ContextCompactEvent,
   type AssistantMessageEvent,
   type BotDeliveryEvent,
   type BotMessageEvent,

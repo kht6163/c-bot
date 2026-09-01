@@ -116,6 +116,21 @@ export interface MemoryRecallEvent extends EventEnvelope {
   items: readonly RecalledMemory[];
 }
 
+export interface ContextCompactEvent extends EventEnvelope {
+  type: "context/compact";
+  /** Model history restarts here: events up to this seq are replaced by `summary`. */
+  throughSeq: number;
+  summary: string;
+  /** Estimated tokens of the span the summary replaced. Display only. */
+  tokensBefore: number;
+  /** True when the loop compacted on its own instead of the user asking. */
+  auto: boolean;
+}
+
+export interface ContextClearEvent extends EventEnvelope {
+  type: "context/clear";
+}
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface TaskChangeEvent extends EventEnvelope {
@@ -140,4 +155,6 @@ export type SessionEvent =
   | BotMessageEvent
   | BotDeliveryEvent
   | MemoryRecallEvent
-  | TaskChangeEvent;
+  | TaskChangeEvent
+  | ContextCompactEvent
+  | ContextClearEvent;

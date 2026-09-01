@@ -31,6 +31,14 @@ export interface AppConfig {
   botMode: {
     protocol: boolean;
   };
+  context: {
+    /** Compact on its own once the estimate crosses `maxTokens * compactAt`. */
+    autoCompact: boolean;
+    maxTokens: number;
+    compactAt: number;
+    /** Turns an automatic compaction keeps verbatim behind the summary. */
+    keepRecentTurns: number;
+  };
   project: {
     current: string | null;
     recents: string[];
@@ -49,6 +57,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   botMode: {
     protocol: true,
+  },
+  context: {
+    autoCompact: true,
+    maxTokens: 128000,
+    compactAt: 0.8,
+    keepRecentTurns: 2,
   },
   project: {
     current: null,
@@ -122,6 +136,7 @@ export function mergeConfig(parsed: unknown): AppConfig {
   const llm = isRecord(obj.llm) ? obj.llm : {};
   const approval = isRecord(obj.approval) ? obj.approval : {};
   const botMode = isRecord(obj.botMode) ? obj.botMode : {};
+  const context = isRecord(obj.context) ? obj.context : {};
   const project = isRecord(obj.project) ? obj.project : {};
   const mode = approval.mode === "allow" ? "allow" : "prompt";
   const recents = Array.isArray(project.recents)
@@ -162,6 +177,12 @@ export function mergeConfig(parsed: unknown): AppConfig {
     approval: { mode },
     botMode: {
       protocol: botMode.protocol === false ? false : true,
+    },
+    context: {
+      autoCompact: context.autoCompact === false ? false : true,
+      maxTokens: positive(context.maxTokens, DEFAULT_CONFIG.context.maxTokens),
+      compactAt: ratio(context.compactAt, DEFAULT_CONFIG.context.compactAt),
+      keepRecentTurns: count(context.keepRecentTurns, DEFAULT_CONFIG.context.keepRecentTurns),
     },
     project: {
       current: typeof project.current === "string" && project.current.trim() ? project.current.trim() : null,
@@ -240,6 +261,24 @@ export function projectName(path: string | null): string | null {
   }
   const parts = path.split(/[/\\]/).filter((part) => part.length > 0);
   return parts.at(-1) ?? path;
+}
+
+function positive(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : fallback;
+}
+
+function ratio(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 1
+    ? value
+    : fallback;
+}
+
+function count(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : fallback;
 }
 
 function shouldRewriteProviders(parsed: unknown, merged: AppConfig): boolean {
@@ -413,6 +452,11 @@ function serializeConfig(config: AppConfig): string {
     `  mode: ${config.approval.mode}`,
     "botMode:",
     `  protocol: ${config.botMode.protocol}`,
+    "context:",
+    `  autoCompact: ${config.context.autoCompact}`,
+    `  maxTokens: ${config.context.maxTokens}`,
+    `  compactAt: ${config.context.compactAt}`,
+    `  keepRecentTurns: ${config.context.keepRecentTurns}`,
     "project:",
     `  current: ${config.project.current ? yamlScalar(config.project.current) : "null"}`,
   );
