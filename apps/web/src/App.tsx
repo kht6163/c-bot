@@ -55,6 +55,13 @@ import {
 
 type LinkState = "connecting" | "ok" | "down";
 
+const ANSWERS_SEND = new Set<SessionEvent["type"]>([
+  "turn/start",
+  "system/notice",
+  "context/compact",
+  "context/clear",
+]);
+
 export function App() {
   const [link, setLink] = useState<LinkState>("connecting");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -346,8 +353,10 @@ export function App() {
       return;
     }
     const after = sendSeqRef.current;
-    // A turn that was already open when we sent does not clear the wait: ours has not started.
-    if (events.some((event) => event.type === "turn/start" && event.seq > after)) {
+    // A turn that was already open when we sent does not clear the wait: ours
+    // has not started. A slash command answers with a notice or a context
+    // boundary instead of a turn, and that ends the wait just as well.
+    if (events.some((event) => event.seq > after && ANSWERS_SEND.has(event.type))) {
       setPendingSend(false);
     }
   }, [events, pendingSend]);

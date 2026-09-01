@@ -131,6 +131,16 @@ export interface ContextClearEvent extends EventEnvelope {
   type: "context/clear";
 }
 
+/**
+ * What a slash command answered. Written by the server, shown in the log,
+ * and never derived into model history: it is UI, not conversation.
+ */
+export interface SystemNoticeEvent extends EventEnvelope {
+  type: "system/notice";
+  command: string;
+  text: string;
+}
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface TaskChangeEvent extends EventEnvelope {
@@ -157,4 +167,5 @@ export type SessionEvent =
   | MemoryRecallEvent
   | TaskChangeEvent
   | ContextCompactEvent
-  | ContextClearEvent;
+  | ContextClearEvent
+  | SystemNoticeEvent;

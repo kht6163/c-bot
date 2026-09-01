@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
-import { findActiveAt } from "@cbot/shared";
+import { filterSlashCommands, findActiveAt, findActiveSlash, type SlashCommandSpec } from "@cbot/shared";
 import { searchProjectFiles } from "../lib/api.ts";
 import { isImeKeyboardEvent } from "../lib/ime.ts";
 import { filterMentionOptions, insertMention, type MentionOption } from "../lib/mention.ts";
@@ -58,6 +58,8 @@ function ComposerInner({
     query: string;
   } | null>(null);
   const [options, setOptions] = useState<MentionOption[]>([]);
+  const [commands, setCommands] = useState<SlashCommandSpec[]>([]);
+  const [slash, setSlash] = useState<{ start: number; end: number } | null>(null);
   const [active, setActive] = useState(0);
   onSendRef.current = onSend;
   onQueueRef.current = onQueue;
@@ -72,6 +74,8 @@ function ComposerInner({
     setEmpty(true);
     setMention(null);
     setOptions([]);
+    setSlash(null);
+    setCommands([]);
     mentionKey.current = null;
   }, [resetKey]);
 
@@ -82,12 +86,29 @@ function ComposerInner({
   const canQueue = busy && Boolean(onQueueRef.current);
   const canSend = !blocked && !empty && (!busy || canQueue);
   const canInterrupt = busy && Boolean(onInterruptRef.current);
-  const menuOpen = mention !== null && options.length > 0;
+  const menuOpen =
+    (mention !== null && options.length > 0) || (slash !== null && commands.length > 0);
+  const menuLength = slash !== null ? commands.length : options.length;
 
   function syncMention() {
     const el = ref.current;
     if (!el || composing.current) {
       return;
+    }
+    const command = findActiveSlash(el.value, el.selectionStart);
+    if (command) {
+      const matches = filterSlashCommands(command.query);
+      setSlash({ start: command.start, end: command.end });
+      setCommands(matches);
+      setMention(null);
+      setOptions([]);
+      mentionKey.current = null;
+      setActive((index) => (index < matches.length ? index : 0));
+      return;
+    }
+    if (slash !== null) {
+      setSlash(null);
+      setCommands([]);
     }
     const found = findActiveAt(el.value, el.selectionStart);
     if (!found) {
@@ -114,6 +135,22 @@ function ComposerInner({
     }, 80);
   }
 
+  function applyCommand(spec: SlashCommandSpec) {
+    const el = ref.current;
+    if (!el || !slash) {
+      return;
+    }
+    // Commands that take no argument are ready to send, so no trailing space.
+    const inserted = spec.args ? `/${spec.name} ` : `/${spec.name}`;
+    const next = `${inserted}${el.value.slice(slash.end)}`;
+    el.value = next;
+    el.setSelectionRange(inserted.length, inserted.length);
+    setEmpty(!next.trim());
+    setSlash(null);
+    setCommands([]);
+    el.focus();
+  }
+
   function applyOption(option: MentionOption) {
     const el = ref.current;
     if (!el || !mention) {
@@ -138,6 +175,8 @@ function ComposerInner({
     setEmpty(true);
     setMention(null);
     setOptions([]);
+    setSlash(null);
+    setCommands([]);
   }
 
   /** Pulls a queued message back into the composer; an existing draft keeps its place above it. */
@@ -222,7 +261,34 @@ function ComposerInner({
         </ul>
       ) : null}
       <div className="composer-card">
-        {menuOpen ? (
+        {menuOpen && slash !== null ? (
+          <ul className="mention-menu" role="listbox" aria-label="명령">
+            {commands.map((spec, index) => (
+              <li key={spec.name}>
+                <button
+                  type="button"
+                  className={index === active ? "mention-option active" : "mention-option"}
+                  ref={(node) => {
+                    if (index === active) {
+                      node?.scrollIntoView({ block: "nearest" });
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applyCommand(spec);
+                  }}
+                >
+                  <span className="mention-token">
+                    /{spec.name}
+                    {spec.args ? ` ${spec.args}` : ""}
+                  </span>
+                  <span className="mention-kind">{spec.summary}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {menuOpen && slash === null ? (
           <ul className="mention-menu" role="listbox" aria-label="멘션">
             {options.map((option, index) => (
               <li key={option.kind === "bot" ? `bot:${option.handle}` : `file:${option.path}`}>
@@ -301,7 +367,7 @@ function ComposerInner({
             if (menuOpen) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setActive((index) => Math.min(index + 1, options.length - 1));
+                setActive((index) => Math.min(index + 1, menuLength - 1));
                 return;
               }
               if (e.key === "ArrowUp") {
@@ -313,9 +379,19 @@ function ComposerInner({
                 e.preventDefault();
                 setMention(null);
                 setOptions([]);
+                setSlash(null);
+                setCommands([]);
                 return;
               }
               if (e.key === "Enter" || e.key === "Tab") {
+                if (slash !== null) {
+                  const spec = commands[active];
+                  if (spec) {
+                    e.preventDefault();
+                    applyCommand(spec);
+                  }
+                  return;
+                }
                 const option = options[active];
                 if (option) {
                   e.preventDefault();
@@ -341,7 +417,7 @@ function ComposerInner({
               ? "프로젝트를 먼저 여세요"
               : busy
                 ? "생각 중 · Enter 는 대기열"
-                : "@ 로 파일·봇 멘션"}
+                : "@ 로 파일·봇 멘션 · / 로 명령"}
           </span>
           {picker}
           {canInterrupt ? (

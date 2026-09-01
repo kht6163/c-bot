@@ -18,6 +18,7 @@ export type ChatRow =
     }
   | { key: string; kind: "status"; text: string; live: true }
   | { key: string; kind: "notice"; text: string; live: false; detail?: string }
+  | { key: string; kind: "command"; command: string; text: string; live: false }
   | { key: string; kind: "thinking"; text: string; live: boolean }
   | { key: string; kind: "memory"; text: string; live: false };
 
@@ -124,6 +125,14 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
       if (event.aborted) {
         rows.push({ key: `x-${event.seq}`, kind: "notice", text: "중단됨", live: false });
       }
+    } else if (event.type === "system/notice") {
+      rows.push({
+        key: `n-${event.seq}`,
+        kind: "command",
+        command: event.command,
+        text: event.text,
+        live: false,
+      });
     } else if (event.type === "context/compact") {
       rows.push({
         key: `c-${event.seq}`,

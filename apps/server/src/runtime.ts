@@ -136,6 +136,11 @@ export function settleApproval(runtime: Runtime, callId: ToolCallId, allow: bool
   return runtime.approvals.settle(callId, allow);
 }
 
+/** True while a turn is running or queued for this session. */
+export function isSessionBusy(sessionId: SessionId): boolean {
+  return busy.has(sessionId) || pendingWake.has(sessionId);
+}
+
 /** Stops the turn this session is running. False when no turn was open. */
 export function interruptSession(sessionId: SessionId): boolean {
   const controller = running.get(sessionId);

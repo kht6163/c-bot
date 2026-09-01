@@ -41,6 +41,11 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
                 {row.text}
               </p>
             )
+          ) : row.kind === "command" ? (
+            <article key={row.key} className="command-note">
+              <span className="command-name">/{row.command}</span>
+              <MarkdownView text={row.text} live={false} />
+            </article>
           ) : row.kind === "thinking" ? (
             <article key={row.key} className={`thinking${row.live ? " live" : ""}`}>
               <span className="who">thinking</span>

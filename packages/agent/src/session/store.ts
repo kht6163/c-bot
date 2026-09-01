@@ -46,6 +46,7 @@ const EVENT_TYPES = new Set([
   "task/change",
   "context/compact",
   "context/clear",
+  "system/notice",
 ]);
 
 export class SessionStore {

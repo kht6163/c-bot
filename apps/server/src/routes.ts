@@ -27,6 +27,8 @@ import {
   type LlmProvider,
 } from "@cbot/agent";
 import type { ProjectView, SessionId, SessionTeamMember } from "@cbot/shared";
+import { parseSlashCommand } from "@cbot/shared";
+import { runSlashCommand } from "./commands.ts";
 import { createBot, deleteBot, listBots, loadBot, MemoryStore, TaskStore, taskBoardId, updateBot } from "@cbot/bot";
 import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
@@ -433,6 +435,18 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const id = asSessionId(decodeURIComponent(messageMatch[1] ?? ""));
       const body = await readJson(req);
       const text = isRecord(body) && typeof body.text === "string" ? body.text : "";
+      const command = parseSlashCommand(text);
+      if (command) {
+        const session = runtime.store.get(id);
+        if (!session) {
+          throw new HttpError(404, "unknown session");
+        }
+        if (session.kind !== "coding") {
+          throw new HttpError(400, "slash commands run in coding sessions only");
+        }
+        await runSlashCommand(runtime, id, session, command);
+        return Response.json({ ok: true, command: command.name }, { status: 202 });
+      }
       await acceptUserMessage(runtime, id, text);
       return Response.json({ ok: true }, { status: 202 });
     }

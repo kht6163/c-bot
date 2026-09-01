@@ -866,6 +866,26 @@ button {
   font-size: 12px;
 }
 
+.command-note {
+  margin: 10px 0 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--edge-soft);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.command-note .command-name {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--quiet);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.command-note p:first-of-type {
+  margin-top: 0;
+}
+
 .notice-detail > summary {
   cursor: pointer;
   list-style: none;

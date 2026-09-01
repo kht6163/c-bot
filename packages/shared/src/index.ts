@@ -1,6 +1,16 @@
 export { atTokens, findActiveAt } from "./at.ts";
 export { brand, type Brand } from "./brand.ts";
 export {
+  SLASH_COMMANDS,
+  filterSlashCommands,
+  findActiveSlash,
+  isSlashCommandName,
+  parseSlashCommand,
+  type ParsedSlashCommand,
+  type SlashCommandName,
+  type SlashCommandSpec,
+} from "./commands.ts";
+export {
   asBotId,
   asDeliveryId,
   asSessionId,
@@ -43,6 +53,7 @@ export {
   type TaskStatus,
   type SessionEvent,
   type SessionKind,
+  type SystemNoticeEvent,
   type ToolCallEvent,
   type ToolResultEvent,
   type ToolUiKind,
