@@ -2823,6 +2823,9 @@ select.field-input {
 .bot-note .log.pane {
   flex: 1;
   min-height: 0;
+  /* Keep the scrollbars outside the edge and corner resize hit areas. */
+  width: calc(100% - 14px);
+  margin: 0 14px 14px 0;
 }
 
 .note-fold {
