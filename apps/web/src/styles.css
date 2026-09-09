@@ -1401,8 +1401,24 @@ button {
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.7;
-  max-height: 240px;
-  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.tool-out > summary {
+  padding: 8px 13px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tool-out > summary:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.tool-out > summary:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .tool-card.ui-terminal .tool-out {

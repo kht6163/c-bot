@@ -38,6 +38,11 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
     <div
       className={compact ? "log pane" : "log"}
       ref={logRef}
+      onClickCapture={(event) => {
+        if (event.target instanceof Element && event.target.closest(".tool-out > summary")) {
+          followEnd.current = false;
+        }
+      }}
       onScroll={(event) => {
         const log = event.currentTarget;
         if (event.target !== log) return;
@@ -123,9 +128,10 @@ function ToolRow({
         {headline ? <span className="tool-arg">{headline}</span> : null}
       </div>
       {body ? (
-        <div className="tool-out">
+        <details className="tool-out">
+          <summary>도구 결과</summary>
           <pre>{body}</pre>
-        </div>
+        </details>
       ) : null}
       {row.pendingApproval && sessionId && onApprove ? (
         <div className="approval">
