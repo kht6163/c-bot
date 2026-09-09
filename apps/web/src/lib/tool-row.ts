@@ -54,9 +54,22 @@ export function toolHeadline(argumentsJson: string): string {
  */
 export function toolBody(argumentsJson: string, content: string): string {
   if (content.trim()) {
-    return content;
+    return formatToolResult(content);
   }
   return toolHeadline(argumentsJson) ? "" : argumentsJson.trim();
+}
+
+function formatToolResult(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return content;
+  }
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    // Partial JSON and ordinary tool output must remain readable as received.
+    return content;
+  }
 }
 
 /** Marker state for a tool row: what the dot beside the name means. */

@@ -43,6 +43,20 @@ describe("toolBody", () => {
     expect(toolBody('{"path":"README.md"}', "# c-bot")).toBe("# c-bot");
   });
 
+  test("indents JSON task results without changing their data", () => {
+    const content = '{"ok":true,"tasks":[{"title":"인사하기","parentId":null,"detail":"첫 줄\\n둘째 줄","status":"in_progress"}]}';
+    const formatted = toolBody('{"action":"list"}', content);
+    expect(formatted).toContain('\n  "tasks": [\n    {\n      "title": "인사하기",');
+    expect(JSON.parse(formatted)).toEqual(JSON.parse(content));
+    expect(toolBody("{}", '[1,{"ok":false}]')).toBe('[\n  1,\n  {\n    "ok": false\n  }\n]');
+  });
+
+  test("preserves incomplete JSON and mixed terminal output", () => {
+    for (const content of ['{"tasks":[', '{"ok":true}\nfinished', '  ordinary output\n', '123', 'null']) {
+      expect(toolBody("{}", content)).toBe(content);
+    }
+  });
+
   test("stays empty while running, since the head line already says what runs", () => {
     expect(toolBody('{"command":"bun test"}', "")).toBe("");
   });
