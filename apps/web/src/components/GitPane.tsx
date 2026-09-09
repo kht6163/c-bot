@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import type { SessionId } from "@cbot/shared";
+import type { GitDiffScope, SessionId } from "@cbot/shared";
+import { GitDiff } from "./GitDiff.tsx";
+import { SessionReview } from "./SessionReview.tsx";
 import {
   fetchGitCommit,
   fetchGitStatus,
@@ -19,29 +21,37 @@ import {
 } from "../lib/git-rows.ts";
 
 export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
+  return <GitPaneContent key={sessionId} sessionId={sessionId} refreshKey={refreshKey} />;
+}
+
+function GitPaneContent({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
   const [git, setGit] = useState<GitStatusView | undefined>();
   const [error, setError] = useState("");
   const [openSha, setOpenSha] = useState("");
+  const [selected, setSelected] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    let live = true;
     setError("");
-    setOpenSha("");
     void fetchGitStatus(sessionId)
-      .then(setGit)
+      .then(next => { if (live) setGit(next); })
       .catch((err: unknown) => {
+        if (!live) return;
         setGit(undefined);
         setError(err instanceof Error ? err.message : "git 상태를 읽지 못했습니다");
       });
-  }, [sessionId, refreshKey]);
+    return () => { live = false; };
+  }, [sessionId, refreshKey, reload]);
 
   if (error) {
-    return <p className="hint danger">{error}</p>;
+    return <><p className="hint danger" role="alert">{error}</p><button type="button" className="ghost" onClick={() => setReload(n => n + 1)}>다시 시도</button></>;
   }
   if (!git) {
     return <p className="empty">불러오는 중</p>;
   }
   if (!git.repo) {
-    return <p className="empty">git 저장소가 아닙니다</p>;
+    return <><SessionReview sessionId={sessionId} refreshKey={refreshKey + reload} /><p className="empty">git 저장소가 아닙니다</p></>;
   }
 
   const groups = groupFiles(git.files);
@@ -49,6 +59,11 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
 
   return (
     <div className="git-pane">
+      <div className="git-review-toolbar">
+        <span className="section-label">변경사항 리뷰 · 파일 {git.files.length}</span>
+        <button type="button" className="ghost" onClick={() => setReload(n => n + 1)}>새로고침</button>
+      </div>
+      <SessionReview sessionId={sessionId} refreshKey={refreshKey + reload} />
       <div className="git-head">
         <BranchIcon />
         <span className="git-branch">{git.branch || "HEAD"}</span>
@@ -67,17 +82,24 @@ export function GitPane({ sessionId, refreshKey }: { sessionId: SessionId; refre
             <ul className="git-files">
               {group.files.map((file) => {
                 const name = splitPath(file);
+                const selection = `${group.key}:${file.path}`;
+                const open = selected === selection;
+                const scope: GitDiffScope = group.key === "staged" ? "staged" : group.key === "untracked" ? "untracked" : "unstaged";
                 return (
                   <li
-                    key={`${group.key}:${file.path}`}
-                    className="git-file"
-                    title={`${file.label} · ${file.path}`}
+                    key={selection}
                   >
+                    <button type="button" className={open ? "git-file git-file-button selected" : "git-file git-file-button"}
+                      title={`${file.label} · ${file.originalPath ? `${file.originalPath} → ` : ""}${file.path}`}
+                      aria-label={`${group.label}: ${file.path}`}
+                      aria-expanded={open} onClick={() => setSelected(open ? "" : selection)}>
                     <span className={`git-code ${toneOf(file, group.column)}`}>
                       {codeOf(file, group.column)}
                     </span>
                     <span className="git-name">{name.base}</span>
                     {name.dir ? <span className="git-dir">{name.dir}</span> : null}
+                    </button>
+                    {open ? <GitDiff key={selection} sessionId={sessionId} path={file.path} scope={scope} refreshKey={refreshKey + reload} /> : null}
                   </li>
                 );
               })}

@@ -305,6 +305,12 @@ export function App() {
               setInspectorTick((n) => n + 1);
             }
           } else {
+            if (
+              teamRef.current.some((member) => member.sessionId === frame.sessionId) &&
+              (frame.event.type === "tool/result" || frame.event.type === "turn/end")
+            ) {
+              setInspectorTick((n) => n + 1);
+            }
             setBotEvents((current) => {
               const known =
                 frame.sessionId in current ||

@@ -2991,6 +2991,46 @@ body.resizing {
   gap: 10px;
 }
 
+.git-review-toolbar, .git-diff-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.git-review-toolbar .ghost { font-size: 12px; flex: none; }
+.git-review-note {
+  margin: 6px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.session-review { padding-bottom: 10px; border-bottom: 1px solid var(--edge-soft); }
+.git-file-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.git-file-button.selected { background: var(--glass-2); box-shadow: inset 0 0 0 1px var(--edge); }
+.git-file-button:focus-visible, .git-diff-scroll:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.git-diff { margin: 6px 0 12px; min-width: 0; }
+.git-diff-heading { padding: 6px 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.git-diff-scroll { overflow: auto; max-height: 480px; border-block: 1px solid var(--edge-soft); }
+.git-diff-table { border-collapse: collapse; width: 100%; font: 12px/1.65 var(--mono); }
+.git-diff-table td { padding: 0 6px; vertical-align: top; }
+.git-diff-table .diff-number { min-width: 3ch; width: 3ch; text-align: right; color: var(--muted); user-select: none; border-right: 1px solid var(--edge-soft); }
+.diff-source { white-space: pre; tab-size: 4; }
+.diff-add { background: color-mix(in srgb, var(--live) 10%, transparent); }
+.diff-remove { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.diff-add .diff-source { color: color-mix(in srgb, var(--live) 45%, white); }
+.diff-remove .diff-source { color: color-mix(in srgb, var(--danger) 45%, white); }
+.diff-hunk, .diff-meta { color: var(--muted); }
+.diff-hunk { background: var(--glass-1); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
 .git-head {
   display: flex;
   align-items: center;

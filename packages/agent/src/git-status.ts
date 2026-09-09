@@ -1,5 +1,6 @@
 export interface GitFile {
   path: string;
+  originalPath?: string;
   index: string;
   worktree: string;
   label: string;
@@ -58,7 +59,10 @@ export function parseGitStatus(out: string): Omit<GitStatusView, "repo"> {
   let upstream: string | null = null;
   let ahead = 0;
   let behind = 0;
-  for (const line of out.split("\n")) {
+  const nul = out.includes("\0");
+  const records = out.split(nul ? "\0" : "\n");
+  for (let i = 0; i < records.length; i++) {
+    const line = records[i] ?? "";
     if (line.length === 0) {
       continue;
     }
@@ -78,7 +82,12 @@ export function parseGitStatus(out: string): Omit<GitStatusView, "repo"> {
     if (path.length === 0) {
       continue;
     }
-    files.push({ path, index, worktree, label: gitLabel(index, worktree) });
+    const file: GitFile = { path, index, worktree, label: gitLabel(index, worktree) };
+    files.push(file);
+    // Porcelain -z places the destination first and the source in the next record.
+    if (nul && (index === "R" || index === "C" || worktree === "R" || worktree === "C")) {
+      file.originalPath = records[++i];
+    }
   }
   return { branch, upstream, ahead, behind, files };
 }
@@ -225,11 +234,26 @@ export async function gitCommit(
 }
 
 export async function gitStatus(workspace: string): Promise<GitStatusView> {
-  const status = await runGit(workspace, ["status", "--porcelain=v1", "-b"]);
+  const [status, prefix] = await Promise.all([
+    runGit(workspace, ["status", "--porcelain=v1", "-z", "-b", "--untracked-files=all", "--", "."]),
+    runGit(workspace, ["rev-parse", "--show-prefix"]),
+  ]);
   if (!status.ok) {
     return emptyStatus();
   }
-  return { repo: true, ...parseGitStatus(status.out) };
+  const parsed = parseGitStatus(status.out);
+  const base = prefix.out.replace(/\n$/, "");
+  parsed.files = parsed.files.filter((file) => file.path.startsWith(base))
+    .map((file) => {
+      const scoped = { ...file, path: file.path.slice(base.length) };
+      if (file.originalPath?.startsWith(base)) {
+        scoped.originalPath = file.originalPath.slice(base.length);
+      } else {
+        delete scoped.originalPath;
+      }
+      return scoped;
+    });
+  return { repo: true, ...parsed };
 }
 
 export async function gitView(workspace: string, logLimit = 60): Promise<GitView> {

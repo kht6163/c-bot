@@ -1,3 +1,4 @@
+export type { GitDiffScope, GitDiffView } from "./git.ts";
 export { atTokens, findActiveAt } from "./at.ts";
 export { brand, type Brand } from "./brand.ts";
 export {

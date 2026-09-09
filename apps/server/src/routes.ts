@@ -4,6 +4,9 @@ import {
   SHIPPED_PROVIDERS,
   gitCommit,
   gitView,
+  gitDiff,
+  GitDiffError,
+  sessionReview,
   keyEnvName,
   listRemoteModelCatalog,
   listWorkspaceDir,
@@ -324,6 +327,27 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const id = asSessionId(decodeURIComponent(inspectGit[1] ?? ""));
       const workspace = sessionWorkspace(runtime, id);
       return Response.json({ git: await gitView(workspace) });
+    }
+    const inspectReview = /^\/api\/sessions\/([^/]+)\/git\/review$/.exec(url.pathname);
+    if (inspectReview && req.method === "GET") {
+      const id = asSessionId(decodeURIComponent(inspectReview[1] ?? ""));
+      sessionWorkspace(runtime, id);
+      return Response.json({ review: sessionReview(runtime.store, id) });
+    }
+    const inspectDiff = /^\/api\/sessions\/([^/]+)\/git\/diff$/.exec(url.pathname);
+    if (inspectDiff && req.method === "GET") {
+      const id = asSessionId(decodeURIComponent(inspectDiff[1] ?? ""));
+      const workspace = sessionWorkspace(runtime, id);
+      const scope = url.searchParams.get("scope");
+      if (scope !== "staged" && scope !== "unstaged" && scope !== "untracked") {
+        throw new HttpError(400, "invalid diff scope");
+      }
+      try {
+        return Response.json({ diff: await gitDiff(workspace, url.searchParams.get("path") ?? "", scope) });
+      } catch (error) {
+        if (error instanceof GitDiffError) throw new HttpError(400, error.message);
+        throw error;
+      }
     }
     const inspectCommit = /^\/api\/sessions\/([^/]+)\/git\/commit$/.exec(url.pathname);
     if (inspectCommit && req.method === "GET") {

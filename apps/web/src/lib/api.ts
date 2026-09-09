@@ -1,4 +1,6 @@
 import type {
+  GitDiffScope,
+  GitDiffView,
   HealthResponse,
   ProjectView,
   SessionEvent,
@@ -173,6 +175,7 @@ export async function deleteSession(id: SessionId): Promise<void> {
 
 export interface GitFileView {
   path: string;
+  originalPath?: string;
   index: string;
   worktree: string;
   label: string;
@@ -251,6 +254,22 @@ export interface TaskView {
 export async function fetchGitStatus(id: SessionId): Promise<GitStatusView> {
   const body = await api<{ git: GitStatusView }>(`/api/sessions/${id}/git`);
   return body.git;
+}
+
+export async function fetchGitDiff(id: SessionId, path: string, scope: GitDiffScope): Promise<GitDiffView> {
+  const query = new URLSearchParams({ path, scope });
+  const body = await api<{ diff: GitDiffView }>(`/api/sessions/${id}/git/diff?${query}`);
+  return body.diff;
+}
+
+export interface SessionReviewView {
+  files: { path: string; writes: number; edits: number }[];
+  shellCommands: number;
+}
+
+export async function fetchSessionReview(id: SessionId): Promise<SessionReviewView> {
+  const body = await api<{ review: SessionReviewView }>(`/api/sessions/${id}/git/review`);
+  return body.review;
 }
 
 export async function fetchGitCommit(id: SessionId, sha: string): Promise<GitCommitDetailView> {

@@ -1,3 +1,5 @@
+export { gitDiff, GitDiffError } from "./git-diff.ts";
+export { sessionReview } from "./session/review.ts";
 export {
   CLIPROXYAPI_ID,
   SHIPPED_PROVIDERS,

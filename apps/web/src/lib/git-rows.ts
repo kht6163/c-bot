@@ -66,6 +66,7 @@ export function toneOf(file: GitFileView, column: GitColumn): string {
  * `ORIG -> PATH`, so an arrow in any other row belongs to the filename.
  */
 export function splitPath(file: GitFileView): { dir: string; base: string } {
+  if (file.originalPath !== undefined) return splitPathText(file.path);
   const renamed = isRename(file.index) || isRename(file.worktree);
   const arrow = renamed ? file.path.indexOf(" -> ") : -1;
   return splitPathText(arrow < 0 ? file.path : file.path.slice(arrow + 4));
