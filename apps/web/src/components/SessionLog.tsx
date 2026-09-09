@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { SessionId, ToolCallId } from "@cbot/shared";
 import type { ChatRow } from "../lib/rows.ts";
 import { toolBody, toolHeadline, toolMark } from "../lib/tool-row.ts";
@@ -14,13 +14,36 @@ interface Props {
 
 export function SessionLog({ rows, empty, compact = false, sessionId, onApprove }: Props) {
   const logRef = useRef<HTMLDivElement>(null);
+  const followEnd = useRef(true);
 
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [rows]);
+  useLayoutEffect(() => {
+    followEnd.current = true;
+  }, [sessionId]);
+
+  useLayoutEffect(() => {
+    const log = logRef.current;
+    if (!log) return;
+    const follow = () => {
+      if (followEnd.current) log.scrollTop = log.scrollHeight;
+    };
+    follow();
+    // Markdown images and diagrams can grow after the streamed row renders.
+    const resize = new ResizeObserver(follow);
+    resize.observe(log);
+    for (const row of log.children) resize.observe(row);
+    return () => resize.disconnect();
+  }, [rows, sessionId]);
 
   return (
-    <div className={compact ? "log pane" : "log"} ref={logRef}>
+    <div
+      className={compact ? "log pane" : "log"}
+      ref={logRef}
+      onScroll={(event) => {
+        const log = event.currentTarget;
+        if (event.target !== log) return;
+        followEnd.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 2;
+      }}
+    >
       {rows.length === 0 ? (
         <p className="empty-log">{empty}</p>
       ) : (
