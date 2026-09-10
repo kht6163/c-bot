@@ -14,6 +14,7 @@ interface Props {
     provider: string | null;
     model: string | null;
     thinking: string | null;
+    hidden: boolean;
   }) => Promise<void>;
 }
 
@@ -23,6 +24,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
   const [soul, setSoul] = useState("");
   const [choice, setChoice] = useState("");
   const [thinking, setThinking] = useState("");
+  const [hidden, setHidden] = useState(false);
   const [settings, setSettings] = useState<SettingsView | undefined>();
   const [error, setError] = useState("");
 
@@ -35,6 +37,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
     setSoul(bot.soul ?? "");
     setChoice(bot.provider && bot.model ? `${bot.provider}::${bot.model}` : "");
     setThinking(bot.thinking ?? "");
+    setHidden(bot.hidden);
     setError("");
     void fetchSettings().then(setSettings);
   }, [bot]);
@@ -109,10 +112,14 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
                 </select>
               </label>
             ) : null}
-            <label className="bot-settings-prompt">
-              프롬프트
-              <textarea rows={6} value={soul} onChange={(e) => setSoul(e.target.value)} />
-            </label>
+            {bot.role === "leader" ? null : (
+              <label className="check-row">
+                <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+                <span>
+                  로스터에서 숨김 <span className="hint-inline">리드의 로스터와 @ 자동완성에서 빠집니다. 핸들로 직접 부르면 여전히 받습니다</span>
+                </span>
+              </label>
+            )}
             <p className="hint-static">
               스킬{" "}
               {bot.skills && bot.skills.length > 0 ? (
@@ -127,6 +134,10 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
               {" · "}
               <code>bots/{bot.id}/skills/</code>의 마크다운이 프롬프트에 들어갑니다
             </p>
+            <label className="bot-settings-prompt">
+              프롬프트
+              <textarea rows={6} value={soul} onChange={(e) => setSoul(e.target.value)} />
+            </label>
           </div>
           <section className="memory-section" aria-label="메모리">
             <h3 className="field-label">메모리</h3>
@@ -153,6 +164,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
                 provider: provider || null,
                 model: model || null,
                 thinking: nextThinking,
+                hidden,
               }).catch((err: unknown) => {
                 setError(err instanceof Error ? err.message : "failed");
               });

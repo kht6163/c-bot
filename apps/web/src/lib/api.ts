@@ -66,6 +66,7 @@ export async function updateBot(
     provider?: string | null;
     model?: string | null;
     thinking?: string | null;
+    hidden?: boolean;
   },
 ): Promise<BotView> {
   const body = await api<{ bot: BotView }>(`/api/bots/${id}`, {

@@ -4,12 +4,15 @@ export type MentionOption =
 
 export function filterMentionOptions(
   query: string,
-  bots: readonly { handle: string; title: string; role: "leader" | "specialist" }[],
+  bots: readonly { handle: string; title: string; role: "leader" | "specialist"; hidden?: boolean }[],
   files: readonly string[],
 ): MentionOption[] {
   const q = query.trim().toLowerCase();
   const botHits: MentionOption[] = bots
     .filter((bot) => {
+      if (bot.hidden) {
+        return false;
+      }
       if (q.length === 0) {
         return true;
       }

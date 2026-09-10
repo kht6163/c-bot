@@ -157,11 +157,15 @@ export async function updateBot(
     provider?: string | null;
     model?: string | null;
     thinking?: string | null;
+    hidden?: boolean;
   },
 ): Promise<BotProfile | undefined> {
   const loaded = await loadBot(home, id);
   if (!loaded) {
     return undefined;
+  }
+  if (patch.hidden === true && loaded.role === "leader") {
+    throw new Error("leader cannot be hidden");
   }
   const record: BotRecord = {
     id: loaded.id,
@@ -172,7 +176,7 @@ export async function updateBot(
     provider: patch.provider !== undefined ? patch.provider?.trim() || null : loaded.provider,
     model: patch.model !== undefined ? patch.model?.trim() || null : loaded.model,
     thinking: patch.thinking !== undefined ? patch.thinking?.trim() || null : loaded.thinking,
-    hidden: loaded.hidden,
+    hidden: patch.hidden !== undefined ? patch.hidden : loaded.hidden,
     sessionId: loaded.sessionId,
   };
   await writeRecord(home, record);

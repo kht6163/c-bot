@@ -9,6 +9,7 @@ interface BotHint {
   handle: string;
   title: string;
   role: "leader" | "specialist";
+  hidden?: boolean;
 }
 
 interface Props {

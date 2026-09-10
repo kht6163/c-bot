@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { SessionStore } from "@cbot/agent";
-import { createBot, deleteBot, ensureLeaderBot, listBots, loadBot } from "../src/roster.ts";
+import { createBot, deleteBot, ensureLeaderBot, listBots, loadBot, updateBot } from "../src/roster.ts";
 import { protocolSection } from "../src/protocol.ts";
 import { PROTOCOL_HEADING } from "../src/types.ts";
 import { messageAgentTool, workspaceForMailbox } from "../src/message-agent.ts";
@@ -60,6 +60,29 @@ describe("roster", () => {
     const again = await ensureLeaderBot(home, store);
     expect(again.id).toBe(leader.id);
     await expect(deleteBot(home, leader.id)).rejects.toThrow("leader cannot be deleted");
+    store.close();
+  });
+});
+
+describe("hidden bots", () => {
+  test("hiding persists, drops the bot from the prompt roster, and never applies to the leader", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-hidden-"));
+    const store = await SessionStore.open(":memory:");
+    const leader = await ensureLeaderBot(home, store);
+    const quiet = await createBot(home, store, { handle: "quiet", title: "Quiet", description: "Q" });
+    const loud = await createBot(home, store, { handle: "loud", title: "Loud", description: "L" });
+    const updated = await updateBot(home, quiet.id, { hidden: true });
+    expect(updated?.hidden).toBe(true);
+    expect((await loadBot(home, quiet.id))?.hidden).toBe(true);
+    const roster = await listBots(home);
+    expect(roster.find((bot) => bot.id === quiet.id)?.hidden).toBe(true);
+    const section = protocolSection(leader, roster, leader.soul);
+    expect(section).toContain("`@loud`");
+    expect(section).not.toContain("`@quiet`");
+    await expect(updateBot(home, leader.id, { hidden: true })).rejects.toThrow("leader cannot be hidden");
+    const back = await updateBot(home, quiet.id, { hidden: false });
+    expect(back?.hidden).toBe(false);
+    expect(loud.hidden).toBe(false);
     store.close();
   });
 });

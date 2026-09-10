@@ -2411,8 +2411,7 @@ select.field-input {
 }
 
 .bot-settings-prompt {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
 }
 
 .bot-settings-prompt textarea {
@@ -2648,6 +2647,31 @@ select.field-input {
   .memory-toolbar {
     align-self: stretch;
   }
+}
+
+.bot-row.is-hidden .row-title,
+.bot-row.is-hidden .row-meta {
+  opacity: 0.5;
+}
+
+.bot-settings-profile .check-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.bot-settings-profile .check-row input {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 3px 0 0;
+}
+
+.hint-inline {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
 }
 
 .bot-row .bot-delete {

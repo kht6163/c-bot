@@ -197,14 +197,23 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!isRecord(body)) {
         throw new HttpError(400, "invalid JSON");
       }
-      const bot = await updateBot(runtime.env.home, id, {
-        ...(typeof body.title === "string" ? { title: body.title } : {}),
-        ...(typeof body.description === "string" ? { description: body.description } : {}),
-        ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
-        ...(body.provider === null || typeof body.provider === "string" ? { provider: body.provider } : {}),
-        ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
-        ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
-      });
+      let bot: Awaited<ReturnType<typeof updateBot>>;
+      try {
+        bot = await updateBot(runtime.env.home, id, {
+          ...(typeof body.hidden === "boolean" ? { hidden: body.hidden } : {}),
+          ...(typeof body.title === "string" ? { title: body.title } : {}),
+          ...(typeof body.description === "string" ? { description: body.description } : {}),
+          ...(typeof body.soul === "string" ? { soul: body.soul } : {}),
+          ...(body.provider === null || typeof body.provider === "string" ? { provider: body.provider } : {}),
+          ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
+          ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
+        });
+      } catch (err) {
+        if (err instanceof Error && err.message === "leader cannot be hidden") {
+          throw new HttpError(400, err.message);
+        }
+        throw err;
+      }
       if (!bot) {
         throw new HttpError(404, "unknown bot");
       }

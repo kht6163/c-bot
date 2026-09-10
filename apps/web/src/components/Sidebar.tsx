@@ -180,10 +180,11 @@ export function Sidebar({
           ) : (
             <ul className="row-list">
               {bots.map((bot) => (
-                <li key={bot.id} className="bot-row">
+                <li key={bot.id} className={bot.hidden ? "bot-row is-hidden" : "bot-row"}>
                   <button
                     type="button"
                     className="row"
+                    title={bot.hidden ? "로스터에서 숨김" : undefined}
                     onClick={() => onEditBot(bot.id)}
                   >
                     <span className="row-title">@{bot.handle}</span>
