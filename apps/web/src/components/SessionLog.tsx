@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ApprovalRemember, SessionId, ToolCallId } from "@cbot/shared";
 import type { ChatRow } from "../lib/rows.ts";
 import { approvalRuleOf, toolBody, toolHeadline, toolMark } from "../lib/tool-row.ts";
@@ -15,6 +15,7 @@ interface Props {
 export function SessionLog({ rows, empty, compact = false, sessionId, onApprove }: Props) {
   const logRef = useRef<HTMLDivElement>(null);
   const followEnd = useRef(true);
+  const [atEnd, setAtEnd] = useState(true);
 
   useLayoutEffect(() => {
     followEnd.current = true;
@@ -25,6 +26,8 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
     if (!log) return;
     const follow = () => {
       if (followEnd.current) log.scrollTop = log.scrollHeight;
+      // A short log never fires a scroll event, so the button state settles here too.
+      setAtEnd(isAtEnd(log));
     };
     follow();
     // Markdown images and diagrams can grow after the streamed row renders.
@@ -35,74 +38,101 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
   }, [rows, sessionId]);
 
   return (
-    <div
-      className={compact ? "log pane" : "log"}
-      ref={logRef}
-      onClickCapture={(event) => {
-        if (event.target instanceof Element && event.target.closest(".tool-out > summary")) {
-          followEnd.current = false;
-        }
-      }}
-      onScroll={(event) => {
-        const log = event.currentTarget;
-        if (event.target !== log) return;
-        followEnd.current = log.scrollHeight - log.clientHeight - log.scrollTop <= 2;
-      }}
-    >
-      {rows.length === 0 ? (
-        <p className="empty-log">{empty}</p>
-      ) : (
-        rows.map((row) =>
-          row.kind === "status" ? (
-            <div key={row.key} className="scaffold" role="status" aria-live="polite">
-              <span className="scaffold-pulse" aria-hidden="true" />
-              {row.text}
-            </div>
-          ) : row.kind === "notice" ? (
-            row.detail ? (
-              <details key={row.key} className="log-notice notice-detail">
-                <summary>{row.text}</summary>
-                <MarkdownView text={row.detail} live={false} />
-              </details>
-            ) : (
-              <p key={row.key} className="log-notice">
+    <div className="log-shell">
+      <div
+        className={compact ? "log pane" : "log"}
+        ref={logRef}
+        onClickCapture={(event) => {
+          if (event.target instanceof Element && event.target.closest(".tool-out > summary")) {
+            followEnd.current = false;
+          }
+        }}
+        onScroll={(event) => {
+          const log = event.currentTarget;
+          if (event.target !== log) return;
+          followEnd.current = isAtEnd(log);
+          setAtEnd(followEnd.current);
+        }}
+      >
+        {rows.length === 0 ? (
+          <p className="empty-log">{empty}</p>
+        ) : (
+          rows.map((row) =>
+            row.kind === "status" ? (
+              <div key={row.key} className="scaffold" role="status" aria-live="polite">
+                <span className="scaffold-pulse" aria-hidden="true" />
                 {row.text}
-              </p>
-            )
-          ) : row.kind === "command" ? (
-            <article key={row.key} className="command-note">
-              <span className="command-name">/{row.command}</span>
-              <MarkdownView text={row.text} live={false} />
-            </article>
-          ) : row.kind === "thinking" ? (
-            <article key={row.key} className={`thinking${row.live ? " live" : ""}`}>
-              <span className="who">thinking</span>
-              <pre>{row.text}</pre>
-            </article>
-          ) : row.kind === "memory" ? (
-            <article key={row.key} className="memory-chip">
-              <span className="who">memory</span>
-              {row.text}
-            </article>
-          ) : row.kind === "tool" ? (
-            <ToolRow
-              key={row.key}
-              row={row}
-              sessionId={sessionId}
-              onApprove={onApprove}
-            />
-          ) : (
-            <article key={row.key} className={`bubble ${row.kind}${row.live ? " live" : ""}`}>
-              {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
-              {row.kind === "user" ? (
-                <pre>{row.text}</pre>
+              </div>
+            ) : row.kind === "notice" ? (
+              row.detail ? (
+                <details key={row.key} className="log-notice notice-detail">
+                  <summary>{row.text}</summary>
+                  <MarkdownView text={row.detail} live={false} />
+                </details>
               ) : (
-                <MarkdownView text={row.text} live={row.live} />
-              )}
-            </article>
-          ),
-        )
-      )}
+                <p key={row.key} className="log-notice">
+                  {row.text}
+                </p>
+              )
+            ) : row.kind === "command" ? (
+              <article key={row.key} className="command-note">
+                <span className="command-name">/{row.command}</span>
+                <MarkdownView text={row.text} live={false} />
+              </article>
+            ) : row.kind === "thinking" ? (
+              <article key={row.key} className={`thinking${row.live ? " live" : ""}`}>
+                <span className="who">thinking</span>
+                <pre>{row.text}</pre>
+              </article>
+            ) : row.kind === "memory" ? (
+              <article key={row.key} className="memory-chip">
+                <span className="who">memory</span>
+                {row.text}
+              </article>
+            ) : row.kind === "tool" ? (
+              <ToolRow
+                key={row.key}
+                row={row}
+                sessionId={sessionId}
+                onApprove={onApprove}
+              />
+            ) : (
+              <article key={row.key} className={`bubble ${row.kind}${row.live ? " live" : ""}`}>
+                {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
+                {row.kind === "user" ? (
+                  <pre>{row.text}</pre>
+                ) : (
+                  <MarkdownView text={row.text} live={row.live} />
+                )}
+              </article>
+            ),
+          )
+        )}
+      </div>
+      {!compact && !atEnd ? (
+        <button
+          type="button"
+          className="jump-end"
+          aria-label="맨 아래로"
+          onClick={() => {
+            const log = logRef.current;
+            if (!log) return;
+            followEnd.current = true;
+            log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
+          }}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M3.5 6l4.5 4.5L12.5 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -167,4 +197,9 @@ function ToolRow({
       ) : null}
     </article>
   );
+}
+
+/** Within a couple of pixels of the end counts as there: sub-pixel heights round unevenly. */
+function isAtEnd(log: HTMLElement): boolean {
+  return log.scrollHeight - log.clientHeight - log.scrollTop <= 2;
 }
