@@ -1,11 +1,16 @@
-import { useEffect, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { SessionId } from "@cbot/shared";
-import { INSPECTOR_MIN_W, clampInspectorWidth, widthFromPointer } from "../lib/inspector.ts";
+import {
+  INSPECTOR_MIN_W,
+  clampInspectorWidth,
+  loadInspectorTab,
+  saveInspectorTab,
+  widthFromPointer,
+  type InspectorTab,
+} from "../lib/inspector.ts";
 import { FilesPane } from "./FilesPane.tsx";
 import { GitPane } from "./GitPane.tsx";
 import { TasksPane } from "./TasksPane.tsx";
-
-type Tab = "git" | "files" | "tasks";
 
 interface Props {
   sessionId: SessionId;
@@ -16,11 +21,12 @@ interface Props {
 }
 
 export function Inspector({ sessionId, refreshKey, width, onWidth, onClose }: Props) {
-  const [tab, setTab] = useState<Tab>("git");
+  const [tab, setTabState] = useState<InspectorTab>(() => loadInspectorTab(window.localStorage));
 
-  useEffect(() => {
-    setTab("git");
-  }, [sessionId]);
+  function setTab(next: InspectorTab): void {
+    setTabState(next);
+    saveInspectorTab(next, window.localStorage);
+  }
 
   // The window listens, not the handle: the pointer spends the drag over the
   // chat, and a release outside the window still ends it.

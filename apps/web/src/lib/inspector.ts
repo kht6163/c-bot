@@ -8,6 +8,10 @@ export const INSPECTOR_DEFAULT_W = 300;
 const MAIN_MIN_W = 380;
 const RAIL_W = 260;
 const STORAGE_KEY = "cbot.inspector.width";
+const TAB_KEY = "cbot.inspector.tab";
+
+export type InspectorTab = "git" | "files" | "tasks";
+export const INSPECTOR_DEFAULT_TAB: InspectorTab = "git";
 
 export function clampInspectorWidth(px: number, viewport: number): number {
   const room = viewport - RAIL_W - MAIN_MIN_W;
@@ -33,6 +37,25 @@ export function loadInspectorWidth(storage: NoteStorage, viewport: number): numb
 export function saveInspectorWidth(px: number, storage: NoteStorage): void {
   try {
     storage.setItem(STORAGE_KEY, String(px));
+  } catch {
+    // quota / private mode
+  }
+}
+
+/** The open tab outlives session switches and reloads; an unknown value falls back to Git. */
+export function loadInspectorTab(storage: NoteStorage): InspectorTab {
+  try {
+    const raw = storage.getItem(TAB_KEY);
+    return raw === "git" || raw === "files" || raw === "tasks" ? raw : INSPECTOR_DEFAULT_TAB;
+  } catch {
+    // private mode: Git is the default tab anyway
+    return INSPECTOR_DEFAULT_TAB;
+  }
+}
+
+export function saveInspectorTab(tab: InspectorTab, storage: NoteStorage): void {
+  try {
+    storage.setItem(TAB_KEY, tab);
   } catch {
     // quota / private mode
   }

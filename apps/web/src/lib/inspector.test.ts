@@ -4,7 +4,9 @@ import {
   INSPECTOR_MAX_W,
   INSPECTOR_MIN_W,
   clampInspectorWidth,
+  loadInspectorTab,
   loadInspectorWidth,
+  saveInspectorTab,
   saveInspectorWidth,
   widthFromPointer,
 } from "./inspector.ts";
@@ -54,5 +56,31 @@ describe("loadInspectorWidth", () => {
     saveInspectorWidth(500, store);
     expect(loadInspectorWidth(store, 1600)).toBe(500);
     expect(loadInspectorWidth(store, 1000)).toBe(1000 - 260 - 380);
+  });
+});
+
+describe("inspector tab", () => {
+  test("defaults to git and ignores a value it does not know", () => {
+    expect(loadInspectorTab(storage())).toBe("git");
+    expect(loadInspectorTab(storage({ "cbot.inspector.tab": "settings" }))).toBe("git");
+  });
+
+  test("round-trips the tab the user left open", () => {
+    const store = storage();
+    saveInspectorTab("files", store);
+    expect(loadInspectorTab(store)).toBe("files");
+  });
+
+  test("a storage that throws still yields the default", () => {
+    const broken = {
+      getItem: () => {
+        throw new Error("private mode");
+      },
+      setItem: () => {
+        throw new Error("private mode");
+      },
+    };
+    expect(loadInspectorTab(broken)).toBe("git");
+    expect(() => saveInspectorTab("tasks", broken)).not.toThrow();
   });
 });
