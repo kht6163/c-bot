@@ -1,5 +1,6 @@
 import {
   asToolCallId,
+  isTransientReason,
   newToolCallId,
   newTurnId,
   type LoggedToolCall,
@@ -37,6 +38,14 @@ export interface TurnContext {
   context?: AutoCompactPolicy;
   /** Aborting ends the turn at the next step boundary; a tool already running still finishes. */
   signal?: AbortSignal;
+  /** Absent means a transient provider failure ends the turn on the first try. */
+  retry?: TransientRetryPolicy;
+}
+
+export interface TransientRetryPolicy {
+  /** Extra attempts after the first failing step. */
+  attempts: number;
+  delayMs: number;
 }
 
 export interface AutoCompactPolicy {
@@ -66,6 +75,7 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
   ];
   const system = ctx.systemPrompt ?? codingSystemPrompt(ctx.workspace);
   let overflowRetried = false;
+  let transientRetries = ctx.retry?.attempts ?? 0;
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
       if (ctx.signal?.aborted) {
@@ -91,6 +101,23 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
           if (compacted) {
             continue;
           }
+        }
+        // A rate limit or a 5xx is the provider's problem, not the message's.
+        // One more step in this same session is the retry; nothing new is created.
+        if (
+          transientRetries > 0 &&
+          err instanceof LlmError &&
+          isTransientReason(err.reason) &&
+          !ctx.signal?.aborted
+        ) {
+          transientRetries -= 1;
+          ctx.store.append(sessionId, {
+            type: "system/notice",
+            command: "retry",
+            text: `[reason: ${err.reason}] 일시 장애라 한 번 더 시도합니다.`,
+          });
+          await sleep(ctx.retry?.delayMs ?? 0, ctx.signal);
+          continue;
         }
         throw err;
       }
@@ -386,6 +413,35 @@ function parseArgs(raw: string): Record<string, unknown> {
  * began. A mailbox delivery that lands during an open turn therefore still
  * owes a follow-up turn once that turn ends.
  */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+/** True when the input that owes the next turn came from another bot, not the user. */
+export function wokenByBot(events: readonly SessionEvent[]): boolean {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (event?.type === "bot/message") {
+      return true;
+    }
+    if (event?.type === "user/message") {
+      return false;
+    }
+  }
+  return false;
+}
+
 export function sessionNeedsTurn(events: readonly SessionEvent[]): boolean {
   let lastTurnStart = 0;
   let lastTurnEnd = 0;

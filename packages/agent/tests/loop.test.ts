@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { asBotId, asDeliveryId, asTurnId } from "@cbot/shared";
-import { runTurn, sessionNeedsTurn, titleFromText, type TurnContext } from "../src/loop.ts";
+import { runTurn, sessionNeedsTurn, titleFromText, wokenByBot, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { LlmClient, LlmStreamEvent } from "../src/llm/client.ts";
 import { LlmError } from "../src/llm/client.ts";
@@ -19,6 +19,29 @@ class ScriptedLlm implements LlmClient {
     }
   }
 }
+
+/** Each call consumes the next script; an Error script throws. */
+class SequencedLlm implements LlmClient {
+  calls = 0;
+
+  constructor(private readonly scripts: (LlmStreamEvent[] | Error)[]) {}
+
+  async *stream(): AsyncIterable<LlmStreamEvent> {
+    const script = this.scripts[this.calls] ?? this.scripts.at(-1) ?? [];
+    this.calls += 1;
+    if (script instanceof Error) {
+      throw script;
+    }
+    for (const event of script) {
+      yield event;
+    }
+  }
+}
+
+const OK_REPLY: LlmStreamEvent[] = [
+  { type: "text", text: "done" },
+  { type: "done", finishReason: "stop" },
+];
 
 function turnCtx(
   store: SessionStore,
@@ -91,6 +114,98 @@ describe("runTurn", () => {
     expect(message?.type === "assistant/message" && message.text).toContain(
       "provider_auth_or_access",
     );
+    store.close();
+  });
+});
+
+describe("transient retry", () => {
+  test("a rate limit is retried once in the same session and the retry is logged", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ kind: "bot-chat", title: "Bot Chat" });
+    store.append(session.id, { type: "user/message", text: "go", mentions: [] });
+    const llm = new SequencedLlm([new LlmError("slow down", "provider_rate_limit"), OK_REPLY]);
+    await runTurn(
+      session.id,
+      turnCtx(store, llm, { apiKey: "test", retry: { attempts: 1, delayMs: 0 } }),
+    );
+    const events = store.events(session.id);
+    expect(llm.calls).toBe(2);
+    expect(store.list()).toHaveLength(1);
+    expect(events.filter((e) => e.type === "system/notice")).toHaveLength(1);
+    expect(events.filter((e) => e.type === "turn/start")).toHaveLength(1);
+    expect(deriveMessages(events)).toEqual([
+      { role: "user", content: "go" },
+      { role: "assistant", content: "done" },
+    ]);
+    store.close();
+  });
+
+  test("a second transient failure is real and ends the turn with its reason", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ kind: "bot-chat", title: "Bot Chat" });
+    store.append(session.id, { type: "user/message", text: "go", mentions: [] });
+    const llm = new SequencedLlm([
+      new LlmError("500", "provider_server_error"),
+      new LlmError("500 again", "provider_server_error"),
+      OK_REPLY,
+    ]);
+    await runTurn(
+      session.id,
+      turnCtx(store, llm, { apiKey: "test", retry: { attempts: 1, delayMs: 0 } }),
+    );
+    const events = store.events(session.id);
+    expect(llm.calls).toBe(2);
+    expect(events.filter((e) => e.type === "system/notice")).toHaveLength(1);
+    const message = events.find((e) => e.type === "assistant/message");
+    expect(message?.type === "assistant/message" && message.text).toContain("provider_server_error");
+    expect(sessionNeedsTurn(events)).toBe(false);
+    store.close();
+  });
+
+  test("auth, quota, and config failures are never retried", async () => {
+    for (const reason of ["provider_auth_or_access", "provider_quota_limit", "missing_config"] as const) {
+      const store = await SessionStore.open(":memory:");
+      const session = store.create({ kind: "bot-chat", title: "Bot Chat" });
+      store.append(session.id, { type: "user/message", text: "go", mentions: [] });
+      const llm = new SequencedLlm([new LlmError("no", reason), OK_REPLY]);
+      await runTurn(
+        session.id,
+        turnCtx(store, llm, { apiKey: "test", retry: { attempts: 1, delayMs: 0 } }),
+      );
+      expect(llm.calls).toBe(1);
+      expect(store.events(session.id).some((e) => e.type === "system/notice")).toBe(false);
+      store.close();
+    }
+  });
+
+  test("without a policy the first transient failure ends the turn", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create();
+    store.append(session.id, { type: "user/message", text: "go", mentions: [] });
+    const llm = new SequencedLlm([new LlmError("slow down", "provider_rate_limit"), OK_REPLY]);
+    await runTurn(session.id, turnCtx(store, llm, { apiKey: "test" }));
+    expect(llm.calls).toBe(1);
+    store.close();
+  });
+});
+
+describe("wokenByBot", () => {
+  test("is true only when the latest input is a teammate's message", async () => {
+    const store = await SessionStore.open(":memory:");
+    const session = store.create();
+    store.append(session.id, { type: "user/message", text: "a", mentions: [] });
+    expect(wokenByBot(store.events(session.id))).toBe(false);
+    store.append(session.id, {
+      type: "bot/message",
+      deliveryId: asDeliveryId("dlv_1"),
+      fromBotId: asBotId("bot_1"),
+      fromHandle: "researcher",
+      fromTitle: "Researcher",
+      text: "report",
+    });
+    expect(wokenByBot(store.events(session.id))).toBe(true);
+    store.append(session.id, { type: "user/message", text: "b", mentions: [] });
+    expect(wokenByBot(store.events(session.id))).toBe(false);
     store.close();
   });
 });

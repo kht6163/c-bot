@@ -32,7 +32,9 @@ export {
 export { assertNever } from "./never.ts";
 export {
   DELIVERY_REASONS,
+  TRANSIENT_DELIVERY_REASONS,
   isDeliveryReason,
+  isTransientReason,
   type DeliveryReason,
 } from "./reasons.ts";
 export {

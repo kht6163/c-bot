@@ -13,6 +13,7 @@ import {
   saveProviderKey,
   loadMentionedFiles,
   runTurn,
+  wokenByBot,
   sessionNeedsTurn,
   sessionsDbPath,
   titleFromText,
@@ -20,6 +21,7 @@ import {
   type ToolDefinition,
 } from "@cbot/agent";
 import {
+  DELIVERY_RETRY,
   ensureLeaderBot,
   listBots,
   loadBot,
@@ -246,6 +248,12 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           ? config.llm.activeThinking
           : null;
       const reasoningEffort = pinnedEffort ?? globalEffort ?? defaultThinking(levels);
+      // A turn that a teammate's message owes may retry a transient provider
+      // failure once; a turn the user is watching fails loudly instead.
+      const retry =
+        session?.kind === "bot-chat" || wokenByBot(runtime.store.events(sessionId))
+          ? DELIVERY_RETRY
+          : undefined;
       const controller = new AbortController();
       running.set(sessionId, controller);
       try {
@@ -261,6 +269,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           extraTools,
           context: config.context,
           signal: controller.signal,
+          ...(retry ? { retry } : {}),
           ...(systemPrompt !== undefined ? { systemPrompt } : {}),
           ...(reasoningEffort && reasoningEffort !== "off" ? { reasoningEffort } : {}),
         });

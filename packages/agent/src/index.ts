@@ -70,7 +70,9 @@ export {
   runTurn,
   sessionNeedsTurn,
   titleFromText,
+  wokenByBot,
   type AutoCompactPolicy,
+  type TransientRetryPolicy,
   type TurnContext,
 } from "./loop.ts";
 export { CODING_SYSTEM_PROMPT, codingSystemPrompt } from "./prompt.ts";
