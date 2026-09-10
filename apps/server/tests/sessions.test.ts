@@ -797,6 +797,42 @@ describe("bot hop API", () => {
     runtime.store.close();
   });
 
+  test("GET raw streams a workspace image and refuses everything else", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-raw-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-raw-ws-"));
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    await Bun.write(join(workspace, "shot.png"), png);
+    await Bun.write(join(workspace, "notes.md"), "# hi");
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const base = `http://127.0.0.1/api/sessions/${session.id}`;
+
+    const preview = await handleHttp(new Request(`${base}/file?path=shot.png`), opts);
+    expect(((await preview.json()) as { file: { kind: string } }).file.kind).toBe("image");
+
+    const raw = await handleHttp(new Request(`${base}/raw?path=shot.png`), opts);
+    expect(raw.status).toBe(200);
+    expect(raw.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await raw.arrayBuffer())).toEqual(png);
+
+    const text = await handleHttp(new Request(`${base}/raw?path=notes.md`), opts);
+    expect(text.status).toBe(404);
+    const outside = await handleHttp(new Request(`${base}/raw?path=${encodeURIComponent("../x.png")}`), opts);
+    expect(outside.status).toBe(404);
+    const empty = await handleHttp(new Request(`${base}/raw`), opts);
+    expect(empty.status).toBe(400);
+    runtime.store.close();
+  });
+
   test("DELETE removes a coding session and refuses a bot mailbox", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-del-ses-"));
     const workspace = await mkdtemp(join(tmpdir(), "cbot-del-ws-"));

@@ -103,8 +103,11 @@ export {
   type GitView,
 } from "./git-status.ts";
 export {
+  imageMime,
   listWorkspaceDir,
+  readWorkspaceImage,
   readWorkspacePreview,
   type DirEntryView,
   type FilePreview,
+  type RawImage,
 } from "./workspace-inspect.ts";

@@ -3639,6 +3639,29 @@ body.resizing {
   background: var(--sunken);
 }
 
+.file-preview-image {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-preview-image img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 6px;
+  /* A checker under the picture shows where a transparent image ends. */
+  background:
+    repeating-conic-gradient(rgb(255 255 255 / 7%) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+}
+
+.file-preview-image figcaption {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--quiet);
+}
+
 .file-preview-code {
   color: #c4cfe2;
   font-family: var(--mono);

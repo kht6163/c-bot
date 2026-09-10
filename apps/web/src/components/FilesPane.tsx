@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import type { SessionId } from "@cbot/shared";
-import { fetchWorkspaceDir, fetchWorkspaceFile, type DirEntryView, type FilePreviewView } from "../lib/api.ts";
+import {
+  fetchWorkspaceDir,
+  fetchWorkspaceFile,
+  workspaceImageUrl,
+  type DirEntryView,
+  type FilePreviewView,
+} from "../lib/api.ts";
 import { MarkdownView } from "./MarkdownView.tsx";
 
 export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; refreshKey: number }) {
@@ -39,7 +45,7 @@ export function FilesPane({ sessionId, refreshKey }: { sessionId: SessionId; ref
           </span>
         </div>
         {error ? <p className="hint danger">{error}</p> : null}
-        <FilePreview preview={preview} />
+        <FilePreview sessionId={sessionId} preview={preview} />
       </div>
     );
   }
@@ -140,9 +146,17 @@ function EntryIcon({ dir }: { dir: boolean }) {
   );
 }
 
-function FilePreview({ preview }: { preview: FilePreviewView }) {
+function FilePreview({ sessionId, preview }: { sessionId: SessionId; preview: FilePreviewView }) {
   if (preview.kind === "missing") {
     return <p className="empty">파일이 없습니다</p>;
+  }
+  if (preview.kind === "image") {
+    return (
+      <figure className="file-preview file-preview-image">
+        <img src={workspaceImageUrl(sessionId, preview.path)} alt={baseName(preview.path)} />
+        <figcaption>{formatBytes(preview.bytes)}</figcaption>
+      </figure>
+    );
   }
   if (preview.kind === "binary") {
     return <p className="empty">미리볼 수 없는 파일입니다 ({preview.bytes} bytes)</p>;
@@ -178,4 +192,10 @@ function crumbsOf(dir: string): { label: string; path: string }[] {
     crumbs.push({ label: part, path: acc });
   }
   return crumbs;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

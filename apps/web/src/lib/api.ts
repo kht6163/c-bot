@@ -234,7 +234,7 @@ export interface DirEntryView {
 
 export interface FilePreviewView {
   path: string;
-  kind: "text" | "binary" | "missing";
+  kind: "text" | "image" | "binary" | "missing";
   text: string;
   bytes: number;
 }
@@ -293,6 +293,11 @@ export async function fetchWorkspaceFile(id: SessionId, path: string): Promise<F
     `/api/sessions/${id}/file?path=${encodeURIComponent(path)}`,
   );
   return body.file;
+}
+
+/** Where an image preview loads its bytes from. */
+export function workspaceImageUrl(id: SessionId, path: string): string {
+  return `/api/sessions/${id}/raw?path=${encodeURIComponent(path)}`;
 }
 
 export async function fetchTasks(id: SessionId): Promise<TaskView[]> {

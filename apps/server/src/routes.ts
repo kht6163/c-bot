@@ -16,6 +16,7 @@ import {
   probeLlm,
   projectName,
   providerKey,
+  readWorkspaceImage,
   readWorkspacePreview,
   refreshProviderThinking,
   rememberProject,
@@ -387,6 +388,28 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         throw new HttpError(400, "path required");
       }
       return Response.json({ file: await readWorkspacePreview(workspace, rel) });
+    }
+    const rawFile = /^\/api\/sessions\/([^/]+)\/raw$/.exec(url.pathname);
+    if (rawFile && req.method === "GET") {
+      const id = asSessionId(decodeURIComponent(rawFile[1] ?? ""));
+      const workspace = sessionWorkspace(runtime, id);
+      const rel = url.searchParams.get("path") ?? "";
+      if (rel.trim().length === 0) {
+        throw new HttpError(400, "path required");
+      }
+      let image;
+      try {
+        image = await readWorkspaceImage(workspace, rel);
+      } catch {
+        // a path outside the workspace reads the same as a file that is not there
+        image = undefined;
+      }
+      if (!image) {
+        throw new HttpError(404, "not a previewable image");
+      }
+      return new Response(image.bytes, {
+        headers: { "content-type": image.mime, "cache-control": "no-store" },
+      });
     }
     const tasksMatch = /^\/api\/sessions\/([^/]+)\/tasks$/.exec(url.pathname);
     if (tasksMatch && req.method === "GET") {
