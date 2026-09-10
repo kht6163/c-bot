@@ -29,8 +29,9 @@ import {
   validateProviderId,
   type LlmProvider,
 } from "@cbot/agent";
-import type { ProjectView, SessionId, SessionTeamMember } from "@cbot/shared";
+import type { ProjectView, SessionId, SessionListResponse, SessionTeamMember } from "@cbot/shared";
 import { parseSlashCommand } from "@cbot/shared";
+import { runningCodingSessions } from "./activity.ts";
 import { runSlashCommand } from "./commands.ts";
 import { createBot, deleteBot, listBots, loadBot, MemoryStore, TaskStore, taskBoardId, updateBot } from "@cbot/bot";
 import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
@@ -94,9 +95,11 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       );
     }
     if (url.pathname === "/api/sessions" && req.method === "GET") {
-      return Response.json({
+      const list: SessionListResponse = {
         sessions: runtime.store.list({ kind: "coding" }),
-      });
+        running: runningCodingSessions(runtime.store),
+      };
+      return Response.json(list);
     }
     if (url.pathname === "/api/bots" && req.method === "GET") {
       const records = await listBots(runtime.env.home);

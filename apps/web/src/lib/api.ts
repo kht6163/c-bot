@@ -6,6 +6,7 @@ import type {
   ProjectView,
   SessionEvent,
   SessionId,
+  SessionListResponse,
   SessionSummary,
   SessionTeamMember,
   ToolCallId,
@@ -147,9 +148,8 @@ export async function deleteProject(path: string): Promise<ProjectView> {
   });
 }
 
-export async function fetchSessions(): Promise<SessionSummary[]> {
-  const body = await api<{ sessions: SessionSummary[] }>("/api/sessions");
-  return body.sessions;
+export async function fetchSessions(): Promise<SessionListResponse> {
+  return api<SessionListResponse>("/api/sessions");
 }
 
 export async function createSession(workspace?: string): Promise<SessionSummary> {

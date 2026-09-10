@@ -45,6 +45,7 @@ import {
   type SessionId,
   type ToolCallId,
 } from "@cbot/shared";
+import { codingSessionOf, isCodingSessionRunning } from "./activity.ts";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
 
@@ -93,6 +94,17 @@ export async function createRuntime(
   const hub = new EventHub();
   store.onAppend((sessionId, event) => {
     hub.emit(sessionId, event);
+    if (event.type !== "turn/start" && event.type !== "turn/end") {
+      return;
+    }
+    const codingId = codingSessionOf(store, sessionId);
+    if (codingId) {
+      hub.broadcast({
+        type: "session/activity",
+        sessionId: codingId,
+        running: isCodingSessionRunning(store, codingId),
+      });
+    }
   });
   return {
     env,

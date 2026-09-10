@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { type ProjectView, type SessionId, type SessionSummary } from "@cbot/shared";
+import type { ActivityMap } from "../lib/activity.ts";
 import type { BotView } from "../lib/api.ts";
 import { projectTree, timeAgo } from "../lib/path.ts";
 
@@ -8,6 +9,8 @@ type LinkState = "connecting" | "ok" | "down";
 interface Props {
   project: ProjectView | undefined;
   sessions: SessionSummary[];
+  /** Sessions working or finished since the user last looked; keyed by session id. */
+  activity: ActivityMap;
   bots: BotView[];
   selectedId: SessionId | undefined;
   link: LinkState;
@@ -27,6 +30,7 @@ interface Props {
 export function Sidebar({
   project,
   sessions,
+  activity,
   bots,
   selectedId,
   link,
@@ -148,6 +152,7 @@ export function Sidebar({
                               onClick={() => onOpenSession(session.id)}
                             >
                               <span className="row-title">{session.title}</span>
+                              <ActivityDot state={session.id === selectedId ? undefined : activity[session.id]} />
                               <span className="row-meta">{timeAgo(session.updatedAt)}</span>
                             </button>
                             <button
@@ -260,5 +265,18 @@ function SectionHead({
         +
       </button>
     </div>
+  );
+}
+
+function ActivityDot({ state }: { state: "running" | "done" | undefined }) {
+  if (!state) {
+    return null;
+  }
+  return (
+    <span
+      className={state === "running" ? "row-dot is-running" : "row-dot is-done"}
+      role="img"
+      aria-label={state === "running" ? "작업 중" : "작업 완료"}
+    />
   );
 }

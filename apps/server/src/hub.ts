@@ -7,6 +7,12 @@ export interface Socket {
 export class EventHub {
   private readonly bySession = new Map<string, Set<Socket>>();
   private readonly sockets = new Map<Socket, Set<string>>();
+  private readonly open = new Set<Socket>();
+
+  /** Registers a socket for frames that go to everyone, before it subscribes to anything. */
+  connect(ws: Socket): void {
+    this.open.add(ws);
+  }
 
   add(sessionId: SessionId, ws: Socket): void {
     let group = this.bySession.get(sessionId);
@@ -24,6 +30,7 @@ export class EventHub {
   }
 
   remove(ws: Socket): void {
+    this.open.delete(ws);
     const joined = this.sockets.get(ws);
     if (!joined) {
       return;
@@ -47,6 +54,17 @@ export class EventHub {
       } catch {
         group.delete(ws);
         this.sockets.get(ws)?.delete(sessionId);
+      }
+    }
+  }
+
+  broadcast(frame: ServerFrame): void {
+    const payload = JSON.stringify(frame);
+    for (const ws of this.open) {
+      try {
+        ws.send(payload);
+      } catch {
+        this.remove(ws);
       }
     }
   }

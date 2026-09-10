@@ -341,6 +341,28 @@ button {
   color: var(--quiet);
 }
 
+.row-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.row-dot.is-running {
+  background: var(--accent);
+  animation: row-dot-blink 2.4s ease-in-out infinite;
+}
+
+.row-dot.is-done {
+  background: var(--live);
+}
+
+@keyframes row-dot-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+
 .row-badge {
   flex: 0 0 auto;
   padding: 2px 6px;
@@ -1574,6 +1596,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .send-btn,
   .scaffold-pulse,
+  .row-dot.is-running,
   .tool-mark.is-running,
   .bubble.live pre::after,
   .customized-summary::before,

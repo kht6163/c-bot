@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   PROTOCOL_VERSION,
+  hasOpenTurn,
   type ProjectView,
   type ServerFrame,
   type SessionEvent,
@@ -45,6 +46,7 @@ import {
   type ViewMode,
 } from "./lib/team.ts";
 import { reconnectDelay } from "./lib/reconnect.ts";
+import { applyActivity, clearActivity, seedActivity, type ActivityMap } from "./lib/activity.ts";
 import {
   clearQueue,
   dropQueued,
@@ -65,6 +67,7 @@ const ANSWERS_SEND = new Set<SessionEvent["type"]>([
 export function App() {
   const [link, setLink] = useState<LinkState>("connecting");
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [activity, setActivity] = useState<ActivityMap>({});
   const [bots, setBots] = useState<BotView[]>([]);
   const [selectedId, setSelectedId] = useState<SessionId | undefined>();
   const [selected, setSelected] = useState<SessionSummary | undefined>();
@@ -148,12 +151,13 @@ export function App() {
   refreshTeamRef.current = refreshTeam;
 
   const loadList = useCallback(async () => {
-    const [nextSessions, nextBots, nextProject] = await Promise.all([
+    const [list, nextBots, nextProject] = await Promise.all([
       fetchSessions(),
       fetchBots(),
       fetchProject(),
     ]);
-    setSessions(nextSessions);
+    setSessions(list.sessions);
+    setActivity((current) => seedActivity(current, list.running));
     setBots(nextBots);
     setProject(nextProject);
   }, []);
@@ -161,6 +165,7 @@ export function App() {
   const openSession = useCallback(
     async (id: SessionId) => {
       setSelectedId(id);
+      setActivity((current) => clearActivity(current, id));
       setPendingSend(false);
       setFocusedKey("lead");
       const detail = await fetchSession(id);
@@ -291,6 +296,11 @@ export function App() {
             resync();
           }
         }
+        if (frame.type === "session/activity") {
+          setActivity((current) =>
+            applyActivity(current, frame.sessionId, frame.running, selectedRef.current),
+          );
+        }
         if (frame.type === "event") {
           if (frame.sessionId === selectedRef.current) {
             setEvents((current) => mergeEventList(current, frame.event));
@@ -375,7 +385,8 @@ export function App() {
     setProject(next);
     setWorkspaceOpen(false);
     const list = await fetchSessions();
-    setSessions(list);
+    setSessions(list.sessions);
+    setActivity((current) => seedActivity(current, list.running));
   }
 
   function openNativeProject() {
@@ -487,6 +498,7 @@ export function App() {
       <Sidebar
         project={project}
         sessions={sessions}
+        activity={activity}
         bots={bots}
         selectedId={selectedId}
         link={link}
@@ -770,18 +782,6 @@ function maxSeq(events: readonly SessionEvent[]): number {
   return max;
 }
 
-function hasOpenTurn(events: readonly SessionEvent[]): boolean {
-  const open = new Set<string>();
-  for (const event of events) {
-    if (event.type === "turn/start") {
-      open.add(event.turnId);
-    }
-    if (event.type === "turn/end") {
-      open.delete(event.turnId);
-    }
-  }
-  return open.size > 0;
-}
 
 
 

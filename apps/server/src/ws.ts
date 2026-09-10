@@ -9,7 +9,8 @@ import { isRecord } from "./json.ts";
 import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
 import type { Socket } from "./hub.ts";
 
-export function onWsOpen(ws: Socket): void {
+export function onWsOpen(ws: Socket, runtime: Runtime): void {
+  runtime.hub.connect(ws);
   const hello: ServerFrame = { type: "hello", version: PROTOCOL_VERSION };
   ws.send(JSON.stringify(hello));
 }

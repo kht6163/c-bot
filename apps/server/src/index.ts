@@ -29,7 +29,7 @@ const server = Bun.serve({
   },
   websocket: {
     open(ws) {
-      onWsOpen(ws);
+      onWsOpen(ws, runtime);
     },
     message(ws, message) {
       void onWsMessage(ws, message, runtime);

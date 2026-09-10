@@ -45,6 +45,7 @@ export {
 } from "./reasons.ts";
 export {
   SESSION_FORMAT_VERSION,
+  hasOpenTurn,
   type AssistantChunkEvent,
   type ContextClearEvent,
   type ContextCompactEvent,
@@ -76,6 +77,7 @@ export {
   type HealthResponse,
   type ProjectView,
   type ServerFrame,
+  type SessionListResponse,
   type SessionSummary,
   type SessionTeamMember,
 } from "./protocol.ts";

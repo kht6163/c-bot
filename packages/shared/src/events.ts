@@ -169,3 +169,17 @@ export type SessionEvent =
   | ContextCompactEvent
   | ContextClearEvent
   | SystemNoticeEvent;
+
+/** True while a turn has started in this log and not yet ended. */
+export function hasOpenTurn(events: readonly SessionEvent[]): boolean {
+  const open = new Set<string>();
+  for (const event of events) {
+    if (event.type === "turn/start") {
+      open.add(event.turnId);
+    }
+    if (event.type === "turn/end") {
+      open.delete(event.turnId);
+    }
+  }
+  return open.size > 0;
+}
