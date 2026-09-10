@@ -1,4 +1,10 @@
-import { PROTOCOL_VERSION, asSessionId, asToolCallId, type ServerFrame } from "@cbot/shared";
+import {
+  PROTOCOL_VERSION,
+  asSessionId,
+  asToolCallId,
+  type ApprovalRemember,
+  type ServerFrame,
+} from "@cbot/shared";
 import { isRecord } from "./json.ts";
 import { acceptUserMessage, settleApproval, type Runtime } from "./runtime.ts";
 import type { Socket } from "./hub.ts";
@@ -39,8 +45,18 @@ export async function onWsMessage(ws: Socket, raw: string | Buffer, runtime: Run
     typeof parsed.callId === "string" &&
     typeof parsed.allow === "boolean"
   ) {
-    settleApproval(runtime, asToolCallId(parsed.callId), parsed.allow);
+    await settleApproval(
+      runtime,
+      asSessionId(parsed.sessionId),
+      asToolCallId(parsed.callId),
+      parsed.allow,
+      rememberOf(parsed.remember),
+    );
   }
+}
+
+function rememberOf(value: unknown): ApprovalRemember | undefined {
+  return value === "session" || value === "always" ? value : undefined;
 }
 
 function sendError(ws: Socket, message: string): void {

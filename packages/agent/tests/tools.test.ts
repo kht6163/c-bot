@@ -56,6 +56,18 @@ describe("bash", () => {
       false,
     );
   });
+
+  test("an allowed prefix skips the card only for commands that match it", () => {
+    const prompt = { workspace: "/tmp", approvalMode: "prompt" as const, allowedCommands: ["bun test"] };
+    expect(bashTool.needsApproval({ command: "bun test packages/agent" }, prompt)).toBe(false);
+    expect(bashTool.needsApproval({ command: "bun test && rm -rf ." }, prompt)).toBe(true);
+    expect(bashTool.needsApproval({ command: "bun run dev" }, prompt)).toBe(true);
+  });
+
+  test("offers the command prefix as the rule an approval can remember", () => {
+    expect(bashTool.approvalRule?.({ command: "git status --short" })).toBe("git status");
+    expect(bashTool.approvalRule?.({ command: "" })).toBeUndefined();
+  });
 });
 
 class SequenceLlm implements LlmClient {

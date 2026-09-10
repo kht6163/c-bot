@@ -2,6 +2,7 @@ import {
   compactSession,
   historyTokens,
   deriveMessages,
+  forgetCommand,
   loadConfig,
   loadSecrets,
   projectName,
@@ -12,11 +13,18 @@ import {
 import { listBots, updateBot } from "@cbot/bot";
 import {
   SLASH_COMMANDS,
+  normalizeRule,
   type ParsedSlashCommand,
   type SessionId,
   type SessionSummary,
 } from "@cbot/shared";
-import { acceptUserMessage, isSessionBusy, type Runtime } from "./runtime.ts";
+import {
+  acceptUserMessage,
+  forgetSessionRules,
+  isSessionBusy,
+  sessionAllowRules,
+  type Runtime,
+} from "./runtime.ts";
 
 const INIT_PROMPT = [
   "이 워크스페이스를 위한 AGENTS.md 초안을 써라.",
@@ -50,7 +58,7 @@ export async function runSlashCommand(
       notice(runtime, sessionId, command.name, await modelText(runtime, command.args));
       return;
     case "approvals":
-      notice(runtime, sessionId, command.name, await approvalsText(runtime, command.args));
+      notice(runtime, sessionId, command.name, await approvalsText(runtime, sessionId, command.args));
       return;
     case "clear":
       if (isSessionBusy(sessionId)) {
@@ -168,18 +176,39 @@ function describeModels(config: AppConfig): string {
   return [active, "", "쓸 수 있는 모델", ...lines].join("\n");
 }
 
-async function approvalsText(runtime: Runtime, args: string): Promise<string> {
+async function approvalsText(runtime: Runtime, sessionId: SessionId, args: string): Promise<string> {
   const config = await loadConfig(runtime.env.home);
   if (args.length === 0) {
-    return `승인 정책: ${config.approval.mode === "allow" ? "`allow` — 바로 실행" : "`prompt` — 카드로 물어봄"}`;
+    const always = config.approval.allow.map((rule) => `\`${rule}\``).join(", ");
+    const session = sessionAllowRules(sessionId)
+      .map((rule) => `\`${rule}\``)
+      .join(", ");
+    return [
+      `승인 정책: ${config.approval.mode === "allow" ? "`allow` — 바로 실행" : "`prompt` — 카드로 물어봄"}`,
+      `항상 허용: ${always || "(없음)"}`,
+      `이 세션에서 허용: ${session || "(없음)"}`,
+    ].join("\n");
   }
-  if (args !== "allow" && args !== "prompt") {
-    return "`/approvals prompt` 또는 `/approvals allow` 로 씁니다.";
+  if (args === "allow" || args === "prompt") {
+    await saveConfig(runtime.env.home, { ...config, approval: { ...config.approval, mode: args } });
+    return args === "allow"
+      ? "승인 정책을 `allow` 로 바꿨습니다. `bash` 같은 위험 도구가 묻지 않고 실행됩니다."
+      : "승인 정책을 `prompt` 로 바꿨습니다. 위험 도구는 카드로 묻습니다.";
   }
-  await saveConfig(runtime.env.home, { ...config, approval: { mode: args } });
-  return args === "allow"
-    ? "승인 정책을 `allow` 로 바꿨습니다. `bash` 같은 위험 도구가 묻지 않고 실행됩니다."
-    : "승인 정책을 `prompt` 로 바꿨습니다. 위험 도구는 카드로 묻습니다.";
+  const forget = /^forget\s+(.+)$/.exec(args);
+  if (forget) {
+    const rule = normalizeRule(forget[1] ?? "");
+    if (!config.approval.allow.includes(rule)) {
+      return `\`${rule}\` 은 항상 허용 목록에 없습니다.`;
+    }
+    await saveConfig(runtime.env.home, forgetCommand(config, rule));
+    return `\`${rule}\` 을 항상 허용 목록에서 뺐습니다.`;
+  }
+  if (args === "reset") {
+    forgetSessionRules(sessionId);
+    return "이 세션에서 허용한 명령을 모두 지웠습니다.";
+  }
+  return "`/approvals`, `/approvals prompt|allow`, `/approvals forget <명령>`, `/approvals reset` 으로 씁니다.";
 }
 
 async function runCompact(runtime: Runtime, sessionId: SessionId, args: string): Promise<void> {

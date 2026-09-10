@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { toolBody, toolHeadline, toolMark } from "./tool-row.ts";
+import { approvalRuleOf, toolBody, toolHeadline, toolMark } from "./tool-row.ts";
+
+describe("approvalRuleOf", () => {
+  test("names the prefix a bash approval could remember and nothing for other tools", () => {
+    expect(approvalRuleOf("bash", '{"command":"bun test apps/web"}')).toBe("bun test");
+    expect(approvalRuleOf("write_file", '{"path":"a.txt"}')).toBe("");
+    expect(approvalRuleOf("bash", "{not json")).toBe("");
+  });
+});
 
 describe("toolHeadline", () => {
   test("prefers the argument that says what the call touched", () => {

@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { normalizeRule } from "@cbot/shared";
 import {
   CLIPROXYAPI_ID,
   isShippedId,
@@ -27,6 +28,8 @@ export interface AppConfig {
   };
   approval: {
     mode: "prompt" | "allow";
+    /** Command prefixes `bash` runs without asking while mode is prompt. */
+    allow: string[];
   };
   botMode: {
     protocol: boolean;
@@ -54,6 +57,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   approval: {
     mode: "prompt",
+    allow: [],
   },
   botMode: {
     protocol: true,
@@ -139,6 +143,9 @@ export function mergeConfig(parsed: unknown): AppConfig {
   const context = isRecord(obj.context) ? obj.context : {};
   const project = isRecord(obj.project) ? obj.project : {};
   const mode = approval.mode === "allow" ? "allow" : "prompt";
+  const allow = uniqueRules(
+    Array.isArray(approval.allow) ? approval.allow.filter((item): item is string => typeof item === "string") : [],
+  );
   const recents = Array.isArray(project.recents)
     ? project.recents.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
@@ -174,7 +181,7 @@ export function mergeConfig(parsed: unknown): AppConfig {
       activeThinking,
       providers: list,
     },
-    approval: { mode },
+    approval: { mode, allow },
     botMode: {
       protocol: botMode.protocol === false ? false : true,
     },
@@ -253,6 +260,32 @@ export function forgetProject(config: AppConfig, path: string): AppConfig {
   const recents = config.project.recents.filter((item) => item !== path);
   const current = config.project.current === path ? (recents[0] ?? null) : config.project.current;
   return { ...config, project: { current, recents } };
+}
+
+export function allowCommand(config: AppConfig, rule: string): AppConfig {
+  return {
+    ...config,
+    approval: { ...config.approval, allow: uniqueRules([...config.approval.allow, rule]) },
+  };
+}
+
+export function forgetCommand(config: AppConfig, rule: string): AppConfig {
+  const target = normalizeRule(rule);
+  return {
+    ...config,
+    approval: { ...config.approval, allow: config.approval.allow.filter((item) => item !== target) },
+  };
+}
+
+function uniqueRules(rules: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const raw of rules) {
+    const rule = normalizeRule(raw);
+    if (rule.length > 0 && !out.includes(rule)) {
+      out.push(rule);
+    }
+  }
+  return out;
 }
 
 export function projectName(path: string | null): string | null {
@@ -447,9 +480,13 @@ function serializeConfig(config: AppConfig): string {
       }
     }
   }
+  lines.push("approval:", `  mode: ${config.approval.mode}`);
+  if (config.approval.allow.length === 0) {
+    lines.push("  allow: []");
+  } else {
+    lines.push("  allow:", ...config.approval.allow.map((rule) => `    - ${yamlScalar(rule)}`));
+  }
   lines.push(
-    "approval:",
-    `  mode: ${config.approval.mode}`,
     "botMode:",
     `  protocol: ${config.botMode.protocol}`,
     "context:",

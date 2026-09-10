@@ -484,6 +484,120 @@ class HopLlm implements LlmClient {
   }
 }
 
+/** Asks for two shell commands in a row, then answers. */
+class TwoBashLlm implements LlmClient {
+  async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+    const results = request.messages.filter((message) => message.role === "tool").length;
+    if (results >= 2) {
+      yield { type: "text", text: "둘 다 실행했습니다." };
+      yield { type: "done", finishReason: "stop" };
+      return;
+    }
+    yield {
+      type: "tool_call",
+      id: results === 0 ? "call_bash_1" : "call_bash_2",
+      name: "bash",
+      arguments: JSON.stringify({ command: results === 0 ? "echo one" : "echo two" }),
+    };
+    yield { type: "done", finishReason: "tool_calls" };
+  }
+}
+
+describe("approval memory", () => {
+  async function approvalHarness() {
+    const home = await mkdtemp(join(tmpdir(), "cbot-approve-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    await seedProvider(home);
+    const runtime = await createRuntime(env, new TwoBashLlm());
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const pendingCalls = () =>
+      runtime.store
+        .events(session.id as never)
+        .filter((event) => event.type === "tool/result" && event.pendingApproval)
+        .map((event) => (event.type === "tool/result" ? String(event.callId) : ""));
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "둘 다 실행해" }),
+      }),
+      opts,
+    );
+    await waitUntil("first approval", async () => pendingCalls().length === 1);
+    return { home, runtime, opts, sessionId: session.id, pendingCalls };
+  }
+
+  test("approving for this session skips the card for the next matching command", async () => {
+    const h = await approvalHarness();
+    const res = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${h.sessionId}/approvals`, {
+        method: "POST",
+        body: JSON.stringify({ callId: "call_bash_1", allow: true, remember: "session" }),
+      }),
+      h.opts,
+    );
+    expect(res.status).toBe(200);
+    await waitUntil("turn end", async () =>
+      h.runtime.store.events(h.sessionId as never).some((event) => event.type === "turn/end"),
+    );
+    expect(h.pendingCalls()).toEqual(["call_bash_1"]);
+    const results = h.runtime.store
+      .events(h.sessionId as never)
+      .filter((event) => event.type === "tool/result" && event.ok && !event.pendingApproval);
+    expect(results).toHaveLength(2);
+    expect((await loadConfig(h.home)).approval.allow).toEqual([]);
+    h.runtime.store.close();
+  });
+
+  test("approving always writes the rule to config.yaml", async () => {
+    const h = await approvalHarness();
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${h.sessionId}/approvals`, {
+        method: "POST",
+        body: JSON.stringify({ callId: "call_bash_1", allow: true, remember: "always" }),
+      }),
+      h.opts,
+    );
+    await waitUntil("turn end", async () =>
+      h.runtime.store.events(h.sessionId as never).some((event) => event.type === "turn/end"),
+    );
+    expect(h.pendingCalls()).toEqual(["call_bash_1"]);
+    expect((await loadConfig(h.home)).approval.allow).toEqual(["echo"]);
+    h.runtime.store.close();
+  });
+
+  test("a plain approval remembers nothing and the next command asks again", async () => {
+    const h = await approvalHarness();
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${h.sessionId}/approvals`, {
+        method: "POST",
+        body: JSON.stringify({ callId: "call_bash_1", allow: true }),
+      }),
+      h.opts,
+    );
+    await waitUntil("second approval", async () => h.pendingCalls().length === 2);
+    expect(h.pendingCalls()).toEqual(["call_bash_1", "call_bash_2"]);
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${h.sessionId}/approvals`, {
+        method: "POST",
+        body: JSON.stringify({ callId: "call_bash_2", allow: false }),
+      }),
+      h.opts,
+    );
+    await waitUntil("turn end", async () =>
+      h.runtime.store.events(h.sessionId as never).some((event) => event.type === "turn/end"),
+    );
+    h.runtime.store.close();
+  });
+});
+
 async function waitUntil(label: string, check: () => Promise<boolean>): Promise<void> {
   for (let i = 0; i < 80; i++) {
     if (await check()) {

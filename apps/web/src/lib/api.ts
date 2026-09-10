@@ -1,4 +1,5 @@
 import type {
+  ApprovalRemember,
   GitDiffScope,
   GitDiffView,
   HealthResponse,
@@ -472,11 +473,16 @@ export async function interruptSession(id: SessionId): Promise<boolean> {
   return body.interrupted;
 }
 
-export async function sendApproval(id: SessionId, callId: ToolCallId, allow: boolean): Promise<void> {
+export async function sendApproval(
+  id: SessionId,
+  callId: ToolCallId,
+  allow: boolean,
+  remember?: ApprovalRemember,
+): Promise<void> {
   await api<{ ok: boolean }>(`/api/sessions/${id}/approvals`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ callId, allow }),
+    body: JSON.stringify({ callId, allow, ...(remember ? { remember } : {}) }),
   });
 }
 

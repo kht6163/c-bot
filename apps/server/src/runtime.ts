@@ -1,6 +1,7 @@
 import {
   ApprovalGate,
   CLIPROXYAPI_ID,
+  allowCommand,
   defaultThinking,
   OpenAiCompatClient,
   SessionStore,
@@ -10,6 +11,7 @@ import {
   loadSecrets,
   providerKey,
   resolveLlmEndpoint,
+  saveConfig,
   saveProviderKey,
   loadMentionedFiles,
   runTurn,
@@ -34,7 +36,13 @@ import {
   withProtocol,
 } from "@cbot/bot";
 import { resolve } from "node:path";
-import { atTokens, type SessionId, type ToolCallId } from "@cbot/shared";
+import {
+  atTokens,
+  normalizeRule,
+  type ApprovalRemember,
+  type SessionId,
+  type ToolCallId,
+} from "@cbot/shared";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
 
@@ -48,6 +56,8 @@ export interface Runtime {
 }
 
 const busy = new Set<string>();
+/** Command rules approved "for this session". They live with the process, not the log. */
+const sessionRules = new Map<string, string[]>();
 const pendingWake = new Set<string>();
 const running = new Map<string, AbortController>();
 
@@ -134,8 +144,40 @@ export async function acceptUserMessage(
   wakeSession(runtime, sessionId);
 }
 
-export function settleApproval(runtime: Runtime, callId: ToolCallId, allow: boolean): boolean {
+export async function settleApproval(
+  runtime: Runtime,
+  sessionId: SessionId,
+  callId: ToolCallId,
+  allow: boolean,
+  remember?: ApprovalRemember,
+): Promise<boolean> {
+  const rule = allow && remember ? runtime.approvals.ruleOf(callId) : undefined;
+  if (rule) {
+    // The running turn read config.yaml when it started, so "always" also
+    // lands in the session set to cover the rest of this turn.
+    rememberSessionRule(sessionId, rule);
+  }
+  if (rule && remember === "always") {
+    const config = await loadConfig(runtime.env.home);
+    await saveConfig(runtime.env.home, allowCommand(config, rule));
+  }
   return runtime.approvals.settle(callId, allow);
+}
+
+export function rememberSessionRule(sessionId: SessionId, rule: string): void {
+  const normalized = normalizeRule(rule);
+  const rules = sessionRules.get(sessionId) ?? [];
+  if (normalized.length > 0 && !rules.includes(normalized)) {
+    sessionRules.set(sessionId, [...rules, normalized]);
+  }
+}
+
+export function sessionAllowRules(sessionId: SessionId): readonly string[] {
+  return sessionRules.get(sessionId) ?? [];
+}
+
+export function forgetSessionRules(sessionId: SessionId): void {
+  sessionRules.delete(sessionId);
 }
 
 /** True while a turn is running or queued for this session. */
@@ -266,6 +308,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           workspace,
           approvalMode: config.approval.mode,
           approvals: runtime.approvals,
+          allowedCommands: () => [...config.approval.allow, ...sessionAllowRules(sessionId)],
           extraTools,
           context: config.context,
           signal: controller.signal,

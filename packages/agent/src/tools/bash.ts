@@ -1,3 +1,4 @@
+import { commandPrefix, isCommandAllowed } from "@cbot/shared";
 import { asString, type ToolDefinition } from "./types.ts";
 
 const TIMEOUT_MS = 60_000;
@@ -6,7 +7,8 @@ const OUTPUT_CAP = 200_000;
 export const bashTool: ToolDefinition = {
   name: "bash",
   ui: "terminal",
-  description: "Run a bash command with cwd set to the workspace root. Requires approval unless approval.mode is allow.",
+  description:
+    "Run a bash command with cwd set to the workspace root. Requires approval unless approval.mode is allow or the command matches an allowed prefix.",
   parameters: {
     type: "object",
     properties: {
@@ -14,7 +16,17 @@ export const bashTool: ToolDefinition = {
     },
     required: ["command"],
   },
-  needsApproval: (_args, ctx) => ctx.approvalMode !== "allow",
+  needsApproval: (args, ctx) => {
+    if (ctx.approvalMode === "allow") {
+      return false;
+    }
+    const command = typeof args.command === "string" ? args.command : "";
+    return !isCommandAllowed(command, ctx.allowedCommands ?? []);
+  },
+  approvalRule: (args) => {
+    const prefix = commandPrefix(typeof args.command === "string" ? args.command : "");
+    return prefix.length > 0 ? prefix : undefined;
+  },
   async execute(args, ctx) {
     const command = asString(args, "command");
     const proc = Bun.spawn(["bash", "-lc", command], {

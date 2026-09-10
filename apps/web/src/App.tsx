@@ -598,8 +598,8 @@ export function App() {
             codingBusy={busy}
             onViewMode={setViewMode}
             onFocus={setFocusedKey}
-            onApprove={(sessionId, callId, allow) => {
-              void sendApproval(sessionId, callId, allow);
+            onApprove={(sessionId, callId, allow, remember) => {
+              void sendApproval(sessionId, callId, allow, remember);
             }}
             barEnd={
               inspectorOpen ? null : (

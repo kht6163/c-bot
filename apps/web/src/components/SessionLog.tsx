@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
-import type { SessionId, ToolCallId } from "@cbot/shared";
+import type { ApprovalRemember, SessionId, ToolCallId } from "@cbot/shared";
 import type { ChatRow } from "../lib/rows.ts";
-import { toolBody, toolHeadline, toolMark } from "../lib/tool-row.ts";
+import { approvalRuleOf, toolBody, toolHeadline, toolMark } from "../lib/tool-row.ts";
 import { MarkdownView } from "./MarkdownView.tsx";
 
 interface Props {
@@ -9,7 +9,7 @@ interface Props {
   empty: string;
   compact?: boolean;
   sessionId?: SessionId;
-  onApprove?: (callId: ToolCallId, allow: boolean) => void;
+  onApprove?: (callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
 }
 
 export function SessionLog({ rows, empty, compact = false, sessionId, onApprove }: Props) {
@@ -114,11 +114,12 @@ function ToolRow({
 }: {
   row: Extract<ChatRow, { kind: "tool" }>;
   sessionId: SessionId | undefined;
-  onApprove: ((callId: ToolCallId, allow: boolean) => void) | undefined;
+  onApprove: ((callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void) | undefined;
 }) {
   const mark = toolMark(row);
   const headline = toolHeadline(row.arguments);
   const body = toolBody(row.arguments, row.content);
+  const rule = row.pendingApproval ? approvalRuleOf(row.name, row.arguments) : "";
 
   return (
     <article className={`tool-card ui-${row.ui} is-${mark}`}>
@@ -139,6 +140,26 @@ function ToolRow({
           <button type="button" onClick={() => onApprove(row.callId, true)}>
             허용
           </button>
+          {rule ? (
+            <>
+              <button
+                type="button"
+                className="ghost"
+                title={`이 세션에서 ${rule}로 시작하는 명령은 묻지 않습니다`}
+                onClick={() => onApprove(row.callId, true, "session")}
+              >
+                이 세션에서 <code>{rule}</code> 허용
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                title={`앞으로 ${rule}로 시작하는 명령은 묻지 않습니다 (config.yaml)`}
+                onClick={() => onApprove(row.callId, true, "always")}
+              >
+                항상 <code>{rule}</code> 허용
+              </button>
+            </>
+          ) : null}
           <button type="button" className="ghost" onClick={() => onApprove(row.callId, false)}>
             거절
           </button>

@@ -440,7 +440,14 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!isRecord(body) || typeof body.callId !== "string" || typeof body.allow !== "boolean") {
         throw new HttpError(400, "callId and allow required");
       }
-      const ok = settleApproval(runtime, asToolCallId(body.callId), body.allow);
+      const remember = body.remember === "session" || body.remember === "always" ? body.remember : undefined;
+      const ok = await settleApproval(
+        runtime,
+        asSessionId(decodeURIComponent(approveMatch[1] ?? "")),
+        asToolCallId(body.callId),
+        body.allow,
+        remember,
+      );
       if (!ok) {
         throw new HttpError(404, "unknown approval");
       }

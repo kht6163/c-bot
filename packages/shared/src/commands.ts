@@ -25,7 +25,7 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { name: "compact", args: "[지시]", summary: "지금까지 대화를 요약해 컨텍스트를 줄인다" },
   { name: "clear", args: "", summary: "모델 컨텍스트를 비운다 (로그는 남는다)" },
   { name: "model", args: "[모델 또는 프로바이더/모델]", summary: "쓰는 모델을 보거나 바꾼다" },
-  { name: "approvals", args: "[prompt|allow]", summary: "위험 도구 승인 정책을 보거나 바꾼다" },
+  { name: "approvals", args: "[prompt|allow|forget <명령>|reset]", summary: "위험 도구 승인 정책과 허용 명령을 보거나 바꾼다" },
   { name: "bots", args: "", summary: "봇 로스터를 본다" },
   { name: "init", args: "", summary: "이 프로젝트의 AGENTS.md 초안을 쓰게 한다" },
 ];

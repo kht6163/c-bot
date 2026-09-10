@@ -1,3 +1,4 @@
+import { commandPrefix } from "@cbot/shared";
 /**
  * The log shows a tool call as one line — name plus the argument that says what
  * it touched — with the result underneath. Both parts are pure functions of the
@@ -17,6 +18,24 @@ const MAX_HEADLINE = 140;
  * string the model sent, which is still half-written while a call streams, so
  * anything unparsable yields nothing rather than a broken fragment.
  */
+/** The command prefix an approval of this call could remember; only `bash` has one. */
+export function approvalRuleOf(name: string, argumentsJson: string): string {
+  if (name !== "bash") {
+    return "";
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argumentsJson);
+  } catch {
+    return "";
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return "";
+  }
+  const command = (parsed as Record<string, unknown>).command;
+  return typeof command === "string" ? commandPrefix(command) : "";
+}
+
 export function toolHeadline(argumentsJson: string): string {
   const trimmed = argumentsJson.trim();
   if (!trimmed) {

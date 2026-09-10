@@ -1,10 +1,20 @@
 import type { ToolCallId } from "@cbot/shared";
 
+interface Pending {
+  settle: (allow: boolean) => void;
+  rule: string | undefined;
+}
+
 export class ApprovalGate {
-  private readonly pending = new Map<string, (allow: boolean) => void>();
+  private readonly pending = new Map<string, Pending>();
+
+  /** The allow rule the tool offered for this call, while it is still waiting. */
+  ruleOf(callId: ToolCallId): string | undefined {
+    return this.pending.get(callId)?.rule;
+  }
 
   /** An aborted turn resolves as "not allowed"; the caller checks the signal to tell the two apart. */
-  wait(callId: ToolCallId, signal?: AbortSignal): Promise<boolean> {
+  wait(callId: ToolCallId, signal?: AbortSignal, rule?: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (signal?.aborted) {
         resolve(false);
@@ -16,17 +26,17 @@ export class ApprovalGate {
         resolve(allow);
       };
       const onAbort = () => settle(false);
-      this.pending.set(callId, settle);
+      this.pending.set(callId, { settle, rule });
       signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 
   settle(callId: ToolCallId, allow: boolean): boolean {
-    const resolve = this.pending.get(callId);
-    if (!resolve) {
+    const entry = this.pending.get(callId);
+    if (!entry) {
       return false;
     }
-    resolve(allow);
+    entry.settle(allow);
     return true;
   }
 }

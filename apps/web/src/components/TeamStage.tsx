@@ -6,7 +6,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import type { SessionEvent, SessionId, ToolCallId } from "@cbot/shared";
+import type { ApprovalRemember, SessionEvent, SessionId, ToolCallId } from "@cbot/shared";
 import { visibleRows, type ChatRow } from "../lib/rows.ts";
 import {
   loadNoteLayout,
@@ -47,7 +47,7 @@ interface Props {
   codingBusy: boolean;
   onViewMode: (mode: ViewMode) => void;
   onFocus: (key: string) => void;
-  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean) => void;
+  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
   /** Trailing slot of the stage bar, so a session control shares the row instead of covering it. */
   barEnd?: ReactNode;
 }
@@ -178,7 +178,7 @@ function NoteBoard({
   codingEvents: SessionEvent[];
   botEvents: Record<string, SessionEvent[]>;
   codingBusy: boolean;
-  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean) => void;
+  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
 }) {
   const boardRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<Record<string, NoteRect>>({});
@@ -425,7 +425,7 @@ function PaneLog({
   botEvents: Record<string, SessionEvent[]>;
   codingBusy: boolean;
   compact: boolean;
-  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean) => void;
+  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
 }) {
   const events = pane.role === "lead" ? codingEvents : (botEvents[pane.sessionId] ?? []);
   const busy = pane.role === "lead" ? codingBusy : hasOpenTurn(events);
@@ -441,7 +441,7 @@ function PaneLog({
       }
       compact={compact}
       sessionId={sessionId}
-      onApprove={(callId, allow) => onApprove(sessionId, callId, allow)}
+      onApprove={(callId, allow, remember) => onApprove(sessionId, callId, allow, remember)}
     />
   );
 }

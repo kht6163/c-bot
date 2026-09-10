@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+  allowCommand,
   loadConfig,
   saveConfig,
   saveProviderKey,
@@ -12,7 +13,7 @@ import {
 } from "@cbot/agent";
 import { handleHttp } from "../src/http.ts";
 import { loadProcessEnv } from "../src/env.ts";
-import { createRuntime, type Runtime } from "../src/runtime.ts";
+import { createRuntime, rememberSessionRule, type Runtime } from "../src/runtime.ts";
 
 class ScriptedLlm implements LlmClient {
   constructor(private readonly text: string) {}
@@ -64,6 +65,10 @@ async function send(h: Harness, text: string): Promise<Response> {
     }),
     h.opts,
   );
+}
+
+function lastNotice(h: Harness): string {
+  return events(h).filter((event) => event.type === "system/notice").at(-1)?.text ?? "";
 }
 
 async function settle(h: Harness): Promise<void> {
@@ -123,6 +128,23 @@ describe("slash commands", () => {
     expect((await loadConfig(h.home)).approval.mode).toBe("allow");
     await send(h, "/approvals maybe");
     expect((await loadConfig(h.home)).approval.mode).toBe("allow");
+    h.runtime.store.close();
+  });
+
+  test("/approvals lists remembered commands and forgets one", async () => {
+    const h = await harness();
+    const config = await loadConfig(h.home);
+    await saveConfig(h.home, allowCommand(config, "bun test"));
+    rememberSessionRule(h.sessionId as never, "git status");
+    await send(h, "/approvals");
+    const listing = lastNotice(h);
+    expect(listing).toContain("`bun test`");
+    expect(listing).toContain("`git status`");
+    await send(h, "/approvals forget bun test");
+    expect((await loadConfig(h.home)).approval.allow).toEqual([]);
+    await send(h, "/approvals reset");
+    await send(h, "/approvals");
+    expect(lastNotice(h)).toContain("이 세션에서 허용: (없음)");
     h.runtime.store.close();
   });
 

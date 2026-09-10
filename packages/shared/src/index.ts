@@ -1,4 +1,10 @@
 export type { GitDiffScope, GitDiffView } from "./git.ts";
+export {
+  commandPrefix,
+  isCommandAllowed,
+  normalizeRule,
+  type ApprovalRemember,
+} from "./approval.ts";
 export { atTokens, findActiveAt } from "./at.ts";
 export { brand, type Brand } from "./brand.ts";
 export {

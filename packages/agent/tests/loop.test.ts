@@ -1,5 +1,8 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { asBotId, asDeliveryId, asTurnId } from "@cbot/shared";
+import { asBotId, asDeliveryId, asToolCallId, asTurnId } from "@cbot/shared";
 import { runTurn, sessionNeedsTurn, titleFromText, wokenByBot, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { LlmClient, LlmStreamEvent } from "../src/llm/client.ts";
@@ -188,6 +191,58 @@ describe("transient retry", () => {
     store.close();
   });
 });
+
+describe("approval rules", () => {
+  test("a rule remembered while the turn waits applies to the next call of the same turn", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-rule-"));
+    const store = await SessionStore.open(":memory:");
+    const session = store.create({ workspace });
+    store.append(session.id, { type: "user/message", text: "run", mentions: [] });
+    const llm = new SequencedLlm([
+      [
+        { type: "tool_call", id: "call_1", name: "bash", arguments: '{"command":"echo one"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      [
+        { type: "tool_call", id: "call_2", name: "bash", arguments: '{"command":"echo two"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      OK_REPLY,
+    ]);
+    const approvals = new ApprovalGate();
+    const rules: string[] = [];
+    const turn = runTurn(
+      session.id,
+      turnCtx(store, llm, {
+        apiKey: "test",
+        workspace,
+        approvalMode: "prompt",
+        approvals,
+        allowedCommands: () => rules,
+      }),
+    );
+    await waitFor(() => approvals.ruleOf(asToolCallId("call_1")) !== undefined);
+    expect(approvals.ruleOf(asToolCallId("call_1"))).toBe("echo");
+    rules.push("echo");
+    approvals.settle(asToolCallId("call_1"), true);
+    await turn;
+    const events = store.events(session.id);
+    const pending = events.filter((e) => e.type === "tool/result" && e.pendingApproval);
+    expect(pending).toHaveLength(1);
+    expect(deriveMessages(events).filter((m) => m.role === "tool")).toHaveLength(2);
+    store.close();
+  });
+});
+
+async function waitFor(check: () => boolean): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (check()) {
+      return;
+    }
+    await Bun.sleep(10);
+  }
+  throw new Error("condition not met");
+}
 
 describe("wokenByBot", () => {
   test("is true only when the latest input is a teammate's message", async () => {

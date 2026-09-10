@@ -31,6 +31,8 @@ export interface TurnContext {
   workspace: string | null;
   approvalMode: "prompt" | "allow";
   approvals: ApprovalGate;
+  /** Read per call, so a rule remembered from an approval card applies to the rest of this turn. */
+  allowedCommands?: () => readonly string[];
   extraTools?: ToolDefinition[];
   systemPrompt?: string;
   reasoningEffort?: string;
@@ -292,9 +294,14 @@ async function runStep(
   if (toolCalls.length === 0) {
     return "stop";
   }
-  const toolCtx: ToolContext | undefined = ctx.workspace
-    ? { workspace: ctx.workspace, approvalMode: ctx.approvalMode }
-    : undefined;
+  const toolCtx = (): ToolContext | undefined =>
+    ctx.workspace
+      ? {
+          workspace: ctx.workspace,
+          approvalMode: ctx.approvalMode,
+          allowedCommands: ctx.allowedCommands?.() ?? [],
+        }
+      : undefined;
   for (const call of toolCalls) {
     ctx.store.append(sessionId, { type: "tool/call", turnId, call });
     // Every logged call needs a result, or the derived history loses its tool pairing.
@@ -320,7 +327,8 @@ async function runStep(
       });
       continue;
     }
-    if (!extra && !toolCtx) {
+    const execCtx: ToolContext = toolCtx() ?? { workspace: "", approvalMode: ctx.approvalMode };
+    if (!extra && execCtx.workspace.length === 0) {
       ctx.store.append(sessionId, {
         type: "tool/result",
         turnId,
@@ -330,7 +338,6 @@ async function runStep(
       });
       continue;
     }
-    const execCtx: ToolContext = toolCtx ?? { workspace: "", approvalMode: ctx.approvalMode };
     let args: Record<string, unknown> = {};
     try {
       args = parseArgs(call.arguments);
@@ -353,7 +360,7 @@ async function runStep(
         content: "승인 대기 중",
         pendingApproval: true,
       });
-      const allowed = await ctx.approvals.wait(call.id, ctx.signal);
+      const allowed = await ctx.approvals.wait(call.id, ctx.signal, tool.approvalRule?.(args));
       if (ctx.signal?.aborted) {
         ctx.store.append(sessionId, {
           type: "tool/result",

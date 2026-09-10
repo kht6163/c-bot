@@ -1,3 +1,4 @@
+import type { ApprovalRemember } from "./approval.ts";
 import type { SessionEvent, SessionKind } from "./events.ts";
 import type { BotId, SessionId, ToolCallId } from "./ids.ts";
 
@@ -33,7 +34,14 @@ export type ClientFrame =
   | { type: "subscribe"; sessionId: SessionId }
   | { type: "unsubscribe"; sessionId: SessionId }
   | { type: "send"; sessionId: SessionId; text: string }
-  | { type: "approve"; sessionId: SessionId; callId: ToolCallId; allow: boolean };
+  | {
+      type: "approve";
+      sessionId: SessionId;
+      callId: ToolCallId;
+      allow: boolean;
+      /** With allow, also skip the card for this command prefix from now on. */
+      remember?: ApprovalRemember;
+    };
 
 export type ServerFrame =
   | { type: "hello"; version: typeof PROTOCOL_VERSION }

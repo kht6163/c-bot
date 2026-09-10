@@ -12,6 +12,8 @@ import {
   removeProvider,
   saveConfig,
   upsertProvider,
+  allowCommand,
+  forgetCommand,
 } from "../src/config.ts";
 import { applyEnvFile, loadSecrets, providerKey, saveProviderKey } from "../src/secrets.ts";
 
@@ -158,5 +160,31 @@ describe("secrets", () => {
     await applyEnvFile(path, target);
     expect(target.ACME_API_KEY).toBe("already");
     expect(target.CBOT_PORT).toBe("4090");
+  });
+});
+
+describe("approval allow list", () => {
+  test("round-trips through config.yaml without duplicates", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-allow-"));
+    let config = await loadConfig(home);
+    expect(config.approval.allow).toEqual([]);
+    config = allowCommand(config, "bun  test ");
+    config = allowCommand(config, "bun test");
+    config = allowCommand(config, "git status");
+    await saveConfig(home, config);
+    const reloaded = await loadConfig(home);
+    expect(reloaded.approval.allow).toEqual(["bun test", "git status"]);
+    expect((await readFile(join(home, "config.yaml"), "utf8")).includes('- "bun test"')).toBe(true);
+    await saveConfig(home, forgetCommand(reloaded, "bun test"));
+    expect((await loadConfig(home)).approval.allow).toEqual(["git status"]);
+  });
+
+  test("drops non-string entries a hand edit left behind", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-allow-bad-"));
+    await Bun.write(
+      join(home, "config.yaml"),
+      ["approval:", "  mode: prompt", "  allow:", "    - 3", '    - "ls"', "    - \"\"", ""].join("\n"),
+    );
+    expect((await loadConfig(home)).approval.allow).toEqual(["ls"]);
   });
 });
