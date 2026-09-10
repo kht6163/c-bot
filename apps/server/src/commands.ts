@@ -185,8 +185,9 @@ async function approvalsText(runtime: Runtime, sessionId: SessionId, args: strin
       .join(", ");
     return [
       `승인 정책: ${config.approval.mode === "allow" ? "`allow` — 바로 실행" : "`prompt` — 카드로 물어봄"}`,
-      `항상 허용: ${always || "(없음)"}`,
-      `이 세션에서 허용: ${session || "(없음)"}`,
+      "",
+      `- 항상 허용: ${always || "(없음)"}`,
+      `- 이 세션에서 허용: ${session || "(없음)"}`,
     ].join("\n");
   }
   if (args === "allow" || args === "prompt") {
