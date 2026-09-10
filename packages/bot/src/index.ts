@@ -20,6 +20,14 @@ export {
   validateHandle,
 } from "./roster.ts";
 export { protocolSection, withProtocol } from "./protocol.ts";
+export {
+  SKILLS_HEADING,
+  SKILL_MAX_CHARS,
+  loadSkills,
+  skillsDir,
+  skillsSection,
+  type BotSkill,
+} from "./skills.ts";
 export { attributedText, deliver, type MailboxAck, type MailboxSend } from "./mailbox.ts";
 export { messageAgentTool, workspaceForMailbox, type MessageAgentDeps } from "./message-agent.ts";
 export {

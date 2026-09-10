@@ -2,6 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { asBotId, asSessionId, newBotId, type BotId, type SessionId } from "@cbot/shared";
 import type { SessionStore } from "@cbot/agent";
+import { loadSkills } from "./skills.ts";
 import {
   BOT_CHAT_TITLE,
   LEADER_HANDLE,
@@ -59,7 +60,8 @@ export async function loadBot(home: string, id: BotId): Promise<BotProfile | und
   }
   const soulFile = Bun.file(join(dir, "SOUL.md"));
   const soul = (await soulFile.exists()) ? await soulFile.text() : "";
-  return { ...record, soul };
+  const skills = (await loadSkills(home, id)).map((skill) => skill.name);
+  return { ...record, soul, skills };
 }
 
 export async function findLeader(home: string): Promise<BotRecord | undefined> {
@@ -142,7 +144,7 @@ export async function createBot(
   await Bun.write(join(dir, "profile.yaml"), serializeProfile(record));
   const soul = input.soul?.trim() ?? (role === "leader" ? defaultLeaderSoul() : defaultSoul(record));
   await Bun.write(join(dir, "SOUL.md"), soul.endsWith("\n") ? soul : `${soul}\n`);
-  return { ...record, soul };
+  return { ...record, soul, skills: [] };
 }
 
 export async function updateBot(
@@ -177,7 +179,7 @@ export async function updateBot(
   const soul = patch.soul !== undefined ? patch.soul : loaded.soul;
   const text = soul.endsWith("\n") ? soul : `${soul}\n`;
   await Bun.write(join(botsDir(home), id, "SOUL.md"), text);
-  return { ...record, soul: text };
+  return { ...record, soul: text, skills: loaded.skills };
 }
 
 export async function deleteBot(home: string, id: BotId): Promise<boolean> {

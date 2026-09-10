@@ -113,6 +113,20 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
               프롬프트
               <textarea rows={6} value={soul} onChange={(e) => setSoul(e.target.value)} />
             </label>
+            <p className="hint-static">
+              스킬{" "}
+              {bot.skills && bot.skills.length > 0 ? (
+                bot.skills.map((name) => (
+                  <code key={name} className="skill-chip">
+                    {name}
+                  </code>
+                ))
+              ) : (
+                <span>없음</span>
+              )}
+              {" · "}
+              <code>bots/{bot.id}/skills/</code>의 마크다운이 프롬프트에 들어갑니다
+            </p>
           </div>
           <section className="memory-section" aria-label="메모리">
             <h3 className="field-label">메모리</h3>

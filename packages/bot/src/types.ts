@@ -20,6 +20,8 @@ export interface BotProfile {
   thinking: string | null;
   hidden: boolean;
   soul: string;
+  /** Names of the skills under `bots/<id>/skills/`, in prompt order. */
+  skills: string[];
   sessionId: SessionId;
 }
 

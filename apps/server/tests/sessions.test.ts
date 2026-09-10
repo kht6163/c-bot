@@ -11,6 +11,7 @@ import {
   type LlmRequest,
   type LlmStreamEvent,
 } from "@cbot/agent";
+import { findLeader, skillsDir } from "@cbot/bot";
 import { handleHttp } from "../src/http.ts";
 import { loadProcessEnv } from "../src/env.ts";
 import { createRuntime } from "../src/runtime.ts";
@@ -502,6 +503,59 @@ class TwoBashLlm implements LlmClient {
     yield { type: "done", finishReason: "tool_calls" };
   }
 }
+
+/** Answers at once and keeps the system prompt it was given. */
+class RecordingLlm implements LlmClient {
+  systems: string[] = [];
+  async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+    this.systems.push(request.system);
+    yield { type: "text", text: "ok" };
+    yield { type: "done", finishReason: "stop" };
+  }
+}
+
+describe("bot skills in the prompt", () => {
+  test("markdown under the leader's skills folder reaches the coding session prompt", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-skill-prompt-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    await seedProvider(home);
+    const llm = new RecordingLlm();
+    const runtime = await createRuntime(env, llm);
+    const leader = await findLeader(home);
+    if (!leader) {
+      throw new Error("leader missing");
+    }
+    await Bun.write(join(skillsDir(home, leader.id), "review.md"), "# Review\n\nRead the diff twice.\n");
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "안녕" }),
+      }),
+      opts,
+    );
+    await waitUntil("turn end", async () =>
+      runtime.store.events(session.id as never).some((event) => event.type === "turn/end"),
+    );
+    expect(llm.systems).toHaveLength(1);
+    expect(llm.systems[0]).toContain("## Skills");
+    expect(llm.systems[0]).toContain("### review");
+    expect(llm.systems[0]).toContain("Read the diff twice.");
+    const bots = (await (await handleHttp(new Request("http://127.0.0.1/api/bots"), opts)).json()) as {
+      bots: { id: string; skills?: string[] }[];
+    };
+    expect(bots.bots.find((bot) => bot.id === leader.id)?.skills).toEqual(["review"]);
+    runtime.store.close();
+  });
+});
 
 describe("approval memory", () => {
   async function approvalHarness() {

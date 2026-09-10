@@ -33,6 +33,7 @@ export interface BotView {
   sessionId: string;
   hidden: boolean;
   soul?: string;
+  skills?: string[];
 }
 
 export async function fetchBots(): Promise<BotView[]> {

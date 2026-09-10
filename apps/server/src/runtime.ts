@@ -27,10 +27,12 @@ import {
   ensureLeaderBot,
   listBots,
   loadBot,
+  loadSkills,
   memoryTool,
   messageAgentTool,
   protocolSection,
   recallIntoSession,
+  skillsSection,
   taskTool,
   workspaceForMailbox,
   withProtocol,
@@ -223,62 +225,35 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
       let pin: { provider?: string | null; model?: string | null; thinking?: string | null } | undefined;
       const roster = await listBots(runtime.env.home);
       const leader = roster.find((bot) => bot.role === "leader");
-      if (session?.kind === "coding" && leader && config.botMode.protocol) {
-        const me = await loadBot(runtime.env.home, leader.id);
-        if (me) {
-          extraTools = [
-            messageAgentTool({
-              home: runtime.env.home,
-              store: runtime.store,
-              sessionId,
-              sessionKind: session.kind,
-              fromBotId: me.id,
-              wake: (target) => wakeSession(runtime, target),
-            }),
-            memoryTool(runtime.env.home, me.id),
-            taskTool({
-              home: runtime.env.home,
-              store: runtime.store,
-              sessionId,
-              actor: me,
-              roster,
-            }),
-          ];
-          const base = [me.soul.trim(), codingSystemPrompt(workspace)]
-            .filter((part) => part.length > 0)
-            .join("\n\n");
-          systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
-          pin = { provider: me.provider, model: me.model, thinking: me.thinking };
-          await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
-        }
-      } else if (session?.kind === "bot-chat" && session.botId && config.botMode.protocol) {
-        const me = await loadBot(runtime.env.home, session.botId);
-        if (me) {
-          extraTools = [
-            messageAgentTool({
-              home: runtime.env.home,
-              store: runtime.store,
-              sessionId,
-              sessionKind: session.kind,
-              fromBotId: me.id,
-              wake: (target) => wakeSession(runtime, target),
-            }),
-            memoryTool(runtime.env.home, me.id),
-            taskTool({
-              home: runtime.env.home,
-              store: runtime.store,
-              sessionId,
-              actor: me,
-              roster,
-            }),
-          ];
-          const base = [me.soul.trim(), codingSystemPrompt(workspace)]
-            .filter((part) => part.length > 0)
-            .join("\n\n");
-          systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
-          pin = { provider: me.provider, model: me.model, thinking: me.thinking };
-          await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
-        }
+      const botId =
+        session?.kind === "coding" ? leader?.id : session?.kind === "bot-chat" ? session.botId : null;
+      const me = botId && config.botMode.protocol ? await loadBot(runtime.env.home, botId) : undefined;
+      if (session && me) {
+        extraTools = [
+          messageAgentTool({
+            home: runtime.env.home,
+            store: runtime.store,
+            sessionId,
+            sessionKind: session.kind,
+            fromBotId: me.id,
+            wake: (target) => wakeSession(runtime, target),
+          }),
+          memoryTool(runtime.env.home, me.id),
+          taskTool({
+            home: runtime.env.home,
+            store: runtime.store,
+            sessionId,
+            actor: me,
+            roster,
+          }),
+        ];
+        const skills = await loadSkills(runtime.env.home, me.id);
+        const base = [me.soul.trim(), skillsSection(skills), codingSystemPrompt(workspace)]
+          .filter((part) => part.length > 0)
+          .join("\n\n");
+        systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
+        pin = { provider: me.provider, model: me.model, thinking: me.thinking };
+        await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
       }
       const endpoint = resolveLlmEndpoint(config, secrets, pin);
       const active = config.llm.providers.find((item) => item.id === (pin?.provider || config.llm.activeProvider));
