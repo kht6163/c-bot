@@ -1,4 +1,10 @@
-export type { GitDiffScope, GitDiffView } from "./git.ts";
+export {
+  isBranchName,
+  worktreeFolderName,
+  type GitDiffScope,
+  type GitDiffView,
+  type GitRepoInfo,
+} from "./git.ts";
 export {
   commandPrefix,
   isCommandAllowed,
@@ -36,7 +42,12 @@ export {
   type TurnId,
 } from "./ids.ts";
 export { assertNever } from "./never.ts";
-export { SESSION_TITLE_MAX, UNTITLED_SESSION, normalizeSessionTitle } from "./session.ts";
+export {
+  SESSION_TITLE_MAX,
+  UNTITLED_SESSION,
+  normalizeSessionTitle,
+  sessionProject,
+} from "./session.ts";
 export {
   BOT_TOOLS,
   botToolEnabled,
@@ -89,4 +100,5 @@ export {
   type SessionListResponse,
   type SessionSummary,
   type SessionTeamMember,
+  type SessionWorktree,
 } from "./protocol.ts";

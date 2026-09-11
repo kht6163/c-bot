@@ -1,4 +1,4 @@
-import type { SessionEvent, SessionId } from "@cbot/shared";
+import { sessionProject, type SessionEvent, type SessionId, type SessionWorktree } from "@cbot/shared";
 
 export type ViewMode = "agent" | "split" | "graph";
 
@@ -248,15 +248,14 @@ export function mergeEventList(
   return [...current, event].sort((a, b) => a.seq - b.seq);
 }
 
-export function fallbackAfterDelete<T extends { id: string; workspace: string | null }>(
-  deleted: T,
-  currentId: string | undefined,
-  remaining: readonly T[],
-): T | undefined {
+export function fallbackAfterDelete<
+  T extends { id: string; workspace: string | null; worktree?: SessionWorktree | null },
+>(deleted: T, currentId: string | undefined, remaining: readonly T[]): T | undefined {
   if (deleted.id !== currentId) {
     return remaining.find((session) => session.id === currentId);
   }
-  return remaining.find((session) => session.workspace === deleted.workspace) ?? remaining[0];
+  const project = sessionProject(deleted);
+  return remaining.find((session) => sessionProject(session) === project) ?? remaining[0];
 }
 
 export function specialistSessionIds(

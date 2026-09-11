@@ -3,6 +3,7 @@ import type {
   BotToolName,
   GitDiffScope,
   GitDiffView,
+  GitRepoInfo,
   HealthResponse,
   ProjectView,
   SessionEvent,
@@ -148,11 +149,12 @@ export async function openProject(path: string): Promise<ProjectView> {
   });
 }
 
-export async function deleteProject(path: string): Promise<ProjectView> {
+/** Also removes the worktrees of its sessions; refused with `worktree_dirty` while one holds work, unless forced. */
+export async function deleteProject(path: string, options: { force?: boolean } = {}): Promise<ProjectView> {
   return api<ProjectView>("/api/project", {
     method: "DELETE",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ path, ...(options.force ? { force: true } : {}) }),
   });
 }
 
@@ -160,10 +162,13 @@ export async function fetchSessions(): Promise<SessionListResponse> {
   return api<SessionListResponse>("/api/sessions");
 }
 
-/** An empty or absent title leaves the session to take its name from the first message. */
+/**
+ * An empty or absent title leaves the session to take its name from the first
+ * message. `worktree` checks a new branch out into a folder of its own first.
+ */
 export async function createSession(
   workspace?: string,
-  input: { title?: string } = {},
+  input: { title?: string; worktree?: { branch: string } } = {},
 ): Promise<SessionSummary> {
   const body = await api<{ session: SessionSummary }>("/api/sessions", {
     method: "POST",
@@ -193,8 +198,16 @@ export async function fetchSession(
   return { session: body.session, events: body.events, team: body.team ?? [] };
 }
 
-export async function deleteSession(id: SessionId): Promise<void> {
-  await api<{ ok: boolean }>(`/api/sessions/${id}`, { method: "DELETE" });
+/** Also removes the session's worktree; refused with `worktree_dirty` while it holds work, unless forced. */
+export async function deleteSession(id: SessionId, options: { force?: boolean } = {}): Promise<void> {
+  await api<{ ok: boolean }>(`/api/sessions/${id}${options.force ? "?force=1" : ""}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchRepoInfo(path: string): Promise<GitRepoInfo> {
+  const body = await api<{ repo: GitRepoInfo }>(`/api/git/repo?path=${encodeURIComponent(path)}`);
+  return body.repo;
 }
 
 export interface GitFileView {

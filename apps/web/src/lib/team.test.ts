@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { asSessionId, type SessionEvent } from "@cbot/shared";
+import { asSessionId, type SessionEvent, type SessionWorktree } from "@cbot/shared";
 import {
   cascadeNote,
   clampNote,
@@ -162,6 +162,17 @@ describe("fallbackAfterDelete", () => {
       { id: "a2", workspace: "/a" },
     ];
     expect(fallbackAfterDelete({ id: "a1", workspace: "/a" }, "a1", remaining)?.id).toBe("a2");
+  });
+
+  test("a deleted worktree session falls back to a session of the same project", () => {
+    type Row = { id: string; workspace: string; worktree: SessionWorktree | null };
+    const worktree = { project: "/a", branch: "cbot/fix", root: "/wt/a/fix", base: "0".repeat(40) };
+    const remaining: Row[] = [
+      { id: "b", workspace: "/b", worktree: null },
+      { id: "a2", workspace: "/a", worktree: null },
+    ];
+    const deleted: Row = { id: "a1", workspace: "/wt/a/fix", worktree };
+    expect(fallbackAfterDelete(deleted, "a1", remaining)?.id).toBe("a2");
   });
 });
 

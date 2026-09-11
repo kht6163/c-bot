@@ -14,6 +14,7 @@ import { listBots, updateBot } from "@cbot/bot";
 import {
   SLASH_COMMANDS,
   normalizeRule,
+  sessionProject,
   type ParsedSlashCommand,
   type SessionId,
   type SessionSummary,
@@ -103,10 +104,14 @@ async function statusText(
   const endpoint = resolveLlmEndpoint(config, secrets, pin);
   const tokens = historyTokens(deriveMessages(runtime.store.events(sessionId)));
   const percent = Math.round((tokens / config.context.maxTokens) * 100);
+  const project = sessionProject(session);
   return [
     "상태",
     `- 세션: ${session.title}`,
-    `- 프로젝트: ${session.workspace ? projectName(session.workspace) : "없음"} (${session.workspace ?? "-"})`,
+    `- 프로젝트: ${project ? projectName(project) : "없음"} (${project ?? "-"})`,
+    ...(session.worktree
+      ? [`- 워크트리: \`${session.worktree.branch}\` (${session.workspace ?? session.worktree.root})`]
+      : []),
     `- 모델: ${endpoint ? `${pin?.provider ?? config.llm.activeProvider} / ${endpoint.model}` : "설정 없음"}`,
     `- 승인: ${config.approval.mode === "allow" ? "자동 허용" : "물어봄"}`,
     `- 컨텍스트: 약 ${tokens.toLocaleString("en-US")} / ${config.context.maxTokens.toLocaleString("en-US")} 토큰 (${percent}%)`,

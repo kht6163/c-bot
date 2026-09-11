@@ -2,10 +2,15 @@ import { readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   SHIPPED_PROVIDERS,
+  WorktreeError,
+  addWorktree,
   gitCommit,
+  gitRepoInfo,
   gitView,
   gitDiff,
   GitDiffError,
+  removeWorktree,
+  worktreeDirty,
   sessionReview,
   keyEnvName,
   listRemoteModelCatalog,
@@ -30,12 +35,20 @@ import {
   validateProviderId,
   type LlmProvider,
 } from "@cbot/agent";
-import type { ProjectView, SessionId, SessionListResponse, SessionTeamMember } from "@cbot/shared";
+import type {
+  ProjectView,
+  SessionId,
+  SessionListResponse,
+  SessionSummary,
+  SessionTeamMember,
+  SessionWorktree,
+} from "@cbot/shared";
 import {
   SESSION_TITLE_MAX,
   isBotToolName,
   normalizeSessionTitle,
   parseSlashCommand,
+  sessionProject,
 } from "@cbot/shared";
 import { runningCodingSessions } from "./activity.ts";
 import { runSlashCommand } from "./commands.ts";
@@ -96,7 +109,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       }
       const path = resolve(body.path.trim());
       const config = await loadConfig(runtime.env.home);
-      const sessions = runtime.store.list({ kind: "coding", workspace: path });
+      const sessions = runtime.store.list({ kind: "coding", project: path });
       const known =
         config.project.current === path ||
         config.project.recents.includes(path) ||
@@ -104,8 +117,9 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!known) {
         throw new HttpError(404, "unknown project");
       }
+      await releaseWorktrees(runtime, sessions, body.force === true);
       await saveConfig(runtime.env.home, forgetProject(config, path));
-      runtime.store.deleteCodingByWorkspace(path);
+      runtime.store.deleteCodingByProject(path);
       const updated = await loadConfig(runtime.env.home);
       return Response.json(
         toProjectView(updated.project.current, updated.project.recents, runtime.launchDir),
@@ -261,6 +275,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
     if (url.pathname === "/api/sessions" && req.method === "POST") {
       const body = await readJson(req);
       const title = isRecord(body) ? sessionTitle(body.title) : undefined;
+      const branch = isRecord(body) ? worktreeBranch(body.worktree) : undefined;
       const requested =
         isRecord(body) && typeof body.workspace === "string" && body.workspace.trim().length > 0
           ? resolve(body.workspace.trim())
@@ -281,11 +296,44 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         }
         workspace = config.project.current;
       }
-      const session = runtime.store.create({
-        ...(title ? { title } : {}),
-        workspace,
-      });
+      let worktree: SessionWorktree | null = null;
+      if (branch !== undefined) {
+        try {
+          const added = await addWorktree({ home: runtime.env.home, project: workspace, branch });
+          workspace = added.workspace;
+          worktree = added.worktree;
+        } catch (err) {
+          if (err instanceof WorktreeError) {
+            throw new HttpError(err.code === "branch_exists" ? 409 : 400, err.message, err.code);
+          }
+          throw err;
+        }
+      }
+      let session: SessionSummary;
+      try {
+        session = runtime.store.create({ ...(title ? { title } : {}), workspace, worktree });
+      } catch (err) {
+        if (worktree) {
+          await removeWorktree(worktree, { force: true });
+        }
+        throw err;
+      }
       return Response.json({ session }, { status: 201 });
+    }
+    if (url.pathname === "/api/git/repo" && req.method === "GET") {
+      const requested = url.searchParams.get("path")?.trim();
+      if (!requested) {
+        throw new HttpError(400, "path required");
+      }
+      const path = resolve(requested);
+      if (!(await knownFolders(runtime)).has(path)) {
+        throw new HttpError(400, "path is not a known project");
+      }
+      const info = await stat(path).catch(() => null);
+      if (!info?.isDirectory()) {
+        throw new HttpError(400, "not a directory");
+      }
+      return Response.json({ repo: await gitRepoInfo(path, runtime.env.home) });
     }
     if (url.pathname === "/api/fs/browse" && req.method === "GET") {
       return Response.json(await browseDir(url.searchParams.get("path"), runtime.launchDir));
@@ -297,12 +345,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         throw new HttpError(400, "project required");
       }
       const workspace = resolve(requested);
-      const allowed = new Set(
-        [config.project.current, ...config.project.recents, runtime.launchDir]
-          .filter((item): item is string => typeof item === "string" && item.length > 0)
-          .map((item) => resolve(item)),
-      );
-      if (!allowed.has(workspace)) {
+      if (!(await knownFolders(runtime)).has(workspace)) {
         throw new HttpError(400, "workspace is not a known project");
       }
       const info = await stat(workspace).catch(() => null);
@@ -468,6 +511,9 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       }
       let workspace: string | undefined;
       if (body.workspace !== undefined) {
+        if (session.worktree) {
+          throw new HttpError(400, "a worktree session stays in its worktree");
+        }
         if (typeof body.workspace !== "string" || body.workspace.trim().length === 0) {
           throw new HttpError(400, "workspace required");
         }
@@ -507,6 +553,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (session.kind === "bot-chat") {
         throw new HttpError(400, "bot chat cannot be deleted");
       }
+      await releaseWorktrees(runtime, [session], url.searchParams.get("force") === "1");
       runtime.store.delete(id);
       return Response.json({ ok: true });
     }
@@ -717,6 +764,69 @@ function sessionTitle(value: unknown): string | undefined {
     throw new HttpError(400, "title too long");
   }
   return title;
+}
+
+/** The branch a new session's worktree checks out. Undefined when no worktree is asked for. */
+function worktreeBranch(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!isRecord(value) || typeof value.branch !== "string") {
+    throw new HttpError(400, "worktree branch required");
+  }
+  return value.branch.trim();
+}
+
+/**
+ * Takes the worktrees of sessions about to be deleted off disk. While any of
+ * them holds uncommitted work nothing is removed, unless forced.
+ */
+async function releaseWorktrees(
+  runtime: Runtime,
+  sessions: readonly SessionSummary[],
+  force: boolean,
+): Promise<void> {
+  const owned = sessions.flatMap((session) =>
+    session.worktree ? [{ id: session.id, worktree: session.worktree }] : [],
+  );
+  if (!force) {
+    for (const { worktree } of owned) {
+      if (await worktreeDirty(worktree.root)) {
+        throw new HttpError(409, "worktree has uncommitted changes", "worktree_dirty");
+      }
+    }
+  }
+  for (const { id, worktree } of owned) {
+    // A turn still running there would write into the folder being removed.
+    interruptSession(id);
+    for (const hop of runtime.store.list({ parentId: id })) {
+      interruptSession(hop.id);
+    }
+    try {
+      await removeWorktree(worktree, { force: true });
+    } catch (err) {
+      if (err instanceof WorktreeError) {
+        throw new HttpError(500, err.message, err.code);
+      }
+      throw err;
+    }
+  }
+}
+
+/** Folders the browser may point a read at: projects the user opened and where coding sessions work. */
+async function knownFolders(runtime: Runtime): Promise<Set<string>> {
+  const config = await loadConfig(runtime.env.home);
+  const sessions = runtime.store.list({ kind: "coding" });
+  return new Set(
+    [
+      config.project.current,
+      ...config.project.recents,
+      runtime.launchDir,
+      ...sessions.flatMap((session) => [session.workspace, sessionProject(session)]),
+    ]
+      .filter((item): item is string => typeof item === "string" && item.length > 0)
+      .map((item) => resolve(item)),
+  );
 }
 
 /** A bot's `tools` field: absent leaves it alone, null is every tool, a list names each one. */

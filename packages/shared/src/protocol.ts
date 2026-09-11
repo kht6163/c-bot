@@ -18,8 +18,22 @@ export interface SessionSummary {
   kind: SessionKind;
   botId: BotId | null;
   parentId: SessionId | null;
+  /** The folder the session's tools work in. For a worktree session, a place inside the worktree. */
   workspace: string | null;
+  worktree: SessionWorktree | null;
   updatedAt: string;
+}
+
+/** A coding session that works in a git worktree of its own. */
+export interface SessionWorktree {
+  /** The project folder the session was started from; the sidebar files the session there. */
+  project: string;
+  /** The branch the worktree checked out. */
+  branch: string;
+  /** Top folder of the worktree checkout. */
+  root: string;
+  /** Commit the branch started at. A branch still there holds no work of its own. */
+  base: string;
 }
 
 export interface SessionTeamMember {

@@ -1,3 +1,5 @@
+import { sessionProject, type SessionWorktree } from "@cbot/shared";
+
 export function folderName(path: string): string {
   const parts = path.split(/[/\\]/).filter((part) => part.length > 0);
   return parts.at(-1) ?? path;
@@ -19,7 +21,10 @@ export function projectPaths(input: {
   return recents;
 }
 
-export function projectTree<T extends { workspace: string | null; updatedAt: string }>(
+/** Projects in the order they were opened, each with its sessions; a worktree session sits under the project it came from. */
+export function projectTree<
+  T extends { workspace: string | null; worktree?: SessionWorktree | null; updatedAt: string },
+>(
   project: { current: string | null; recents: string[] },
   sessions: readonly T[],
 ): { path: string; name: string; sessions: T[] }[] {
@@ -30,7 +35,7 @@ export function projectTree<T extends { workspace: string | null; updatedAt: str
     paths.push(path);
   }
   for (const session of sessions) {
-    const path = session.workspace;
+    const path = sessionProject(session);
     if (!path || listed.has(path)) {
       continue;
     }
@@ -41,7 +46,7 @@ export function projectTree<T extends { workspace: string | null; updatedAt: str
     path,
     name: folderName(path),
     sessions: sessions
-      .filter((session) => session.workspace === path)
+      .filter((session) => sessionProject(session) === path)
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
   }));
 }

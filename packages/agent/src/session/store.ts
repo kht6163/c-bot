@@ -9,11 +9,13 @@ import {
   asToolCallId,
   asTurnId,
   newSessionId,
+  sessionProject,
   type BotId,
   type SessionEvent,
   type SessionId,
   type SessionKind,
   type SessionSummary,
+  type SessionWorktree,
 } from "@cbot/shared";
 
 export interface CreateSessionInput {
@@ -22,6 +24,7 @@ export interface CreateSessionInput {
   botId?: BotId | null;
   parentId?: SessionId | null;
   workspace?: string | null;
+  worktree?: SessionWorktree | null;
 }
 
 type AppendListener = (sessionId: SessionId, event: SessionEvent) => void;
@@ -77,6 +80,7 @@ export class SessionStore {
         bot_id TEXT,
         parent_id TEXT,
         workspace TEXT,
+        worktree TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -106,6 +110,9 @@ export class SessionStore {
     const columns = db.query("PRAGMA table_info(sessions)").all() as { name: string }[];
     if (!columns.some((column) => column.name === "parent_id")) {
       db.exec("ALTER TABLE sessions ADD COLUMN parent_id TEXT");
+    }
+    if (!columns.some((column) => column.name === "worktree")) {
+      db.exec("ALTER TABLE sessions ADD COLUMN worktree TEXT");
     }
     const store = new SessionStore(db);
     store.closeInterruptedTurns();
@@ -208,12 +215,13 @@ export class SessionStore {
       botId: input.botId ?? null,
       parentId: input.parentId ?? null,
       workspace: input.workspace ?? null,
+      worktree: input.worktree ?? null,
       updatedAt: now,
     };
     this.db
       .query(
-        `INSERT INTO sessions (id, title, kind, bot_id, parent_id, workspace, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, title, kind, bot_id, parent_id, workspace, worktree, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         summary.id,
@@ -222,6 +230,7 @@ export class SessionStore {
         summary.botId,
         summary.parentId,
         summary.workspace,
+        summary.worktree ? JSON.stringify(summary.worktree) : null,
         now,
         now,
       );
@@ -231,7 +240,7 @@ export class SessionStore {
   get(id: SessionId): SessionSummary | undefined {
     const row = this.db
       .query(
-        `SELECT id, title, kind, bot_id, parent_id, workspace, updated_at
+        `SELECT id, title, kind, bot_id, parent_id, workspace, worktree, updated_at
          FROM sessions WHERE id = ?`,
       )
       .get(id) as SessionRow | null;
@@ -241,12 +250,14 @@ export class SessionStore {
   list(filter?: {
     kind?: SessionKind;
     workspace?: string;
+    /** Sessions filed under this project, worktree sessions started from it included. */
+    project?: string;
     botId?: BotId;
     parentId?: SessionId | null;
   }): SessionSummary[] {
     const rows = this.db
       .query(
-        `SELECT id, title, kind, bot_id, parent_id, workspace, updated_at
+        `SELECT id, title, kind, bot_id, parent_id, workspace, worktree, updated_at
          FROM sessions ORDER BY updated_at DESC`,
       )
       .all() as SessionRow[];
@@ -257,6 +268,9 @@ export class SessionStore {
           return false;
         }
         if (filter?.workspace !== undefined && session.workspace !== filter.workspace) {
+          return false;
+        }
+        if (filter?.project !== undefined && sessionProject(session) !== filter.project) {
           return false;
         }
         if (filter?.botId && session.botId !== filter.botId) {
@@ -308,8 +322,8 @@ export class SessionStore {
     return true;
   }
 
-  deleteCodingByWorkspace(workspace: string): SessionId[] {
-    const ids = this.list({ kind: "coding", workspace }).map((session) => session.id);
+  deleteCodingByProject(project: string): SessionId[] {
+    const ids = this.list({ kind: "coding", project }).map((session) => session.id);
     for (const id of ids) {
       this.delete(id);
     }
@@ -351,6 +365,7 @@ type SessionRow = {
   bot_id: string | null;
   parent_id: string | null;
   workspace: string | null;
+  worktree: string | null;
   updated_at: string;
 };
 
@@ -362,8 +377,32 @@ function toSummary(row: SessionRow): SessionSummary {
     botId: row.bot_id ? asBotId(row.bot_id) : null,
     parentId: row.parent_id ? asSessionId(row.parent_id) : null,
     workspace: row.workspace,
+    worktree: parseWorktree(row.worktree),
     updatedAt: row.updated_at,
   };
+}
+
+/** A row that cannot be read as a worktree reads as a plain session rather than failing the list. */
+function parseWorktree(text: string | null): SessionWorktree | null {
+  if (!text) {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (
+    !isRecord(data) ||
+    typeof data.project !== "string" ||
+    typeof data.branch !== "string" ||
+    typeof data.root !== "string" ||
+    typeof data.base !== "string"
+  ) {
+    return null;
+  }
+  return { project: data.project, branch: data.branch, root: data.root, base: data.base };
 }
 
 function parseEvent(payload: string): SessionEvent {

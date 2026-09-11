@@ -1,7 +1,8 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
+import type { GitRepoInfo, SessionSummary } from "@cbot/shared";
 import {
   contentText,
   loadConfig,
@@ -1130,6 +1131,122 @@ describe("bot hop API", () => {
       opts,
     );
     expect(unknown.status).toBe(404);
+    runtime.store.close();
+  });
+});
+
+function gitIn(cwd: string, ...args: string[]): string {
+  const run = Bun.spawnSync(
+    ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args],
+    { cwd },
+  );
+  if (run.exitCode !== 0) {
+    throw new Error(run.stderr.toString());
+  }
+  return run.stdout.toString();
+}
+
+/** A repository with one commit holding `a.txt`. */
+async function committedRepo(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "cbot-wt-api-repo-"));
+  gitIn(dir, "init", "-q", "-b", "main");
+  await Bun.write(join(dir, "a.txt"), "one\n");
+  gitIn(dir, "add", "-A");
+  gitIn(dir, "commit", "-qm", "init");
+  return dir;
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  return (await stat(path).catch(() => null)) !== null;
+}
+
+describe("worktree sessions", () => {
+  test("a session made in a worktree works there, and deleting it takes the worktree", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-wt-api-"));
+    const repo = await committedRepo();
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const call = async (path: string, init?: RequestInit) => {
+      const res = await handleHttp(new Request(`http://127.0.0.1${path}`, init), opts);
+      return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    };
+    const make = (branch: string) =>
+      call("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: repo, title: "브랜치 작업", worktree: { branch } }),
+      });
+
+    expect((await call(`/api/git/repo?path=${encodeURIComponent(repo)}`)).status).toBe(400);
+    const made = await make("cbot/demo");
+    expect(made.status).toBe(201);
+    const session = made.body.session as SessionSummary;
+    const root = session.worktree?.root ?? "";
+    expect(session.worktree?.branch).toBe("cbot/demo");
+    expect(session.worktree?.project).toBe(resolve(repo));
+    expect(session.workspace).toBe(root);
+    expect(root.startsWith(join(home, "worktrees"))).toBe(true);
+
+    const info = await call(`/api/git/repo?path=${encodeURIComponent(repo)}`);
+    expect(info.status).toBe(200);
+    const repoInfo = info.body.repo as GitRepoInfo;
+    expect(repoInfo.repo).toBe(true);
+    expect(repoInfo.branches.sort()).toEqual(["cbot/demo", "main"]);
+
+    const again = await make("cbot/demo");
+    expect(again.status).toBe(409);
+    expect(again.body.reason).toBe("branch_exists");
+    expect((await make("bad name")).status).toBe(400);
+
+    const files = await call(`/api/sessions/${session.id}/files`);
+    expect((files.body.entries as { name: string }[]).map((entry) => entry.name)).toContain("a.txt");
+    const search = await call(`/api/fs/search?workspace=${encodeURIComponent(root)}&q=a`);
+    expect(search.status).toBe(200);
+    const listed = await call("/api/sessions");
+    const summary = (listed.body.sessions as SessionSummary[]).find((item) => item.id === session.id);
+    expect(summary?.worktree?.branch).toBe("cbot/demo");
+
+    await Bun.write(join(root, "draft.txt"), "wip\n");
+    const refused = await call(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.reason).toBe("worktree_dirty");
+    expect(await pathExists(root)).toBe(true);
+    expect((await call(`/api/sessions/${session.id}`)).status).toBe(200);
+
+    const forced = await call(`/api/sessions/${session.id}?force=1`, { method: "DELETE" });
+    expect(forced.status).toBe(200);
+    expect(await pathExists(root)).toBe(false);
+    expect(gitIn(repo, "branch", "--list", "cbot/demo").trim()).toBe("");
+    runtime.store.close();
+  });
+
+  test("deleting a project takes its worktree sessions and their folders with it", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-wt-api-"));
+    const repo = await committedRepo();
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const post = async (body: Record<string, unknown>) => {
+      const res = await handleHttp(
+        new Request("http://127.0.0.1/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+        opts,
+      );
+      return ((await res.json()) as { session: SessionSummary }).session;
+    };
+    const plain = await post({ workspace: repo, title: "plain" });
+    const branched = await post({ workspace: repo, title: "branched", worktree: { branch: "cbot/side" } });
+    const root = branched.worktree?.root ?? "";
+    expect(await pathExists(root)).toBe(true);
+
+    const deleted = await handleHttp(
+      new Request("http://127.0.0.1/api/project", { method: "DELETE", body: JSON.stringify({ path: repo }) }),
+      opts,
+    );
+    expect(deleted.status).toBe(200);
+    expect(runtime.store.get(plain.id)).toBeUndefined();
+    expect(runtime.store.get(branched.id)).toBeUndefined();
+    expect(await pathExists(root)).toBe(false);
+    expect(await pathExists(join(repo, "a.txt"))).toBe(true);
     runtime.store.close();
   });
 });

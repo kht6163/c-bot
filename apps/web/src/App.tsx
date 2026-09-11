@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import {
   PROTOCOL_VERSION,
   hasOpenTurn,
+  sessionProject,
   type ProjectView,
   type ServerFrame,
   type SessionEvent,
@@ -45,6 +46,7 @@ import {
   specialistSessionIds,
   type ViewMode,
 } from "./lib/team.ts";
+import { ApiError } from "./lib/api-json.ts";
 import { reconnectDelay } from "./lib/reconnect.ts";
 import { applyActivity, clearActivity, seedActivity, type ActivityMap } from "./lib/activity.ts";
 import {
@@ -179,9 +181,9 @@ export function App() {
           const others = current.filter((s) => s.id !== id);
           return [detail.session, ...others];
         });
-        const workspace = detail.session.workspace;
-        if (workspace && workspace !== projectRef.current?.current) {
-          const next = await openProject(workspace);
+        const home = sessionProject(detail.session);
+        if (home && home !== projectRef.current?.current) {
+          const next = await openProject(home);
           setProject(next);
         }
       }
@@ -523,7 +525,13 @@ export function App() {
         }}
         onDeleteSession={(session) => {
           void (async () => {
-            await deleteSession(session.id);
+            const deleted = await confirmingDirtyWorktree(
+              (force) => deleteSession(session.id, { force }).then(() => true),
+              `"${session.title}"의 워크트리에 커밋하지 않은 변경이 있습니다. 버리고 지울까요?`,
+            );
+            if (!deleted) {
+              return;
+            }
             setQueues((current) => clearQueue(current, session.id));
             const remaining = sessions.filter((item) => item.id !== session.id);
             setSessions(remaining);
@@ -542,18 +550,24 @@ export function App() {
             subscribeWatched([]);
           })();
         }}
-        onDeleteProject={(path) => {
+        onDeleteProject={(path, name) => {
           void (async () => {
-            const nextProject = await deleteProject(path);
+            const nextProject = await confirmingDirtyWorktree(
+              (force) => deleteProject(path, { force }),
+              `"${name}"의 워크트리에 커밋하지 않은 변경이 있습니다. 버리고 지울까요?`,
+            );
+            if (!nextProject) {
+              return;
+            }
             setProject(nextProject);
-            const remaining = sessions.filter((item) => item.workspace !== path);
+            const remaining = sessions.filter((item) => sessionProject(item) !== path);
             setQueues((current) =>
               sessions
-                .filter((item) => item.workspace === path)
+                .filter((item) => sessionProject(item) === path)
                 .reduce((acc, item) => clearQueue(acc, item.id), current),
             );
             setSessions(remaining);
-            if (selected?.workspace === path) {
+            if (selected && sessionProject(selected) === path) {
               const next = remaining[0];
               if (next) {
                 await openSession(next.id);
@@ -767,6 +781,27 @@ export function App() {
 
 function newQueueId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Runs a delete once; when a worktree it would remove still holds work, asks
+ * and runs it again with force. Undefined when the user kept the work.
+ */
+async function confirmingDirtyWorktree<T>(
+  run: (force: boolean) => Promise<T>,
+  question: string,
+): Promise<T | undefined> {
+  try {
+    return await run(false);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.reason !== "worktree_dirty") {
+      throw err;
+    }
+  }
+  if (!window.confirm(question)) {
+    return undefined;
+  }
+  return run(true);
 }
 
 function isTeamSignal(event: SessionEvent): boolean {

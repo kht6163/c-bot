@@ -18,6 +18,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** A fixed code the browser branches on, where the message alone would be guessed at. */
+    readonly reason?: string,
   ) {
     super(message);
     this.name = "HttpError";
@@ -26,7 +28,10 @@ export class HttpError extends Error {
 
 export function jsonError(err: unknown): Response {
   if (err instanceof HttpError) {
-    return Response.json({ error: err.message }, { status: err.status });
+    return Response.json(
+      { error: err.message, ...(err.reason ? { reason: err.reason } : {}) },
+      { status: err.status },
+    );
   }
   const message = err instanceof Error ? err.message : "internal error";
   const status =

@@ -1,4 +1,14 @@
 export { gitDiff, GitDiffError } from "./git-diff.ts";
+export {
+  WorktreeError,
+  addWorktree,
+  gitRepoInfo,
+  removeWorktree,
+  worktreeDirty,
+  worktreesDir,
+  type AddedWorktree,
+  type WorktreeErrorCode,
+} from "./git-worktree.ts";
 export { sessionReview } from "./session/review.ts";
 export {
   CLIPROXYAPI_ID,

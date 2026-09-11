@@ -56,6 +56,16 @@ describe("projectTree", () => {
     expect(tree[0]?.sessions.map((session) => session.title)).toEqual(["here"]);
     expect(tree[1]?.sessions.map((session) => session.title)).toEqual(["other"]);
   });
+
+  test("files a worktree session under the project it came from, not its worktree folder", () => {
+    const worktree = { project: "/a", branch: "cbot/fix", root: "/wt/a/fix", base: "0".repeat(40) };
+    const tree = projectTree({ current: "/a", recents: ["/a"] }, [
+      { workspace: "/wt/a/fix", worktree, updatedAt: "2026-08-27T12:00:00Z", title: "branched" },
+      { workspace: "/a", worktree: null, updatedAt: "2026-08-27T11:00:00Z", title: "plain" },
+    ]);
+    expect(tree.map((branch) => branch.path)).toEqual(["/a"]);
+    expect(tree[0]?.sessions.map((session) => session.title)).toEqual(["branched", "plain"]);
+  });
 });
 
 describe("timeAgo", () => {

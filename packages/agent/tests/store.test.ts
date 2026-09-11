@@ -95,16 +95,41 @@ describe("SessionStore", () => {
     store.close();
   });
 
-  test("deleteCodingByWorkspace leaves bot-chat sessions", async () => {
+  test("deleteCodingByProject leaves bot-chat sessions", async () => {
     const store = await SessionStore.open(":memory:");
     const coding = store.create({ title: "code", workspace: "/tmp/alpha" });
     store.create({ title: "other", workspace: "/tmp/beta" });
     const mailbox = store.create({ kind: "bot-chat", title: "Bot Chat", workspace: "/tmp/alpha" });
-    const removed = store.deleteCodingByWorkspace("/tmp/alpha");
+    const removed = store.deleteCodingByProject("/tmp/alpha");
     expect(removed).toEqual([coding.id]);
     expect(store.get(coding.id)).toBeUndefined();
     expect(store.get(mailbox.id)?.kind).toBe("bot-chat");
     expect(store.list({ kind: "coding" }).map((session) => session.title)).toEqual(["other"]);
+    store.close();
+  });
+
+  test("a worktree session keeps its worktree and is filed under the project it came from", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cbot-store-wt-"));
+    const path = join(dir, "sessions.sqlite");
+    const worktree = {
+      project: "/tmp/alpha",
+      branch: "cbot/fix",
+      root: "/tmp/wt/alpha/fix",
+      base: "a".repeat(40),
+    };
+    const first = await SessionStore.open(path);
+    const plain = first.create({ title: "plain", workspace: "/tmp/alpha" });
+    const branched = first.create({ title: "branched", workspace: "/tmp/wt/alpha/fix", worktree });
+    first.create({ title: "elsewhere", workspace: "/tmp/beta" });
+    first.close();
+
+    const store = await SessionStore.open(path);
+    expect(store.get(branched.id)?.worktree).toEqual(worktree);
+    expect(store.get(plain.id)?.worktree).toBeNull();
+    const filed = store.list({ kind: "coding", project: "/tmp/alpha" }).map((session) => session.title);
+    expect(filed.sort()).toEqual(["branched", "plain"]);
+    expect(store.deleteCodingByProject("/tmp/alpha").sort()).toEqual([plain.id, branched.id].sort());
+    expect(store.list({ kind: "coding" }).map((session) => session.title)).toEqual(["elsewhere"]);
     store.close();
   });
 

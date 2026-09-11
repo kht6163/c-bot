@@ -1,3 +1,15 @@
+/** A refused API call: the server's message, its status, and the reason code it named, if any. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly reason?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export function parseApiBody<T>(text: string, status: number, label: string): T {
   const start = text.trimStart();
   if (start.startsWith("<!") || start.toLowerCase().startsWith("<html")) {
@@ -12,14 +24,9 @@ export function parseApiBody<T>(text: string, status: number, label: string): T 
     throw new Error(`${label}: 응답이 JSON이 아닙니다`);
   }
   if (status < 200 || status >= 300) {
-    const message =
-      typeof data === "object" &&
-      data !== null &&
-      "error" in data &&
-      typeof (data as { error: unknown }).error === "string"
-        ? (data as { error: string }).error
-        : `${label} ${status}`;
-    throw new Error(message);
+    const body = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
+    const message = typeof body.error === "string" ? body.error : `${label} ${status}`;
+    throw new ApiError(message, status, typeof body.reason === "string" ? body.reason : undefined);
   }
   return data as T;
 }

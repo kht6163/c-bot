@@ -149,9 +149,14 @@ export function Sidebar({
                           className="add-btn row-delete"
                           aria-label={`${branch.name} 프로젝트 삭제`}
                           onClick={() => {
+                            const worktrees = branch.sessions.filter((session) => session.worktree).length;
+                            const also =
+                              worktrees > 0
+                                ? ` 워크트리 ${worktrees}개도 지웁니다. 브랜치에 커밋한 작업은 남습니다.`
+                                : "";
                             if (
                               window.confirm(
-                                `"${branch.name}" 프로젝트를 목록에서 지울까요? 이 폴더의 코딩 세션도 삭제됩니다.`,
+                                `"${branch.name}" 프로젝트를 목록에서 지울까요? 이 폴더의 코딩 세션도 삭제됩니다.${also}`,
                               )
                             ) {
                               onDeleteProject(branch.path, branch.name);
@@ -193,6 +198,7 @@ export function Sidebar({
                                 }}
                               >
                                 <span className="row-title">{session.title}</span>
+                                {session.worktree ? <BranchMark branch={session.worktree.branch} /> : null}
                                 <ActivityDot state={session.id === selectedId ? undefined : activity[session.id]} />
                                 <span className="row-meta">{timeAgo(session.updatedAt)}</span>
                               </button>
@@ -211,7 +217,10 @@ export function Sidebar({
                                   className="add-btn row-delete"
                                   aria-label={`${session.title} 세션 삭제`}
                                   onClick={() => {
-                                    if (window.confirm(`"${session.title}" 세션을 삭제할까요?`)) {
+                                    const also = session.worktree
+                                      ? ` 워크트리 폴더도 지웁니다. 브랜치 ${session.worktree.branch}에 커밋한 작업은 남습니다.`
+                                      : "";
+                                    if (window.confirm(`"${session.title}" 세션을 삭제할까요?${also}`)) {
                                       onDeleteSession(session);
                                     }
                                   }}
@@ -404,6 +413,20 @@ function RenameField({
         commit(false);
       }}
     />
+  );
+}
+
+/** Marks a session that works in a worktree of its own. */
+function BranchMark({ branch }: { branch: string }) {
+  return (
+    <span className="row-branch" role="img" aria-label={`워크트리 ${branch}`} title={`워크트리 · ${branch}`}>
+      <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="4" cy="3.2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="4" cy="10.8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+        <circle cx="10" cy="4.6" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+        <path d="M4 4.7v4.6M10 6.1c0 2.3-2.2 2.6-4.9 3.6" stroke="currentColor" strokeWidth="1.2" />
+      </svg>
+    </span>
   );
 }
 
