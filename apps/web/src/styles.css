@@ -3152,12 +3152,18 @@ select.field-input {
   transform-origin: 0 0;
 }
 
-.graph-edges {
+.graph-edges,
+.graph-sparks-layer {
   position: absolute;
   top: 0;
   left: 0;
   overflow: visible;
   pointer-events: none;
+}
+
+/* Above the slots, below the message cards and a slot being dragged. */
+.graph-sparks-layer {
+  z-index: 2;
 }
 
 .graph-edge-line {

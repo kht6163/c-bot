@@ -412,13 +412,6 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
               style={{ width: box.width, height: box.height, transform: `scale(${scale})` }}
             >
               <svg className="graph-edges" width={box.width} height={box.height} aria-hidden="true">
-                <defs>
-                  <radialGradient id="graph-spark-glow">
-                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
-                    <stop offset="45%" stopColor="var(--accent)" stopOpacity="0.32" />
-                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-                  </radialGradient>
-                </defs>
                 {edges.map((edge) => {
                   const pair = pairCurve(edge.a, edge.b);
                   if (!pair) {
@@ -441,7 +434,6 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
                     </g>
                   );
                 })}
-                <GraphSparks sparks={sparks} scale={scale} />
               </svg>
               {nodes.map((node) => {
                 const slot = slotOf.get(node.pane.key);
@@ -462,6 +454,18 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
                   />
                 ) : null;
               })}
+              {/* Edges run behind the columns like the reference, but a spark must
+                  stay in sight the whole way, so it flies on a layer above them. */}
+              <svg className="graph-sparks-layer" width={box.width} height={box.height} aria-hidden="true">
+                <defs>
+                  <radialGradient id="graph-spark-glow">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+                    <stop offset="45%" stopColor="var(--accent)" stopOpacity="0.32" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <GraphSparks sparks={sparks} scale={scale} />
+              </svg>
               {handoffCards(flying).map((flight) => {
                 const slot = slotOf.get(flight.to);
                 const from = panes.find((pane) => pane.key === flight.from);
