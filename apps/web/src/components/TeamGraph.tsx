@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { hasOpenTurn, type SessionEvent, type SessionId } from "@cbot/shared";
 import { fetchTasks, type TaskView } from "../lib/api.ts";
 import {
@@ -35,7 +35,8 @@ interface Props {
   codingBusy: boolean;
   /** Bumps when the task board may have changed; the graph re-reads it then. */
   boardTick: number;
-  onOpen: (key: string) => void;
+  /** The full log of one bot, for the side panel a node click opens. */
+  renderPane: (pane: TeamPane) => ReactNode;
 }
 
 const ZOOM_MIN = 0.5;
@@ -72,10 +73,10 @@ interface Spark extends Flying {
  * The team as a map: the lead over its specialists, an edge for every pair
  * that has exchanged a message, and a spark that runs the edge when a new
  * message or hand-off lands. Under each node hang scrollable columns of what
- * it said, ran, and owns. It is an overview; a node click opens that bot's
- * full log.
+ * it said, ran, and owns. A node click opens that bot's full log beside the
+ * map without leaving it.
  */
-export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBusy, boardTick, onOpen }: Props) {
+export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBusy, boardTick, renderPane }: Props) {
   const boardRef = useRef<HTMLDivElement>(null);
   const seen = useRef(new Set<string>());
   const mounted = useRef(true);
@@ -83,6 +84,7 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [boardWidth, setBoardWidth] = useState(0);
   const [flying, setFlying] = useState<Flying[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     let stale = false;
@@ -118,6 +120,24 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
     observer.observe(board);
     return () => observer.disconnect();
   }, []);
+
+  const selectedPane = panes.find((pane) => pane.key === selected);
+
+  useEffect(() => {
+    if (!selectedPane) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing =
+        target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (event.key === "Escape" && !typing) {
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedPane]);
 
   const nodes = useMemo(
     () =>
@@ -213,6 +233,11 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
   }, [panes, allFlights]);
 
   const busyKeys = new Set(nodes.filter((node) => node.busy).map((node) => node.pane.key));
+  const linked = new Set(
+    selected
+      ? edges.flatMap((edge) => (edge.a === selected ? [edge.b] : edge.b === selected ? [edge.a] : []))
+      : [],
+  );
   const flyingPairs = new Set(flying.map((flight) => [flight.from, flight.to].sort().join("|")));
 
   // A spark rides its pair's curve; one flying the other way rides it reversed.
@@ -226,106 +251,147 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
     return [{ ...flight, curve }];
   });
 
+  const closeOnBackground = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (target instanceof Element && !target.closest(".graph-slot")) {
+      setSelected(null);
+    }
+  };
+
   return (
-    <div className="graph-board" ref={boardRef}>
-      <div
-        className="graph-scroll"
-        style={{ width: Math.ceil(layout.width * scale), height: Math.ceil(layout.height * scale) }}
-      >
-        <div
-          className="graph-space"
-          style={{ width: layout.width, height: layout.height, transform: `scale(${scale})` }}
-        >
-          <svg className="graph-edges" width={layout.width} height={layout.height} aria-hidden="true">
-            <defs>
-              <radialGradient id="graph-spark-glow">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
-                <stop offset="45%" stopColor="var(--accent)" stopOpacity="0.32" />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-            {edges.map((edge) => {
-              const pair = pairCurve(edge.a, edge.b);
-              if (!pair) {
-                return null;
-              }
-              const d = curvePath(pair.curve);
-              const active = flyingPairs.has(edge.key) || busyKeys.has(edge.a) || busyKeys.has(edge.b);
-              return (
-                <g key={edge.key} className={active ? "graph-edge is-active" : "graph-edge"}>
-                  <path className="graph-edge-glow" d={d} />
-                  <path className="graph-edge-line" d={d} />
-                </g>
-              );
-            })}
-            <GraphSparks sparks={sparks} scale={scale} />
-          </svg>
-          {nodes.map((node) => {
-            const slot = slotOf.get(node.pane.key);
-            return slot ? (
-              <GraphNode
-                key={node.pane.key}
-                node={node}
-                slot={slot}
-                onOpen={() => onOpen(node.pane.key)}
-              />
-            ) : null;
-          })}
-          {handoffCards(flying).map((flight) => {
-            const slot = slotOf.get(flight.to);
-            const from = panes.find((pane) => pane.key === flight.from);
-            const to = panes.find((pane) => pane.key === flight.to);
-            if (!slot || !from || !to) {
-              return null;
-            }
-            const anchor = slotAnchor(slot);
-            return (
-              <div
-                key={flight.id}
-                className={`graph-handoff is-${flight.kind}`}
-                style={{
-                  left: anchor.x + HANDOFF_OFFSET_X,
-                  top: slot.y + 4,
-                  transform: `scale(${1 / Math.min(1, scale)})`,
-                  animationDuration: `${HANDOFF_MS}ms`,
-                  animationDelay: `${flight.cardDelay}ms`,
-                }}
-                aria-hidden="true"
-              >
-                <span className="graph-item-head">
-                  <span className="graph-chip">@{from.handle}</span>
-                  <span className="graph-to">→</span>
-                  <span className="graph-chip">@{to.handle}</span>
-                </span>
-                <span className="graph-handoff-text">{flight.preview}</span>
-              </div>
-            );
-          })}
+    <div className={`graph-view${selectedPane ? " has-panel" : ""}`}>
+      <div className="graph-main">
+        <div className="graph-board" ref={boardRef} onClick={closeOnBackground}>
+          <div
+            className="graph-scroll"
+            style={{ width: Math.ceil(layout.width * scale), height: Math.ceil(layout.height * scale) }}
+          >
+            <div
+              className={`graph-space${selectedPane ? " has-focus" : ""}`}
+              style={{ width: layout.width, height: layout.height, transform: `scale(${scale})` }}
+            >
+              <svg className="graph-edges" width={layout.width} height={layout.height} aria-hidden="true">
+                <defs>
+                  <radialGradient id="graph-spark-glow">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
+                    <stop offset="45%" stopColor="var(--accent)" stopOpacity="0.32" />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                {edges.map((edge) => {
+                  const pair = pairCurve(edge.a, edge.b);
+                  if (!pair) {
+                    return null;
+                  }
+                  const d = curvePath(pair.curve);
+                  const active = flyingPairs.has(edge.key) || busyKeys.has(edge.a) || busyKeys.has(edge.b);
+                  const focus = selected === edge.a || selected === edge.b;
+                  const className = [
+                    "graph-edge",
+                    active ? "is-active" : "",
+                    selected ? (focus ? "is-focus" : "is-faded") : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+                  return (
+                    <g key={edge.key} className={className}>
+                      <path className="graph-edge-glow" d={d} />
+                      <path className="graph-edge-line" d={d} />
+                    </g>
+                  );
+                })}
+                <GraphSparks sparks={sparks} scale={scale} />
+              </svg>
+              {nodes.map((node) => {
+                const slot = slotOf.get(node.pane.key);
+                return slot ? (
+                  <GraphNode
+                    key={node.pane.key}
+                    node={node}
+                    slot={slot}
+                    selected={selected === node.pane.key}
+                    dim={selected !== null && selected !== node.pane.key && !linked.has(node.pane.key)}
+                    onSelect={() => setSelected((current) => (current === node.pane.key ? null : node.pane.key))}
+                  />
+                ) : null;
+              })}
+              {handoffCards(flying).map((flight) => {
+                const slot = slotOf.get(flight.to);
+                const from = panes.find((pane) => pane.key === flight.from);
+                const to = panes.find((pane) => pane.key === flight.to);
+                if (!slot || !from || !to) {
+                  return null;
+                }
+                const anchor = slotAnchor(slot);
+                return (
+                  <div
+                    key={flight.id}
+                    className={`graph-handoff is-${flight.kind}`}
+                    style={{
+                      left: anchor.x + HANDOFF_OFFSET_X,
+                      top: slot.y + 4,
+                      transform: `scale(${1 / Math.min(1, scale)})`,
+                      animationDuration: `${HANDOFF_MS}ms`,
+                      animationDelay: `${flight.cardDelay}ms`,
+                    }}
+                    aria-hidden="true"
+                  >
+                    <span className="graph-item-head">
+                      <span className="graph-chip">@{from.handle}</span>
+                      <span className="graph-to">→</span>
+                      <span className="graph-chip">@{to.handle}</span>
+                    </span>
+                    <span className="graph-handoff-text">{flight.preview}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="graph-zoom" role="group" aria-label="확대">
+          <button
+            type="button"
+            aria-label="축소"
+            onClick={() => setZoom(Math.max(ZOOM_MIN, round(scale - ZOOM_STEP)))}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+          <button type="button" className={zoom === "fit" ? "is-on" : ""} onClick={() => setZoom("fit")}>
+            맞춤
+          </button>
+          <button
+            type="button"
+            aria-label="확대"
+            onClick={() => setZoom(Math.min(ZOOM_MAX, round(scale + ZOOM_STEP)))}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M2.5 6h7M6 2.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
-      <div className="graph-zoom" role="group" aria-label="확대">
-        <button
-          type="button"
-          aria-label="축소"
-          onClick={() => setZoom(Math.max(ZOOM_MIN, round(scale - ZOOM_STEP)))}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button type="button" className={zoom === "fit" ? "is-on" : ""} onClick={() => setZoom("fit")}>
-          맞춤
-        </button>
-        <button
-          type="button"
-          aria-label="확대"
-          onClick={() => setZoom(Math.min(ZOOM_MAX, round(scale + ZOOM_STEP)))}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path d="M2.5 6h7M6 2.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
+      {selectedPane ? (
+        <aside className="graph-panel" aria-label={`@${selectedPane.handle} 대화`}>
+          <header className="graph-panel-head">
+            <span className={`graph-panel-avatar${busyKeys.has(selectedPane.key) ? " is-live" : ""}`} aria-hidden="true">
+              {selectedPane.role === "lead" ? <LeadMark size={14} /> : avatarText(selectedPane.handle)}
+            </span>
+            <span className="bot-pane-name">@{selectedPane.handle}</span>
+            <span className="graph-panel-role">{selectedPane.role === "lead" ? "Lead" : selectedPane.title}</span>
+            <button type="button" className="graph-panel-close" aria-label="닫기" onClick={() => setSelected(null)}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="m3 3 6 6M9 3 3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </header>
+          {renderPane(selectedPane)}
+          {selectedPane.role === "specialist" ? (
+            <p className="graph-panel-hint">보기 전용 · 메시지는 리드에게 보냅니다</p>
+          ) : null}
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -445,18 +511,32 @@ type GraphNodeData = {
   lanes: ReturnType<typeof nodeTaskLanes>;
 };
 
-function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlot; onOpen: () => void }) {
+function GraphNode({
+  node,
+  slot,
+  selected,
+  dim,
+  onSelect,
+}: {
+  node: GraphNodeData;
+  slot: GraphSlot;
+  selected: boolean;
+  /** Another bot is open and this one does not talk to it. */
+  dim: boolean;
+  onSelect: () => void;
+}) {
   const { pane } = node;
   return (
     <article
-      className={`graph-slot${pane.role === "lead" ? " is-lead" : ""}`}
+      className={`graph-slot${pane.role === "lead" ? " is-lead" : ""}${selected ? " is-selected" : ""}${dim ? " is-dim" : ""}`}
       style={{ left: slot.x, top: slot.y, width: slot.w, height: slot.h }}
     >
       <button
         type="button"
         className={`graph-node${node.busy ? " is-live" : ""}`}
-        title={`@${pane.handle} 대화 열기`}
-        onClick={onOpen}
+        aria-pressed={selected}
+        title={selected ? "대화 닫기" : `@${pane.handle} 대화 보기`}
+        onClick={onSelect}
       >
         <span className="graph-avatar" aria-hidden="true">
           {pane.role === "lead" ? <LeadMark size={20} /> : avatarText(pane.handle)}
@@ -549,7 +629,7 @@ function Count({ value }: { value: number }) {
   return value > 0 ? <span className="graph-count">{value}</span> : null;
 }
 
-/** Past the render cap; the full list is one click away in the bot's own log. */
+/** Past the render cap; the full list is one click away in the side panel. */
 function More({ count }: { count: number }) {
   return count > 0 ? <li className="graph-more">+{count}</li> : null;
 }

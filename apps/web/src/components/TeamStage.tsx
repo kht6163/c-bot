@@ -134,10 +134,16 @@ export function TeamStage({
           botEvents={botEvents}
           codingBusy={codingBusy}
           boardTick={boardTick}
-          onOpen={(key) => {
-            onFocus(key);
-            onViewMode("agent");
-          }}
+          renderPane={(pane) => (
+            <PaneLog
+              pane={pane}
+              codingEvents={codingEvents}
+              botEvents={botEvents}
+              codingBusy={codingBusy}
+              compact
+              onApprove={onApprove}
+            />
+          )}
         />
       ) : mode === "split" ? (
         <NoteBoard

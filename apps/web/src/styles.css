@@ -3114,7 +3114,22 @@ select.field-input {
 
 /* ── Graph ────────────────────────────────────────────────────────────────
    The board scrolls; the space inside it is drawn at layout size and scaled
-   as one, so edges and cards never drift apart. */
+   as one, so edges and cards never drift apart. A node click opens the side
+   panel next to the board rather than leaving the map. */
+.graph-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.graph-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .graph-board {
   position: relative;
   isolation: isolate;
@@ -3167,6 +3182,18 @@ select.field-input {
 
 .graph-edge.is-active .graph-edge-glow {
   opacity: 0.14;
+}
+
+.graph-edge {
+  transition: opacity 0.25s ease;
+}
+
+.graph-edge.is-faded {
+  opacity: 0.18;
+}
+
+.graph-edge.is-focus .graph-edge-line {
+  opacity: 0.75;
 }
 
 .graph-spark-halo {
@@ -3254,6 +3281,15 @@ select.field-input {
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: opacity 0.25s ease;
+}
+
+.graph-slot.is-dim {
+  opacity: 0.32;
+}
+
+.graph-slot.is-dim:hover {
+  opacity: 0.8;
 }
 
 .graph-node {
@@ -3293,6 +3329,11 @@ select.field-input {
 .graph-slot.is-lead .graph-avatar {
   color: var(--accent);
   border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+.graph-slot.is-selected .graph-avatar {
+  outline: 2px solid color-mix(in oklab, var(--accent) 60%, transparent);
+  outline-offset: 3px;
 }
 
 /* Four dots circling a bot that is working, like the reference's orbit. */
@@ -3632,6 +3673,105 @@ select.field-input {
 
 .graph-zoom button.is-on {
   color: var(--text);
+}
+
+.graph-panel {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: clamp(320px, 42%, 540px);
+  min-height: 0;
+  border-left: 1px solid var(--edge-soft);
+  background: var(--glass-1);
+  backdrop-filter: blur(24px);
+}
+
+.graph-panel-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.graph-panel-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.graph-panel-avatar.is-live {
+  border-color: color-mix(in oklab, var(--live) 60%, transparent);
+  box-shadow: 0 0 10px -3px var(--live);
+}
+
+.graph-panel-role {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--quiet);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-panel-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.graph-panel-close:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.graph-panel .log.pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.graph-panel-hint {
+  flex: none;
+  margin: 0;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--edge-soft);
+  font-size: 12px;
+  color: var(--quiet);
+}
+
+@media (max-width: 760px) {
+  .graph-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    width: min(100%, 420px);
+    background: var(--overlay);
+    backdrop-filter: blur(28px);
+    box-shadow: var(--lift);
+  }
+
+  .graph-view {
+    position: relative;
+  }
 }
 
 .inspector {
