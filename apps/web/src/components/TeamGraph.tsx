@@ -1,31 +1,50 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { hasOpenTurn, type SessionEvent, type SessionId } from "@cbot/shared";
 import { fetchTasks, type TaskView } from "../lib/api.ts";
 import {
+  ARRANGE_MS,
   FLIGHT_MS,
   GRAPH_LIST_MAX,
+  GRAPH_SLOT_W,
   HANDOFF_AT,
   HANDOFF_MS,
+  autoPlacements,
   avatarText,
   curvePath,
   curvePoint,
+  dragPlacement,
+  easeInOut,
   edgeCurve,
   flightProgress,
   freshFlights,
-  graphLayout,
   handoffCards,
+  loadGraphPlacements,
   messageFlights,
   nodeActivity,
   nodeLog,
   nodeTaskLanes,
-  GRAPH_SLOT_W,
+  placeSlots,
+  placedLayout,
+  samePlacements,
+  saveGraphPlacements,
   slotAnchor,
+  tweenPlacements,
   type GraphCurve,
   type GraphFlight,
+  type GraphPlacement,
+  type GraphPlacements,
   type GraphSlot,
 } from "../lib/graph.ts";
 import { timeAgo } from "../lib/path.ts";
-import type { TeamPane } from "../lib/team.ts";
+import type { NoteStorage, TeamPane } from "../lib/team.ts";
 
 interface Props {
   sessionId: SessionId;
@@ -49,9 +68,11 @@ const FLIGHT_STAGGER_MS = 280;
 /** The ring a spark leaves on the node it lands on. */
 const LANDING_MS = 520;
 const TRAIL = 7;
+const TRAIL_STEP = 0.022;
 /** The message card sits to the right of the receiver's avatar, clear of its name. */
 const HANDOFF_OFFSET_X = 58;
-const TRAIL_STEP = 0.022;
+/** Screen pixels the pointer must travel before a press on a node becomes a drag. */
+const DRAG_SLOP = 4;
 
 type Zoom = number | "fit";
 
@@ -69,12 +90,22 @@ interface Spark extends Flying {
   curve: GraphCurve;
 }
 
+/** The slot in hand, and the board size and zoom frozen when it was picked up. */
+interface Held {
+  key: string;
+  at: GraphPlacement;
+  scale: number;
+  width: number;
+  height: number;
+}
+
 /**
  * The team as a map: the lead over its specialists, an edge for every pair
  * that has exchanged a message, and a spark that runs the edge when a new
  * message or hand-off lands. Under each node hang scrollable columns of what
  * it said, ran, and owns. A node click opens that bot's full log beside the
- * map without leaving it.
+ * map without leaving it. Bots stay where they were put: the user drags them,
+ * and only 자동 정렬 lays the board out again.
  */
 export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBusy, boardTick, renderPane }: Props) {
   const boardRef = useRef<HTMLDivElement>(null);
@@ -85,6 +116,14 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
   const [boardWidth, setBoardWidth] = useState(0);
   const [flying, setFlying] = useState<Flying[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [saved, setSaved] = useState<GraphPlacements>(() => loadGraphPlacements(sessionId, layoutStorage()));
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  const [held, setHeld] = useState<Held | null>(null);
+  const [glide, setGlide] = useState<GraphPlacements | null>(null);
+  const stopDrag = useRef<(() => void) | null>(null);
+  const glideFrame = useRef(0);
+  const swallowClick = useRef(false);
 
   useEffect(() => {
     let stale = false;
@@ -106,6 +145,8 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
     mounted.current = true;
     return () => {
       mounted.current = false;
+      stopDrag.current?.();
+      cancelAnimationFrame(glideFrame.current);
     };
   }, []);
 
@@ -150,14 +191,36 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
           activity: nodeActivity(pane, events),
           log: nodeLog(events),
           lanes,
-          w: GRAPH_SLOT_W,
         };
       }),
     [panes, codingEvents, botEvents, codingBusy, tasks],
   );
 
-  const layout = useMemo(() => graphLayout(nodes.map((node) => ({ key: node.pane.key, w: node.w }))), [nodes]);
-  const slotOf = useMemo(() => new Map(layout.slots.map((slot) => [slot.key, slot])), [layout]);
+  const paneKeys = panes.map((pane) => pane.key).join("\n");
+  const slotList = useMemo(
+    () => (paneKeys ? paneKeys.split("\n") : []).map((key) => ({ key, w: GRAPH_SLOT_W })),
+    [paneKeys],
+  );
+  const placements = useMemo(() => placeSlots(slotList, saved), [slotList, saved]);
+  const tidy = useMemo(() => autoPlacements(slotList), [slotList]);
+
+  const remember = (next: GraphPlacements) => {
+    savedRef.current = next;
+    setSaved(next);
+    saveGraphPlacements(sessionId, next, layoutStorage());
+  };
+
+  // A bot seen for the first time has its spot written down at once, so the
+  // next one to join cannot shift it.
+  useEffect(() => {
+    if (Object.keys(placements).some((key) => !(key in savedRef.current))) {
+      remember({ ...savedRef.current, ...placements });
+    }
+  }, [placements]);
+
+  const shown = glide ?? (held ? { ...placements, [held.key]: held.at } : placements);
+  const layout = placedLayout(slotList, shown);
+  const slotOf = new Map(layout.slots.map((slot) => [slot.key, slot]));
   const indexOf = useMemo(() => new Map(panes.map((pane, index) => [pane.key, index])), [panes]);
 
   const allFlights = useMemo(() => messageFlights(panes, codingEvents, botEvents), [panes, codingEvents, botEvents]);
@@ -192,12 +255,90 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
     );
   }, [allFlights]);
 
-  const scale =
-    zoom === "fit"
-      ? layout.width > 0
-        ? Math.max(ZOOM_MIN, Math.min(1, (boardWidth - FIT_INSET) / layout.width))
-        : 1
-      : zoom;
+  const fitScale =
+    layout.width > 0 ? Math.max(ZOOM_MIN, Math.min(1, (boardWidth - FIT_INSET) / layout.width)) : 1;
+  // While a slot is in hand the board keeps the size and zoom it had when the
+  // drag began: re-fitting under the pointer would pull the slot away from it.
+  const scale = held ? held.scale : zoom === "fit" ? fitScale : zoom;
+  const box = held ? { width: held.width, height: held.height } : layout;
+  const arranged = samePlacements(slotList.map((slot) => slot.key), placements, tidy);
+
+  const grab = (event: ReactPointerEvent<HTMLElement>, key: string) => {
+    const from = placements[key];
+    if (event.button !== 0 || glide || !from) {
+      return;
+    }
+    // Keeps the press from selecting text or moving focus while the slot is in hand.
+    event.preventDefault();
+    const pointer = event.pointerId;
+    const origin = { x: event.clientX, y: event.clientY };
+    const frozen = { scale, width: layout.width, height: layout.height };
+    let moved = false;
+    const landing = (move: PointerEvent) =>
+      dragPlacement(from, (move.clientX - origin.x) / frozen.scale, (move.clientY - origin.y) / frozen.scale);
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointer) {
+        return;
+      }
+      if (!moved && Math.hypot(move.clientX - origin.x, move.clientY - origin.y) < DRAG_SLOP) {
+        return;
+      }
+      moved = true;
+      setHeld({ key, at: landing(move), ...frozen });
+    };
+    const finish = (end: PointerEvent) => {
+      if (end.pointerId !== pointer) {
+        return;
+      }
+      stop();
+      if (!moved) {
+        return;
+      }
+      // The click that ends a drag is neither a node click nor a board click.
+      swallowClick.current = true;
+      window.setTimeout(() => {
+        swallowClick.current = false;
+      }, 0);
+      setHeld(null);
+      if (end.type === "pointerup") {
+        remember({ ...savedRef.current, [key]: landing(end) });
+      }
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      stopDrag.current = null;
+    };
+    stopDrag.current?.();
+    stopDrag.current = stop;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  const arrange = () => {
+    const from = placements;
+    remember({ ...savedRef.current, ...tidy });
+    cancelAnimationFrame(glideFrame.current);
+    if (prefersReducedMotion()) {
+      setGlide(null);
+      return;
+    }
+    const begin = performance.now();
+    setGlide(from);
+    const step = (time: number) => {
+      if (!mounted.current) {
+        return;
+      }
+      const t = Math.min(1, (time - begin) / ARRANGE_MS);
+      setGlide(t < 1 ? tweenPlacements(from, tidy, easeInOut(t)) : null);
+      if (t < 1) {
+        glideFrame.current = requestAnimationFrame(step);
+      }
+    };
+    glideFrame.current = requestAnimationFrame(step);
+  };
 
   /** One curve per pair, drawn from the earlier pane to the later one. */
   const pairCurve = (a: string, b: string): { curve: GraphCurve; first: string } | undefined => {
@@ -253,24 +394,24 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
 
   const closeOnBackground = (event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target;
-    if (target instanceof Element && !target.closest(".graph-slot")) {
+    if (!swallowClick.current && target instanceof Element && !target.closest(".graph-slot")) {
       setSelected(null);
     }
   };
 
   return (
-    <div className={`graph-view${selectedPane ? " has-panel" : ""}`}>
+    <div className={`graph-view${selectedPane ? " has-panel" : ""}${held ? " is-dragging" : ""}`}>
       <div className="graph-main">
         <div className="graph-board" ref={boardRef} onClick={closeOnBackground}>
           <div
             className="graph-scroll"
-            style={{ width: Math.ceil(layout.width * scale), height: Math.ceil(layout.height * scale) }}
+            style={{ width: Math.ceil(box.width * scale), height: Math.ceil(box.height * scale) }}
           >
             <div
               className={`graph-space${selectedPane ? " has-focus" : ""}`}
-              style={{ width: layout.width, height: layout.height, transform: `scale(${scale})` }}
+              style={{ width: box.width, height: box.height, transform: `scale(${scale})` }}
             >
-              <svg className="graph-edges" width={layout.width} height={layout.height} aria-hidden="true">
+              <svg className="graph-edges" width={box.width} height={box.height} aria-hidden="true">
                 <defs>
                   <radialGradient id="graph-spark-glow">
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.9" />
@@ -311,7 +452,13 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
                     slot={slot}
                     selected={selected === node.pane.key}
                     dim={selected !== null && selected !== node.pane.key && !linked.has(node.pane.key)}
-                    onSelect={() => setSelected((current) => (current === node.pane.key ? null : node.pane.key))}
+                    dragging={held?.key === node.pane.key}
+                    onGrab={(event) => grab(event, node.pane.key)}
+                    onSelect={() => {
+                      if (!swallowClick.current) {
+                        setSelected((current) => (current === node.pane.key ? null : node.pane.key));
+                      }
+                    }}
                   />
                 ) : null;
               })}
@@ -348,28 +495,40 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
             </div>
           </div>
         </div>
-        <div className="graph-zoom" role="group" aria-label="확대">
+        <div className="graph-tools">
           <button
             type="button"
-            aria-label="축소"
-            onClick={() => setZoom(Math.max(ZOOM_MIN, round(scale - ZOOM_STEP)))}
+            className="graph-arrange"
+            disabled={arranged}
+            title="리드를 위 가운데에, 나머지 봇을 그 아래 줄에 다시 놓습니다"
+            onClick={arrange}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <ArrangeIcon />
+            자동 정렬
           </button>
-          <button type="button" className={zoom === "fit" ? "is-on" : ""} onClick={() => setZoom("fit")}>
-            맞춤
-          </button>
-          <button
-            type="button"
-            aria-label="확대"
-            onClick={() => setZoom(Math.min(ZOOM_MAX, round(scale + ZOOM_STEP)))}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-              <path d="M2.5 6h7M6 2.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <div className="graph-zoom" role="group" aria-label="확대">
+            <button
+              type="button"
+              aria-label="축소"
+              onClick={() => setZoom(Math.max(ZOOM_MIN, round(scale - ZOOM_STEP)))}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button type="button" className={zoom === "fit" ? "is-on" : ""} onClick={() => setZoom("fit")}>
+              맞춤
+            </button>
+            <button
+              type="button"
+              aria-label="확대"
+              onClick={() => setZoom(Math.min(ZOOM_MAX, round(scale + ZOOM_STEP)))}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M2.5 6h7M6 2.5v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
       {selectedPane ? (
@@ -398,6 +557,15 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function layoutStorage(): NoteStorage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    // Storage blocked outright: the layout works, it just is not remembered.
+    return undefined;
+  }
 }
 
 function prefersReducedMotion(): boolean {
@@ -516,6 +684,8 @@ function GraphNode({
   slot,
   selected,
   dim,
+  dragging,
+  onGrab,
   onSelect,
 }: {
   node: GraphNodeData;
@@ -523,35 +693,45 @@ function GraphNode({
   selected: boolean;
   /** Another bot is open and this one does not talk to it. */
   dim: boolean;
+  dragging: boolean;
+  onGrab: (event: ReactPointerEvent<HTMLElement>) => void;
   onSelect: () => void;
 }) {
   const { pane } = node;
+  const classes = [
+    "graph-slot",
+    pane.role === "lead" ? "is-lead" : "",
+    selected ? "is-selected" : "",
+    dim ? "is-dim" : "",
+    dragging ? "is-dragging" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
-    <article
-      className={`graph-slot${pane.role === "lead" ? " is-lead" : ""}${selected ? " is-selected" : ""}${dim ? " is-dim" : ""}`}
-      style={{ left: slot.x, top: slot.y, width: slot.w, height: slot.h }}
-    >
-      <button
-        type="button"
-        className={`graph-node${node.busy ? " is-live" : ""}`}
-        aria-pressed={selected}
-        title={selected ? "대화 닫기" : `@${pane.handle} 대화 보기`}
-        onClick={onSelect}
-      >
-        <span className="graph-avatar" aria-hidden="true">
-          {pane.role === "lead" ? <LeadMark size={20} /> : avatarText(pane.handle)}
-          {node.busy ? (
-            <span className="graph-orbit">
-              <i />
-              <i />
-              <i />
-              <i />
-            </span>
-          ) : null}
-        </span>
-        <span className="graph-handle">@{pane.handle}</span>
-        <span className="graph-role">{pane.role === "lead" ? "Lead" : pane.title}</span>
-      </button>
+    <article className={classes} style={{ left: slot.x, top: slot.y, width: slot.w, height: slot.h }}>
+      <div className="graph-slot-head" onPointerDown={onGrab}>
+        <button
+          type="button"
+          className={`graph-node${node.busy ? " is-live" : ""}`}
+          aria-pressed={selected}
+          title={`${selected ? "대화 닫기" : `@${pane.handle} 대화 보기`} · 끌어서 옮기기`}
+          onClick={onSelect}
+        >
+          <span className="graph-avatar" aria-hidden="true">
+            {pane.role === "lead" ? <LeadMark size={20} /> : avatarText(pane.handle)}
+            {node.busy ? (
+              <span className="graph-orbit">
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+            ) : null}
+          </span>
+          <span className="graph-handle">@{pane.handle}</span>
+          <span className="graph-role">{pane.role === "lead" ? "Lead" : pane.title}</span>
+        </button>
+      </div>
       <div className="graph-cols">
         <section className="graph-col">
           <p className="graph-col-label">
@@ -640,6 +820,18 @@ function Count({ value }: { value: number }) {
 /** Past the render cap; the full list is one click away in the side panel. */
 function More({ count }: { count: number }) {
   return count > 0 ? <li className="graph-more">+{count}</li> : null;
+}
+
+/** A node over two: the tidy tree 자동 정렬 lays out. */
+function ArrangeIcon() {
+  return (
+    <svg className="bar-icon" width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <rect x="5" y="1.5" width="4" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="1.5" y="9.5" width="4" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="8.5" y="9.5" width="4" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M7 4.5V7M3.5 9.5V7h7v2.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function LeadMark({ size }: { size: number }) {

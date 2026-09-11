@@ -128,6 +128,7 @@ export function TeamStage({
       ) : null}
       {mode === "graph" ? (
         <TeamGraph
+          key={codingSessionId}
           sessionId={codingSessionId}
           panes={panes}
           codingEvents={codingEvents}

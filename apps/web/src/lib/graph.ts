@@ -1,7 +1,7 @@
 import type { SessionEvent } from "@cbot/shared";
 import type { TaskView } from "./api.ts";
 import { laneOf, type Lane } from "./task-tree.ts";
-import type { TeamPane } from "./team.ts";
+import type { NoteStorage, TeamPane } from "./team.ts";
 import { toolHeadline } from "./tool-row.ts";
 
 /**
@@ -27,6 +27,10 @@ export const GRAPH_PER_ROW = 3;
 export const GRAPH_ROW_MAX_W = 1200;
 /** Where an edge meets a slot: the avatar centre, measured from the slot's top-left. */
 export const GRAPH_ANCHOR_Y = 30;
+/** Dragged slots land on this grid, so hand-placed rows line up. */
+export const GRAPH_SNAP = 8;
+/** How long 자동 정렬 takes to glide every slot to its tidy spot. */
+export const ARRANGE_MS = 360;
 /** Columns scroll; this only bounds how many rows one column renders. */
 export const GRAPH_LIST_MAX = 60;
 /** A delivery older than this when first seen is history, not something to animate. */
@@ -80,6 +84,10 @@ export interface GraphPoint {
   x: number;
   y: number;
 }
+
+/** Top-left of a slot on the board, in layout pixels. */
+export type GraphPlacement = GraphPoint;
+export type GraphPlacements = Record<string, GraphPlacement>;
 
 export interface GraphCurve {
   from: GraphPoint;
@@ -277,6 +285,161 @@ export function graphLayout(
   return { width, height, slots: placed };
 }
 
+export function autoPlacements(
+  slots: readonly { key: string; w: number }[],
+  maxRowWidth = GRAPH_ROW_MAX_W,
+): GraphPlacements {
+  return Object.fromEntries(graphLayout(slots, maxRowWidth).slots.map((slot) => [slot.key, { x: slot.x, y: slot.y }]));
+}
+
+function collides(a: GraphSlot, b: GraphSlot, gap: number): boolean {
+  return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+}
+
+/**
+ * Where every slot sits. A saved spot always wins, so nothing moves on its
+ * own. A slot seen for the first time takes the spot auto layout would give
+ * it when that spot is free, and otherwise joins a row under everything
+ * already placed. With nothing saved, this is the auto layout.
+ */
+export function placeSlots(
+  slots: readonly { key: string; w: number }[],
+  saved: Readonly<GraphPlacements>,
+): GraphPlacements {
+  const auto = autoPlacements(slots);
+  const placed: GraphPlacements = {};
+  const boxes: GraphSlot[] = [];
+  for (const slot of slots) {
+    const spot = saved[slot.key];
+    if (spot) {
+      placed[slot.key] = spot;
+      boxes.push({ key: slot.key, ...spot, w: slot.w, h: GRAPH_SLOT_H });
+    }
+  }
+  if (boxes.length === 0) {
+    return auto;
+  }
+  const below = Math.max(...boxes.map((box) => box.y + box.h)) + GRAPH_ROW_GAP;
+  let row = { x: GRAPH_PAD, y: below };
+  for (const slot of slots) {
+    if (placed[slot.key]) {
+      continue;
+    }
+    const want = auto[slot.key] ?? row;
+    let spot = want;
+    if (boxes.some((box) => collides({ key: slot.key, ...want, w: slot.w, h: GRAPH_SLOT_H }, box, GRAPH_SLOT_GAP / 2))) {
+      if (row.x > GRAPH_PAD && row.x + slot.w > GRAPH_PAD + GRAPH_ROW_MAX_W) {
+        row = { x: GRAPH_PAD, y: row.y + GRAPH_SLOT_H + GRAPH_ROW_GAP };
+      }
+      spot = row;
+      row = { x: row.x + slot.w + GRAPH_SLOT_GAP, y: row.y };
+    }
+    placed[slot.key] = spot;
+    boxes.push({ key: slot.key, ...spot, w: slot.w, h: GRAPH_SLOT_H });
+  }
+  return placed;
+}
+
+/** The board around placed slots: as wide and tall as they reach, plus the margin. */
+export function placedLayout(
+  slots: readonly { key: string; w: number }[],
+  placements: Readonly<GraphPlacements>,
+): GraphLayout {
+  const placed = slots.flatMap((slot) => {
+    const at = placements[slot.key];
+    return at ? [{ key: slot.key, x: at.x, y: at.y, w: slot.w, h: GRAPH_SLOT_H }] : [];
+  });
+  if (placed.length === 0) {
+    return { width: 0, height: 0, slots: [] };
+  }
+  return {
+    width: Math.max(...placed.map((slot) => slot.x + slot.w)) + GRAPH_PAD,
+    height: Math.max(...placed.map((slot) => slot.y + slot.h)) + GRAPH_PAD,
+    slots: placed,
+  };
+}
+
+/**
+ * Where a dragged slot lands: moved by the pointer's travel (already divided
+ * by the zoom), snapped to the grid, and kept off the board's top and left edge.
+ */
+export function dragPlacement(start: GraphPlacement, dx: number, dy: number, snap = GRAPH_SNAP): GraphPlacement {
+  const land = (value: number) => Math.max(0, Math.round(value / snap) * snap);
+  return { x: land(start.x + dx), y: land(start.y + dy) };
+}
+
+/** Part way from one arrangement to another; a slot only in `to` is already there. */
+export function tweenPlacements(
+  from: Readonly<GraphPlacements>,
+  to: Readonly<GraphPlacements>,
+  t: number,
+): GraphPlacements {
+  const out: GraphPlacements = {};
+  for (const [key, end] of Object.entries(to)) {
+    const begin = from[key] ?? end;
+    out[key] = { x: begin.x + (end.x - begin.x) * t, y: begin.y + (end.y - begin.y) * t };
+  }
+  return out;
+}
+
+export function samePlacements(
+  keys: readonly string[],
+  a: Readonly<GraphPlacements>,
+  b: Readonly<GraphPlacements>,
+): boolean {
+  return keys.every((key) => a[key]?.x === b[key]?.x && a[key]?.y === b[key]?.y);
+}
+
+export function graphStorageKey(sessionId: string): string {
+  return `cbot.graph.v1.${sessionId}`;
+}
+
+export function parseGraphPlacements(raw: string | null): GraphPlacements {
+  if (!raw) {
+    return {};
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    // A corrupt entry is dropped; the board falls back to auto layout.
+    return {};
+  }
+  const stored = data && typeof data === "object" ? (data as { placements?: unknown }).placements : undefined;
+  if (!stored || typeof stored !== "object") {
+    return {};
+  }
+  const out: GraphPlacements = {};
+  for (const [key, value] of Object.entries(stored as Record<string, unknown>)) {
+    const { x, y } = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+    if (typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y)) {
+      out[key] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+    }
+  }
+  return out;
+}
+
+export function loadGraphPlacements(sessionId: string, storage: NoteStorage | undefined): GraphPlacements {
+  try {
+    return parseGraphPlacements(storage?.getItem(graphStorageKey(sessionId)) ?? null);
+  } catch {
+    // Storage the browser refuses to read: start from auto layout.
+    return {};
+  }
+}
+
+export function saveGraphPlacements(
+  sessionId: string,
+  placements: Readonly<GraphPlacements>,
+  storage: NoteStorage | undefined,
+): void {
+  try {
+    storage?.setItem(graphStorageKey(sessionId), JSON.stringify({ v: 1, placements }));
+  } catch {
+    // Quota or private mode: the layout is just not remembered.
+  }
+}
+
 export function slotAnchor(slot: GraphSlot): GraphPoint {
   return { x: slot.x + slot.w / 2, y: slot.y + GRAPH_ANCHOR_Y };
 }
@@ -321,10 +484,15 @@ export function curvePoint({ from, c1, c2, to }: GraphCurve, t: number): GraphPo
   };
 }
 
+/** Cubic ease-in-out on 0..1. */
+export function easeInOut(t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2;
+}
+
 /** Eases in and out, so a spark leaves and lands instead of sliding at one speed. */
 export function flightProgress(elapsed: number, duration = FLIGHT_MS): number {
-  const t = Math.min(1, Math.max(0, elapsed / duration));
-  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+  return easeInOut(elapsed / duration);
 }
 
 function round(value: number): number {

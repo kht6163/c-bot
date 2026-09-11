@@ -6,21 +6,31 @@ import {
   GRAPH_ROW_GAP,
   GRAPH_SLOT_GAP,
   GRAPH_SLOT_H,
+  GRAPH_SLOT_W,
   USER_LABEL,
+  autoPlacements,
   avatarText,
   curvePoint,
+  dragPlacement,
   edgeCurve,
   edgePath,
   flightProgress,
   freshFlights,
   graphLayout,
   handoffCards,
+  loadGraphPlacements,
   messageFlights,
   nodeActivity,
   nodeLog,
   nodeTaskLanes,
+  parseGraphPlacements,
+  placeSlots,
+  placedLayout,
+  samePlacements,
+  saveGraphPlacements,
   slotAnchor,
   stripAttribution,
+  tweenPlacements,
 } from "./graph.ts";
 import type { TeamPane } from "./team.ts";
 
@@ -228,6 +238,82 @@ describe("graphLayout", () => {
     expect(flightProgress(100, 1000)).toBeLessThan(0.1);
     expect(flightProgress(1000, 1000)).toBe(1);
     expect(flightProgress(5000, 1000)).toBe(1);
+  });
+});
+
+describe("placement", () => {
+  const slots = (...keys: string[]) => keys.map((key) => ({ key, w: GRAPH_SLOT_W }));
+
+  test("with nothing saved, slots take the auto layout", () => {
+    expect(placeSlots(slots("lead", "a", "b"), {})).toEqual(autoPlacements(slots("lead", "a", "b")));
+  });
+
+  test("a saved spot wins over the auto layout", () => {
+    const saved = { lead: { x: 500, y: 40 }, a: { x: 0, y: 900 } };
+    expect(placeSlots(slots("lead", "a"), saved)).toEqual(saved);
+  });
+
+  test("a bot that joins later takes its auto spot when free and moves no one", () => {
+    const before = autoPlacements(slots("lead", "a"));
+    const placed = placeSlots(slots("lead", "a", "b"), before);
+    expect(placed.lead).toEqual(before.lead);
+    expect(placed.a).toEqual(before.a);
+    expect(placed.b).toEqual(autoPlacements(slots("lead", "a", "b")).b);
+  });
+
+  test("when its auto spot is taken, a new bot starts a row under everything", () => {
+    const tidy = autoPlacements(slots("lead", "a", "b"));
+    const saved = { lead: tidy.b!, a: tidy.a! };
+    const placed = placeSlots(slots("lead", "a", "b"), saved);
+    expect(placed.lead).toEqual(tidy.b);
+    expect(placed.b).toEqual({ x: GRAPH_PAD, y: tidy.b!.y + GRAPH_SLOT_H + GRAPH_ROW_GAP });
+  });
+
+  test("the board reaches the furthest slot plus the margin", () => {
+    const layout = placedLayout(slots("lead", "a"), { lead: { x: 10, y: 20 }, a: { x: 600, y: 500 } });
+    expect(layout.width).toBe(600 + GRAPH_SLOT_W + GRAPH_PAD);
+    expect(layout.height).toBe(500 + GRAPH_SLOT_H + GRAPH_PAD);
+    expect(placedLayout(slots("lead"), {}).slots).toEqual([]);
+  });
+
+  test("a dragged slot lands on the grid and stays on the board", () => {
+    expect(dragPlacement({ x: 100, y: 100 }, 13, -21)).toEqual({ x: 112, y: 80 });
+    expect(dragPlacement({ x: 20, y: 10 }, -200, -50)).toEqual({ x: 0, y: 0 });
+  });
+
+  test("auto arrange glides from the current spots to the tidy ones", () => {
+    const mid = tweenPlacements({ a: { x: 0, y: 0 } }, { a: { x: 100, y: 50 }, b: { x: 7, y: 7 } }, 0.5);
+    expect(mid).toEqual({ a: { x: 50, y: 25 }, b: { x: 7, y: 7 } });
+    expect(samePlacements(["a"], { a: { x: 1, y: 2 }, z: { x: 0, y: 0 } }, { a: { x: 1, y: 2 } })).toBe(true);
+    expect(samePlacements(["a", "b"], { a: { x: 1, y: 2 } }, { a: { x: 1, y: 2 }, b: { x: 0, y: 0 } })).toBe(false);
+  });
+
+  test("the layout is remembered per session and bad entries are dropped", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+    };
+    saveGraphPlacements("ses_1", { lead: { x: 10, y: 20 } }, storage);
+    expect(loadGraphPlacements("ses_1", storage)).toEqual({ lead: { x: 10, y: 20 } });
+    expect(loadGraphPlacements("ses_2", storage)).toEqual({});
+    expect(parseGraphPlacements("{nope")).toEqual({});
+    expect(
+      parseGraphPlacements(JSON.stringify({ placements: { a: { x: "1", y: 2 }, b: { x: -5.4, y: 3.6 } } })),
+    ).toEqual({ b: { x: 0, y: 4 } });
+    const refusing = {
+      getItem: (): string | null => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(loadGraphPlacements("ses_1", refusing)).toEqual({});
+    expect(() => saveGraphPlacements("ses_1", {}, refusing)).not.toThrow();
+    expect(loadGraphPlacements("ses_1", undefined)).toEqual({});
   });
 });
 
