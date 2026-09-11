@@ -26,6 +26,7 @@ import {
   type ViewMode,
 } from "../lib/team.ts";
 import { SessionLog } from "./SessionLog.tsx";
+import { TeamGraph } from "./TeamGraph.tsx";
 
 interface BotInfo {
   id: string;
@@ -45,6 +46,8 @@ interface Props {
   viewMode: ViewMode;
   focusedKey: string;
   codingBusy: boolean;
+  /** Bumps when the task board may have changed, so the graph re-reads it. */
+  boardTick: number;
   onViewMode: (mode: ViewMode) => void;
   onFocus: (key: string) => void;
   onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
@@ -62,6 +65,7 @@ export function TeamStage({
   viewMode,
   focusedKey,
   codingBusy,
+  boardTick,
   onViewMode,
   onFocus,
   onApprove,
@@ -81,8 +85,10 @@ export function TeamStage({
         <div className="stage-bar">
           {!canSplit ? (
             <div className="stage-fill" />
-          ) : mode === "split" ? (
-            <p className="stage-split-label">분할 · {panes.length} 봇</p>
+          ) : mode !== "agent" ? (
+            <p className="stage-split-label">
+              {mode === "split" ? "분할" : "그래프"} · {panes.length} 봇
+            </p>
           ) : (
             <div className="agent-tabs" role="tablist" aria-label="봇 세션">
               {panes.map((pane) => (
@@ -102,20 +108,38 @@ export function TeamStage({
             </div>
           )}
           {canSplit ? (
-            <button
-              type="button"
-              className="view-toggle"
-              aria-pressed={mode === "split"}
-              onClick={() => onViewMode(mode === "split" ? "agent" : "split")}
-            >
-              <SplitIcon single={mode === "split"} />
-              {mode === "split" ? "한 화면" : "분할"}
-            </button>
+            <div className="view-modes" role="group" aria-label="보기">
+              {VIEW_MODES.map((item) => (
+                <button
+                  key={item.mode}
+                  type="button"
+                  className={mode === item.mode ? "view-mode is-on" : "view-mode"}
+                  aria-pressed={mode === item.mode}
+                  onClick={() => onViewMode(item.mode)}
+                >
+                  <ModeIcon mode={item.mode} />
+                  {item.label}
+                </button>
+              ))}
+            </div>
           ) : null}
           {barEnd}
         </div>
       ) : null}
-      {mode === "split" ? (
+      {mode === "graph" ? (
+        <TeamGraph
+          sessionId={codingSessionId}
+          panes={panes}
+          codingEvents={codingEvents}
+          botEvents={botEvents}
+          codingBusy={codingBusy}
+          boardTick={boardTick}
+          onOpen={(key) => {
+            onFocus(key);
+            onViewMode("agent");
+          }}
+        />
+      ) : mode === "split" ? (
         <NoteBoard
           sessionId={codingSessionId}
           panes={panes}
@@ -155,12 +179,29 @@ function Chevron({ down }: { down: boolean }) {
   );
 }
 
-/** One frame or two: the icon says what the click gives you, not where you are. */
-function SplitIcon({ single }: { single: boolean }) {
+const VIEW_MODES: { mode: ViewMode; label: string }[] = [
+  { mode: "agent", label: "한 화면" },
+  { mode: "split", label: "분할" },
+  { mode: "graph", label: "그래프" },
+];
+
+/** One frame, two frames, or a node over two: the shape of each view. */
+function ModeIcon({ mode }: { mode: ViewMode }) {
   return (
     <svg className="bar-icon" width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
-      {single ? null : <path d="M7 2.6v8.8" stroke="currentColor" strokeWidth="1.3" />}
+      {mode === "graph" ? (
+        <>
+          <circle cx="7" cy="3" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+          <circle cx="3" cy="11" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+          <circle cx="11" cy="11" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+          <path d="M6 4.4 3.9 9.4M8 4.4l2.1 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
+          {mode === "split" ? <path d="M7 2.6v8.8" stroke="currentColor" strokeWidth="1.3" /> : null}
+        </>
+      )}
     </svg>
   );
 }

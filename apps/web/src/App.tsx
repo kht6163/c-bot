@@ -608,6 +608,7 @@ export function App() {
             viewMode={viewMode}
             focusedKey={focusedKey}
             codingBusy={busy}
+            boardTick={inspectorTick}
             onViewMode={setViewMode}
             onFocus={setFocusedKey}
             onApprove={(sessionId, callId, allow, remember) => {

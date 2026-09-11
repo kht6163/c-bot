@@ -1648,7 +1648,9 @@ button {
   .tool-mark.is-running,
   .bubble.live pre::after,
   .customized-summary::before,
-  .model-chip-chevron {
+  .model-chip-chevron,
+  .graph-node.is-live .graph-avatar,
+  .graph-mark.is-live {
     animation: none;
     transition: none;
   }
@@ -3068,6 +3070,437 @@ select.field-input {
   .note-se {
     display: none;
   }
+}
+
+/* One control for the three ways to look at a team; the pressed one is a tab,
+   not a lit button, so the accent stays on the thing being worked on. */
+.view-modes {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.view-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--quiet);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.view-mode:hover {
+  color: var(--text);
+}
+
+.view-mode.is-on {
+  background: rgb(255 255 255 / 9%);
+  color: var(--text);
+  box-shadow: var(--hi);
+}
+
+/* ── Graph ────────────────────────────────────────────────────────────────
+   The board scrolls; the space inside it is drawn at layout size and scaled
+   as one, so edges and cards never drift apart. */
+.graph-board {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 7%) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+.graph-scroll {
+  position: relative;
+  margin: 0 auto;
+}
+
+.graph-space {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.graph-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.graph-edge-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  opacity: 0.28;
+  transition: opacity 0.4s ease;
+}
+
+.graph-edge-glow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 7;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.graph-edge.is-active .graph-edge-line {
+  opacity: 0.7;
+}
+
+.graph-edge.is-active .graph-edge-glow {
+  opacity: 0.14;
+}
+
+.graph-spark-core {
+  fill: #fff;
+}
+
+.graph-spark-halo {
+  fill: var(--accent);
+  opacity: 0.45;
+}
+
+.graph-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.graph-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 12px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+}
+
+.graph-node:hover {
+  background: var(--row-hover);
+}
+
+.graph-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  background: var(--glass-2);
+  box-shadow: var(--hi), 0 0 0 4px rgb(255 255 255 / 3%);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: box-shadow 0.4s ease, color 0.4s ease;
+}
+
+.graph-slot.is-lead .graph-avatar {
+  color: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 40%, transparent);
+}
+
+.graph-node.is-live .graph-avatar {
+  border-color: color-mix(in oklab, var(--live) 60%, transparent);
+  box-shadow:
+    var(--hi),
+    0 0 0 4px color-mix(in oklab, var(--live) 18%, transparent),
+    0 0 22px -4px var(--live);
+  animation: graph-live 2.4s ease-in-out infinite alternate;
+}
+
+@keyframes graph-live {
+  from {
+    box-shadow:
+      var(--hi),
+      0 0 0 4px color-mix(in oklab, var(--live) 12%, transparent),
+      0 0 14px -6px var(--live);
+  }
+
+  to {
+    box-shadow:
+      var(--hi),
+      0 0 0 5px color-mix(in oklab, var(--live) 24%, transparent),
+      0 0 26px -2px var(--live);
+  }
+}
+
+.graph-handle {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.graph-role {
+  font-size: 11px;
+  color: var(--quiet);
+}
+
+.graph-cols {
+  position: absolute;
+  top: 92px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.graph-col {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 172px;
+  min-height: 0;
+  padding: 8px 8px 6px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 12px;
+  background: var(--glass-1);
+  backdrop-filter: blur(24px);
+  box-shadow: var(--hi);
+  overflow: hidden;
+}
+
+.graph-col-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--quiet);
+}
+
+.graph-count {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.graph-none {
+  margin: 4px 2px;
+  font-size: 11.5px;
+  color: var(--quiet);
+}
+
+.graph-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.graph-item-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.graph-chip {
+  overflow: hidden;
+  max-width: 62px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 7%);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-to {
+  font-size: 10px;
+  color: var(--ink-4);
+}
+
+.graph-time {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--quiet);
+}
+
+.graph-item-text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.graph-item-text.mono {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  -webkit-line-clamp: 1;
+}
+
+.graph-mark {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-4);
+}
+
+.graph-mark.is-ok {
+  background: var(--live);
+}
+
+.graph-mark.is-fail {
+  background: var(--danger);
+}
+
+.graph-mark.is-live {
+  background: transparent;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 40%, transparent);
+  border-top-color: var(--accent);
+  animation: tool-spin 0.9s linear infinite;
+}
+
+.graph-tool {
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-task {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.graph-task-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--ink-4);
+  border-radius: 50%;
+}
+
+.graph-lane.is-in_progress .graph-task-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.graph-lane.is-done .graph-task-dot {
+  border-color: transparent;
+  background: var(--live);
+}
+
+.graph-task-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.graph-task-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.graph-lane.is-done .graph-task-title {
+  color: var(--quiet);
+}
+
+.graph-task-meta {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--quiet);
+}
+
+.graph-more {
+  margin: auto 0 0;
+  padding: 5px 2px 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--quiet);
+}
+
+.graph-zoom {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 2;
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--overlay);
+  backdrop-filter: blur(28px);
+  box-shadow: var(--lift);
+}
+
+.graph-zoom button {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.graph-zoom button:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.graph-zoom button.is-on {
+  color: var(--text);
 }
 
 .inspector {

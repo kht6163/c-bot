@@ -1,6 +1,6 @@
 import type { SessionEvent, SessionId } from "@cbot/shared";
 
-export type ViewMode = "agent" | "split";
+export type ViewMode = "agent" | "split" | "graph";
 
 export interface TeamPane {
   key: string;
