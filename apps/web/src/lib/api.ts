@@ -1,5 +1,6 @@
 import type {
   ApprovalRemember,
+  BotToolName,
   GitDiffScope,
   GitDiffView,
   HealthResponse,
@@ -33,6 +34,8 @@ export interface BotView {
   thinking: string | null;
   sessionId: string;
   hidden: boolean;
+  /** null is every tool. */
+  tools: BotToolName[] | null;
   soul?: string;
   skills?: string[];
 }
@@ -49,6 +52,7 @@ export async function createBot(input: {
   provider?: string | null;
   model?: string | null;
   thinking?: string | null;
+  tools?: BotToolName[] | null;
 }): Promise<BotView> {
   const body = await api<{ bot: BotView }>("/api/bots", {
     method: "POST",
@@ -68,6 +72,7 @@ export async function updateBot(
     model?: string | null;
     thinking?: string | null;
     hidden?: boolean;
+    tools?: BotToolName[] | null;
   },
 ): Promise<BotView> {
   const body = await api<{ bot: BotView }>(`/api/bots/${id}`, {

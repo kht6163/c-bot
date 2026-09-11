@@ -547,11 +547,13 @@ class TwoBashLlm implements LlmClient {
   }
 }
 
-/** Answers at once and keeps the system prompt it was given. */
+/** Answers at once and keeps the system prompt and tool names it was given. */
 class RecordingLlm implements LlmClient {
   systems: string[] = [];
+  tools: string[][] = [];
   async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
     this.systems.push(request.system);
+    this.tools.push((request.tools ?? []).map((tool) => tool.name));
     yield { type: "text", text: "ok" };
     yield { type: "done", finishReason: "stop" };
   }
@@ -596,6 +598,64 @@ describe("bot skills in the prompt", () => {
       bots: { id: string; skills?: string[] }[];
     };
     expect(bots.bots.find((bot) => bot.id === leader.id)?.skills).toEqual(["review"]);
+    runtime.store.close();
+  });
+});
+
+describe("bot tools", () => {
+  test("a bot keeps the tools it is given, and a turn offers only those", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-bot-tools-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    await seedProvider(home);
+    const llm = new RecordingLlm();
+    const runtime = await createRuntime(env, llm);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/bots", {
+        method: "POST",
+        body: JSON.stringify({ handle: "reviewer", title: "Reviewer", tools: ["grep", "read_file"] }),
+      }),
+      opts,
+    );
+    expect(created.status).toBe(201);
+    expect(((await created.json()) as { bot: { tools: string[] } }).bot.tools).toEqual(["read_file", "grep"]);
+    const leader = await findLeader(home);
+    if (!leader) {
+      throw new Error("leader missing");
+    }
+    const put = (tools: unknown) =>
+      handleHttp(
+        new Request(`http://127.0.0.1/api/bots/${leader.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ tools }),
+        }),
+        opts,
+      );
+    expect((await put(["read_file", "message_agent"])).status).toBe(400);
+    expect((await put("bash")).status).toBe(400);
+    const saved = await put(["read_file", "list_dir"]);
+    expect(saved.status).toBe(200);
+    expect(((await saved.json()) as { bot: { tools: string[] } }).bot.tools).toEqual(["read_file", "list_dir"]);
+    const session = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    const { session: coding } = (await session.json()) as { session: { id: string } };
+    await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${coding.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "안녕" }),
+      }),
+      opts,
+    );
+    await waitUntil("turn end", async () =>
+      runtime.store.events(coding.id as never).some((event) => event.type === "turn/end"),
+    );
+    expect(llm.tools[0]).toEqual(["read_file", "list_dir", "message_agent"]);
+    expect(llm.systems[0]).not.toContain("`task` tool");
     runtime.store.close();
   });
 });

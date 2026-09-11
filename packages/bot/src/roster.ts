@@ -1,6 +1,13 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { asBotId, asSessionId, newBotId, type BotId, type SessionId } from "@cbot/shared";
+import {
+  asBotId,
+  asSessionId,
+  newBotId,
+  normalizeBotTools,
+  type BotId,
+  type SessionId,
+} from "@cbot/shared";
 import type { SessionStore } from "@cbot/agent";
 import { loadSkills } from "./skills.ts";
 import {
@@ -101,6 +108,7 @@ export async function createBot(
     provider?: string | null;
     model?: string | null;
     thinking?: string | null;
+    tools?: readonly string[] | null;
     role?: BotRole;
   },
 ): Promise<BotProfile> {
@@ -136,6 +144,7 @@ export async function createBot(
     model: input.model?.trim() || null,
     thinking: input.thinking?.trim() || null,
     hidden: false,
+    tools: input.tools ? normalizeBotTools(input.tools) : null,
     sessionId: session.id,
   };
   const dir = join(botsDir(home), id);
@@ -158,6 +167,7 @@ export async function updateBot(
     model?: string | null;
     thinking?: string | null;
     hidden?: boolean;
+    tools?: readonly string[] | null;
   },
 ): Promise<BotProfile | undefined> {
   const loaded = await loadBot(home, id);
@@ -177,6 +187,8 @@ export async function updateBot(
     model: patch.model !== undefined ? patch.model?.trim() || null : loaded.model,
     thinking: patch.thinking !== undefined ? patch.thinking?.trim() || null : loaded.thinking,
     hidden: patch.hidden !== undefined ? patch.hidden : loaded.hidden,
+    tools:
+      patch.tools === undefined ? loaded.tools : patch.tools === null ? null : normalizeBotTools(patch.tools),
     sessionId: loaded.sessionId,
   };
   await writeRecord(home, record);
@@ -234,6 +246,7 @@ function serializeProfile(record: BotRecord): string {
     `model: ${record.model ? JSON.stringify(record.model) : "null"}`,
     `thinking: ${record.thinking ? JSON.stringify(record.thinking) : "null"}`,
     `hidden: ${record.hidden}`,
+    `tools: ${record.tools ? JSON.stringify(record.tools) : "null"}`,
     `sessionId: ${JSON.stringify(record.sessionId)}`,
     "",
   ].join("\n");
@@ -268,6 +281,9 @@ function parseProfileYaml(raw: string): BotRecord | undefined {
     model: typeof parsed.model === "string" ? parsed.model : null,
     thinking: typeof parsed.thinking === "string" && parsed.thinking.trim() ? parsed.thinking.trim() : null,
     hidden: parsed.hidden === true,
+    tools: Array.isArray(parsed.tools)
+      ? normalizeBotTools(parsed.tools.filter((item): item is string => typeof item === "string"))
+      : null,
     sessionId: asSessionId(parsed.sessionId),
   };
 }

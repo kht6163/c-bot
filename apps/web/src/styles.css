@@ -2793,6 +2793,131 @@ select.field-input {
   color: var(--ink-3);
 }
 
+/* A form modal taller than the window scrolls its fields and keeps its actions in view. */
+.modal-form {
+  max-height: calc(100dvh - 32px);
+}
+
+.tool-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-picker-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--quiet);
+}
+
+.tool-picker .tool-picker-reset {
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.tool-picker .tool-picker-reset:hover {
+  color: var(--text);
+}
+
+.tool-groups {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: start;
+}
+
+.tool-group-label {
+  font-size: 12px;
+  line-height: 26px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tool-group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Beats `.modal label`, which would stack the chip into a column. */
+.tool-picker .tool-chip {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--edge-soft);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--quiet);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+/* The real checkbox covers the chip, so a click lands on it and does not
+   read as keyboard focus the way a label forwarding focus does. */
+.tool-picker .tool-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.tool-picker .tool-chip:hover {
+  border-color: var(--edge);
+  color: var(--muted);
+}
+
+.tool-picker .tool-chip.is-on {
+  border-color: rgb(255 255 255 / 14%);
+  background: var(--row-active);
+  color: var(--text);
+}
+
+.tool-picker .tool-chip.is-locked {
+  cursor: default;
+  border-color: var(--edge);
+  background: transparent;
+  color: var(--muted);
+}
+
+.tool-picker .tool-chip:has(input:focus-visible) {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tool-chip-mark {
+  flex: none;
+  opacity: 0;
+}
+
+.tool-chip.is-on .tool-chip-mark {
+  opacity: 1;
+}
+
+.tool-picker .hint-inline {
+  margin: 0;
+}
+
 .bot-row .bot-delete {
   opacity: 0;
   color: var(--quiet);

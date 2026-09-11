@@ -79,7 +79,7 @@ export {
 } from "./loop.ts";
 export { CODING_SYSTEM_PROMPT, codingSystemPrompt } from "./prompt.ts";
 export { ApprovalGate } from "./approval.ts";
-export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";
+export { CODING_TOOLS, findTool } from "./tools/registry.ts";
 export { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";
 export { loadMentionedFiles, searchWorkspaceFiles } from "./workspace-files.ts";

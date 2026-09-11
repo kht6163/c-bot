@@ -5,10 +5,12 @@ import { describe, expect, test } from "bun:test";
 import { asBotId, asDeliveryId, asToolCallId, asTurnId } from "@cbot/shared";
 import { runTurn, sessionNeedsTurn, titleFromText, wokenByBot, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
-import type { LlmClient, LlmStreamEvent } from "../src/llm/client.ts";
+import type { LlmClient, LlmRequest, LlmStreamEvent } from "../src/llm/client.ts";
 import { LlmError } from "../src/llm/client.ts";
 import { deriveMessages } from "../src/session/derive.ts";
 import { ApprovalGate } from "../src/approval.ts";
+import { readFileTool } from "../src/tools/fs.ts";
+import { CODING_TOOLS } from "../src/tools/registry.ts";
 
 class ScriptedLlm implements LlmClient {
   constructor(private readonly events: LlmStreamEvent[] | Error) {}
@@ -26,10 +28,13 @@ class ScriptedLlm implements LlmClient {
 /** Each call consumes the next script; an Error script throws. */
 class SequencedLlm implements LlmClient {
   calls = 0;
+  /** Tool names each call offered, in call order. */
+  offered: string[][] = [];
 
   constructor(private readonly scripts: (LlmStreamEvent[] | Error)[]) {}
 
-  async *stream(): AsyncIterable<LlmStreamEvent> {
+  async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+    this.offered.push((request.tools ?? []).map((tool) => tool.name));
     const script = this.scripts[this.calls] ?? this.scripts.at(-1) ?? [];
     this.calls += 1;
     if (script instanceof Error) {
@@ -230,6 +235,38 @@ describe("approval rules", () => {
     const pending = events.filter((e) => e.type === "tool/result" && e.pendingApproval);
     expect(pending).toHaveLength(1);
     expect(deriveMessages(events).filter((m) => m.role === "tool")).toHaveLength(2);
+    store.close();
+  });
+});
+
+describe("coding tool choice", () => {
+  test("offers and runs only the coding tools the turn allows", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-tools-"));
+    const store = await SessionStore.open(":memory:");
+    const limited = store.create({ workspace });
+    store.append(limited.id, { type: "user/message", text: "run", mentions: [] });
+    const llm = new SequencedLlm([
+      [
+        { type: "tool_call", id: "call_off", name: "bash", arguments: '{"command":"touch ran"}' },
+        { type: "done", finishReason: "tool_calls" },
+      ],
+      OK_REPLY,
+    ]);
+    await runTurn(
+      limited.id,
+      turnCtx(store, llm, { apiKey: "test", workspace, codingTools: [readFileTool] }),
+    );
+    expect(llm.offered[0]).toEqual(["read_file"]);
+    const result = store.events(limited.id).find((e) => e.type === "tool/result");
+    expect(result?.type === "tool/result" && result.ok).toBe(false);
+    expect(result?.type === "tool/result" && result.content).toContain("bash");
+    expect(await Bun.file(join(workspace, "ran")).exists()).toBe(false);
+
+    const open = store.create({ workspace });
+    store.append(open.id, { type: "user/message", text: "hi", mentions: [] });
+    const plain = new SequencedLlm([OK_REPLY]);
+    await runTurn(open.id, turnCtx(store, plain, { apiKey: "test", workspace }));
+    expect(plain.offered[0]).toEqual(CODING_TOOLS.map((tool) => tool.name));
     store.close();
   });
 });

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import type { BotToolName } from "@cbot/shared";
 import { fetchSettings, type BotView, type SettingsView } from "../lib/api.ts";
 import { defaultEffort, effortLabel, effortsFor } from "../lib/thinking.ts";
 import { BotMemoryPanel } from "./BotMemoryPanel.tsx";
+import { BotToolPicker } from "./BotToolPicker.tsx";
 import { ModelSearchSelect } from "./ModelSearchSelect.tsx";
 
 interface Props {
@@ -15,6 +17,7 @@ interface Props {
     model: string | null;
     thinking: string | null;
     hidden: boolean;
+    tools: BotToolName[] | null;
   }) => Promise<void>;
 }
 
@@ -25,6 +28,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
   const [choice, setChoice] = useState("");
   const [thinking, setThinking] = useState("");
   const [hidden, setHidden] = useState(false);
+  const [tools, setTools] = useState<BotToolName[] | null>(null);
   const [settings, setSettings] = useState<SettingsView | undefined>();
   const [error, setError] = useState("");
 
@@ -38,6 +42,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
     setChoice(bot.provider && bot.model ? `${bot.provider}::${bot.model}` : "");
     setThinking(bot.thinking ?? "");
     setHidden(bot.hidden);
+    setTools(bot.tools ?? null);
     setError("");
     void fetchSettings().then(setSettings);
   }, [bot]);
@@ -120,6 +125,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
                 </span>
               </label>
             )}
+            <BotToolPicker value={tools} onChange={setTools} />
             <p className="hint-static">
               스킬{" "}
               {bot.skills && bot.skills.length > 0 ? (
@@ -165,6 +171,7 @@ export function EditBotDialog({ bot, onClose, onSave }: Props) {
                 model: model || null,
                 thinking: nextThinking,
                 hidden,
+                tools,
               }).catch((err: unknown) => {
                 setError(err instanceof Error ? err.message : "failed");
               });

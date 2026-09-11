@@ -1,4 +1,4 @@
-import type { BotId, SessionId } from "@cbot/shared";
+import type { BotId, BotToolName, SessionId } from "@cbot/shared";
 
 export const BOT_CHAT_TITLE = "Bot Chat";
 export const PROTOCOL_HEADING = "## Messaging other agents";
@@ -19,6 +19,8 @@ export interface BotProfile {
   model: string | null;
   thinking: string | null;
   hidden: boolean;
+  /** Tools this bot may use besides `message_agent`. null is every tool. */
+  tools: BotToolName[] | null;
   soul: string;
   /** Names of the skills under `bots/<id>/skills/`, in prompt order. */
   skills: string[];
@@ -35,5 +37,7 @@ export interface BotRecord {
   model: string | null;
   thinking: string | null;
   hidden: boolean;
+  /** Tools this bot may use besides `message_agent`. null is every tool. */
+  tools: BotToolName[] | null;
   sessionId: SessionId;
 }

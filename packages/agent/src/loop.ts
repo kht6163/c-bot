@@ -15,12 +15,13 @@ import { LlmError } from "./llm/client.ts";
 import { codingSystemPrompt } from "./prompt.ts";
 import { deriveMessages } from "./session/derive.ts";
 import type { SessionStore } from "./session/store.ts";
-import { findTool, codingToolSchemas } from "./tools/registry.ts";
+import { CODING_TOOLS, findTool } from "./tools/registry.ts";
 import { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 
 const CHUNK_FLUSH_MS = 40;
 const MAX_STEPS = 40;
 const ABORTED_TOOL = "사용자가 턴을 중단해 실행하지 않았습니다.";
+const disabledTool = (name: string) => `${name} 도구는 꺼져 있어 실행하지 않았습니다.`;
 
 export interface TurnContext {
   store: SessionStore;
@@ -34,6 +35,8 @@ export interface TurnContext {
   /** Read per call, so a rule remembered from an approval card applies to the rest of this turn. */
   allowedCommands?: () => readonly string[];
   extraTools?: ToolDefinition[];
+  /** The coding tools this turn offers the model and will run. Absent means all of them. */
+  codingTools?: readonly ToolDefinition[];
   systemPrompt?: string;
   reasoningEffort?: string;
   /** Absent means never compact on its own. */
@@ -72,7 +75,7 @@ export async function runTurn(sessionId: SessionId, ctx: TurnContext): Promise<v
   }
   const extraTools = ctx.extraTools ?? [];
   const tools = [
-    ...(ctx.workspace ? codingToolSchemas() : []),
+    ...(ctx.workspace ? (ctx.codingTools ?? CODING_TOOLS).map(schemaOf) : []),
     ...extraTools.map(schemaOf),
   ];
   const system = ctx.systemPrompt ?? codingSystemPrompt(ctx.workspace);
@@ -324,6 +327,18 @@ async function runStep(
         callId: call.id,
         ok: false,
         content: `unknown tool ${call.name}`,
+      });
+      continue;
+    }
+    // The schema list is only a hint: a model can still name a tool it was
+    // not offered, from memory or from earlier turns in this log.
+    if (!extra && ctx.codingTools && !ctx.codingTools.some((item) => item.name === call.name)) {
+      ctx.store.append(sessionId, {
+        type: "tool/result",
+        turnId,
+        callId: call.id,
+        ok: false,
+        content: disabledTool(call.name),
       });
       continue;
     }

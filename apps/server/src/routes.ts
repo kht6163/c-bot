@@ -31,7 +31,7 @@ import {
   type LlmProvider,
 } from "@cbot/agent";
 import type { ProjectView, SessionId, SessionListResponse, SessionTeamMember } from "@cbot/shared";
-import { parseSlashCommand } from "@cbot/shared";
+import { isBotToolName, parseSlashCommand } from "@cbot/shared";
 import { runningCodingSessions } from "./activity.ts";
 import { runSlashCommand } from "./commands.ts";
 import { createBot, deleteBot, listBots, loadBot, MemoryStore, TaskStore, taskBoardId, updateBot } from "@cbot/bot";
@@ -117,6 +117,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         throw new HttpError(400, "handle required");
       }
       const config = await loadConfig(runtime.env.home);
+      const tools = toolChoice(body.tools);
       const bot = await createBot(runtime.env.home, runtime.store, {
         handle: body.handle,
         title: typeof body.title === "string" ? body.title : body.handle,
@@ -126,6 +127,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         provider: typeof body.provider === "string" ? body.provider : null,
         model: typeof body.model === "string" ? body.model : null,
         thinking: typeof body.thinking === "string" ? body.thinking : null,
+        ...(tools !== undefined ? { tools } : {}),
       });
       return Response.json({ bot }, { status: 201 });
     }
@@ -201,6 +203,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!isRecord(body)) {
         throw new HttpError(400, "invalid JSON");
       }
+      const tools = toolChoice(body.tools);
       let bot: Awaited<ReturnType<typeof updateBot>>;
       try {
         bot = await updateBot(runtime.env.home, id, {
@@ -211,6 +214,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
           ...(body.provider === null || typeof body.provider === "string" ? { provider: body.provider } : {}),
           ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
           ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
+          ...(tools !== undefined ? { tools } : {}),
         });
       } catch (err) {
         if (err instanceof Error && err.message === "leader cannot be hidden") {
@@ -656,6 +660,21 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   } catch (err) {
     return jsonError(err);
   }
+}
+
+/** A bot's `tools` field: absent leaves it alone, null is every tool, a list names each one. */
+function toolChoice(value: unknown): readonly string[] | null | undefined {
+  if (value === undefined || value === null) {
+    return value;
+  }
+  if (!Array.isArray(value) || !value.every((item): item is string => typeof item === "string")) {
+    throw new HttpError(400, "tools must be a list of tool names");
+  }
+  const unknown = value.find((name) => !isBotToolName(name));
+  if (unknown !== undefined) {
+    throw new HttpError(400, `unknown tool ${unknown}`);
+  }
+  return value;
 }
 
 function toSettingsView(

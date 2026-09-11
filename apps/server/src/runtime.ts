@@ -1,6 +1,7 @@
 import {
   ApprovalGate,
   CLIPROXYAPI_ID,
+  CODING_TOOLS,
   allowCommand,
   defaultThinking,
   OpenAiCompatClient,
@@ -41,6 +42,7 @@ import {
 import { resolve } from "node:path";
 import {
   atTokens,
+  botToolEnabled,
   normalizeRule,
   type ApprovalRemember,
   type SessionId,
@@ -234,6 +236,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           ? workspaceForMailbox(runtime.store, sessionId)
           : (session?.workspace ?? null);
       let extraTools: ToolDefinition[] = [];
+      let codingTools: readonly ToolDefinition[] | undefined;
       let systemPrompt: string | undefined;
       let pin: { provider?: string | null; model?: string | null; thinking?: string | null } | undefined;
       const roster = await listBots(runtime.env.home);
@@ -242,6 +245,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
         session?.kind === "coding" ? leader?.id : session?.kind === "bot-chat" ? session.botId : null;
       const me = botId && config.botMode.protocol ? await loadBot(runtime.env.home, botId) : undefined;
       if (session && me) {
+        const enabled = (name: string) => botToolEnabled(me.tools, name);
         extraTools = [
           messageAgentTool({
             home: runtime.env.home,
@@ -251,15 +255,20 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
             fromBotId: me.id,
             wake: (target) => wakeSession(runtime, target),
           }),
-          memoryTool(runtime.env.home, me.id),
-          taskTool({
-            home: runtime.env.home,
-            store: runtime.store,
-            sessionId,
-            actor: me,
-            roster,
-          }),
+          ...(enabled("memory") ? [memoryTool(runtime.env.home, me.id)] : []),
+          ...(enabled("task")
+            ? [
+                taskTool({
+                  home: runtime.env.home,
+                  store: runtime.store,
+                  sessionId,
+                  actor: me,
+                  roster,
+                }),
+              ]
+            : []),
         ];
+        codingTools = CODING_TOOLS.filter((tool) => enabled(tool.name));
         const skills = await loadSkills(runtime.env.home, me.id);
         const base = [me.soul.trim(), skillsSection(skills), codingSystemPrompt(workspace)]
           .filter((part) => part.length > 0)
@@ -298,6 +307,7 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
           approvals: runtime.approvals,
           allowedCommands: () => [...config.approval.allow, ...sessionAllowRules(sessionId)],
           extraTools,
+          ...(codingTools ? { codingTools } : {}),
           context: config.context,
           signal: controller.signal,
           ...(retry ? { retry } : {}),

@@ -2,12 +2,15 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { SessionStore } from "@cbot/agent";
+import { CODING_TOOLS, SessionStore } from "@cbot/agent";
+import { BOT_TOOLS } from "@cbot/shared";
 import { createBot, deleteBot, ensureLeaderBot, listBots, loadBot, updateBot } from "../src/roster.ts";
 import { protocolSection } from "../src/protocol.ts";
 import { PROTOCOL_HEADING } from "../src/types.ts";
 import { messageAgentTool, workspaceForMailbox } from "../src/message-agent.ts";
 import { MemoryStore } from "../src/memory-store.ts";
+import { memoryTool } from "../src/memory-tool.ts";
+import { taskTool } from "../src/task-tool.ts";
 import { recallIntoSession } from "../src/recall.ts";
 import { deriveMessages } from "@cbot/agent";
 
@@ -83,6 +86,73 @@ describe("hidden bots", () => {
     const back = await updateBot(home, quiet.id, { hidden: false });
     expect(back?.hidden).toBe(false);
     expect(loud.hidden).toBe(false);
+    store.close();
+  });
+});
+
+describe("bot tools", () => {
+  test("a bot starts with every tool and keeps the choice it is given", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-tools-"));
+    const store = await SessionStore.open(":memory:");
+    const open = await createBot(home, store, { handle: "open", title: "Open", description: "O" });
+    expect(open.tools).toBeNull();
+    const reader = await createBot(home, store, {
+      handle: "reader",
+      title: "Reader",
+      description: "R",
+      tools: ["grep", "read_file", "grep"],
+    });
+    expect(reader.tools).toEqual(["read_file", "grep"]);
+    expect((await loadBot(home, reader.id))?.tools).toEqual(["read_file", "grep"]);
+    const silent = await updateBot(home, reader.id, { tools: [] });
+    expect(silent?.tools).toEqual([]);
+    expect((await loadBot(home, reader.id))?.tools).toEqual([]);
+    const renamed = await updateBot(home, reader.id, { title: "Quiet" });
+    expect(renamed?.tools).toEqual([]);
+    const back = await updateBot(home, reader.id, { tools: [...BOT_TOOLS] });
+    expect(back?.tools).toBeNull();
+    expect((await listBots(home)).find((bot) => bot.id === reader.id)?.tools).toBeNull();
+    store.close();
+  });
+
+  test("every tool a bot can be given is a choice, and message_agent is not", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-catalog-"));
+    const store = await SessionStore.open(":memory:");
+    const bot = await createBot(home, store, { handle: "alpha", title: "Alpha", description: "A" });
+    const given = [
+      ...CODING_TOOLS.map((tool) => tool.name),
+      memoryTool(home, bot.id).name,
+      taskTool({ home, store, sessionId: bot.sessionId, actor: bot, roster: [bot] }).name,
+    ];
+    expect([...given].sort()).toEqual([...BOT_TOOLS].sort());
+    const talk = messageAgentTool({
+      home,
+      store,
+      sessionId: bot.sessionId,
+      sessionKind: "bot-chat",
+      fromBotId: bot.id,
+      wake: () => {},
+    });
+    expect(BOT_TOOLS as readonly string[]).not.toContain(talk.name);
+    store.close();
+  });
+
+  test("the protocol tells a bot about the board only when it has the task tool", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-board-"));
+    const store = await SessionStore.open(":memory:");
+    const leader = await ensureLeaderBot(home, store);
+    const worker = await createBot(home, store, { handle: "worker", title: "Worker", description: "W" });
+    const roster = await listBots(home);
+    expect(protocolSection(leader, roster, leader.soul)).toContain("`task` tool");
+    expect(protocolSection(worker, roster, worker.soul)).toContain("`task` tool");
+    const lead = await updateBot(home, leader.id, { tools: ["read_file"] });
+    const solo = await updateBot(home, worker.id, { tools: ["bash"] });
+    const leadText = protocolSection(lead!, roster, lead!.soul);
+    const soloText = protocolSection(solo!, roster, solo!.soul);
+    expect(leadText).not.toContain("`task`");
+    expect(soloText).not.toContain("`task`");
+    expect(leadText).toContain("`message_agent`");
+    expect(soloText).toContain("`message_agent`");
     store.close();
   });
 });

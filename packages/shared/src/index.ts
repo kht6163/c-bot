@@ -37,6 +37,13 @@ export {
 } from "./ids.ts";
 export { assertNever } from "./never.ts";
 export {
+  BOT_TOOLS,
+  botToolEnabled,
+  isBotToolName,
+  normalizeBotTools,
+  type BotToolName,
+} from "./tools.ts";
+export {
   DELIVERY_REASONS,
   TRANSIENT_DELIVERY_REASONS,
   isDeliveryReason,
