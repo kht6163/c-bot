@@ -21,8 +21,8 @@ export const GRAPH_PER_ROW = 3;
 export const GRAPH_ROW_MAX_W = 1200;
 /** Where an edge meets a slot: the avatar centre, measured from the slot's top-left. */
 export const GRAPH_ANCHOR_Y = 30;
-export const GRAPH_ITEMS = 3;
-export const GRAPH_TASK_ITEMS = 4;
+/** Columns scroll; this only bounds how many rows one column renders. */
+export const GRAPH_LIST_MAX = 60;
 /** A delivery older than this when first seen is history, not something to animate. */
 export const FLIGHT_FRESH_MS = 15_000;
 export const FLIGHT_MS = 1_600;
@@ -187,7 +187,11 @@ export function nodeLog(events: readonly SessionEvent[]): GraphLogItem[] {
 }
 
 /** The bot's own jobs, one lane per status that has any, capped per lane. */
-export function nodeTaskLanes(handle: string, tasks: readonly TaskView[]): GraphTaskLane[] {
+export function nodeTaskLanes(
+  handle: string,
+  tasks: readonly TaskView[],
+  cap = GRAPH_LIST_MAX,
+): GraphTaskLane[] {
   const own = tasks.filter((task) => task.ownerHandle === handle);
   return LANE_ORDER.flatMap((lane) => {
     const inLane = own
@@ -200,8 +204,8 @@ export function nodeTaskLanes(handle: string, tasks: readonly TaskView[]): Graph
       {
         lane,
         label: LANE_LABEL[lane],
-        tasks: inLane.slice(0, GRAPH_TASK_ITEMS),
-        more: Math.max(0, inLane.length - GRAPH_TASK_ITEMS),
+        tasks: inLane.slice(0, cap),
+        more: Math.max(0, inLane.length - cap),
       },
     ];
   });

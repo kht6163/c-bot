@@ -3,7 +3,7 @@ import { hasOpenTurn, type SessionEvent, type SessionId } from "@cbot/shared";
 import { fetchTasks, type TaskView } from "../lib/api.ts";
 import {
   FLIGHT_MS,
-  GRAPH_ITEMS,
+  GRAPH_LIST_MAX,
   avatarText,
   edgePath,
   freshFlights,
@@ -300,11 +300,13 @@ function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlo
       </button>
       <div className="graph-cols">
         <section className="graph-col">
-          <p className="graph-col-label">활동</p>
+          <p className="graph-col-label">
+            활동 <Count value={node.activity.length} />
+          </p>
           {node.activity.length === 0 ? <p className="graph-none">아직 없음</p> : null}
           <ul className="graph-list">
-            {node.activity.slice(0, GRAPH_ITEMS).map((item) => (
-              <li key={item.key} className="graph-item">
+            {node.activity.slice(0, GRAPH_LIST_MAX).map((item) => (
+              <li key={item.key} className="graph-item" title={item.text}>
                 <span className="graph-item-head">
                   <span className="graph-chip">{item.from}</span>
                   {item.to ? (
@@ -320,15 +322,17 @@ function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlo
                 <span className="graph-item-text">{item.text}</span>
               </li>
             ))}
+            <More count={node.activity.length - GRAPH_LIST_MAX} />
           </ul>
-          <More count={node.activity.length - GRAPH_ITEMS} />
         </section>
         <section className="graph-col">
-          <p className="graph-col-label">로그</p>
+          <p className="graph-col-label">
+            로그 <Count value={node.log.length} />
+          </p>
           {node.log.length === 0 ? <p className="graph-none">아직 없음</p> : null}
           <ul className="graph-list">
-            {node.log.slice(0, GRAPH_ITEMS).map((item) => (
-              <li key={item.key} className={`graph-item is-${item.kind}`}>
+            {node.log.slice(0, GRAPH_LIST_MAX).map((item) => (
+              <li key={item.key} className={`graph-item is-${item.kind}`} title={item.detail || undefined}>
                 <span className="graph-item-head">
                   <span className={`graph-mark is-${item.state}`} aria-hidden="true" />
                   <span className="graph-tool">{item.name}</span>
@@ -337,17 +341,17 @@ function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlo
                 {item.detail ? <span className="graph-item-text mono">{item.detail}</span> : null}
               </li>
             ))}
+            <More count={node.log.length - GRAPH_LIST_MAX} />
           </ul>
-          <More count={node.log.length - GRAPH_ITEMS} />
         </section>
         {node.lanes.map((lane) => (
           <section key={lane.lane} className={`graph-col graph-lane is-${lane.lane}`}>
             <p className="graph-col-label">
-              {lane.label} <span className="graph-count">{lane.tasks.length + lane.more}</span>
+              {lane.label} <Count value={lane.tasks.length + lane.more} />
             </p>
             <ul className="graph-list">
               {lane.tasks.map((task) => (
-                <li key={task.id} className="graph-task">
+                <li key={task.id} className="graph-task" title={task.title}>
                   <span className="graph-task-dot" aria-hidden="true" />
                   <span className="graph-task-body">
                     <span className="graph-task-title">{task.title}</span>
@@ -358,8 +362,8 @@ function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlo
                   </span>
                 </li>
               ))}
+              <More count={lane.more} />
             </ul>
-            <More count={lane.more} />
           </section>
         ))}
       </div>
@@ -367,8 +371,13 @@ function GraphNode({ node, slot, onOpen }: { node: GraphNodeData; slot: GraphSlo
   );
 }
 
+function Count({ value }: { value: number }) {
+  return value > 0 ? <span className="graph-count">{value}</span> : null;
+}
+
+/** Past the render cap; the full list is one click away in the bot's own log. */
 function More({ count }: { count: number }) {
-  return count > 0 ? <p className="graph-more">+{count}</p> : null;
+  return count > 0 ? <li className="graph-more">+{count}</li> : null;
 }
 
 function LeadMark() {

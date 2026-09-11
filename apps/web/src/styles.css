@@ -3303,13 +3303,24 @@ select.field-input {
   color: var(--quiet);
 }
 
+/* Each column scrolls on its own; the wheel stays inside it at the ends. */
 .graph-list {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 4px;
-  margin: 0;
-  padding: 0;
+  min-height: 0;
+  margin: 0 -4px 0 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 14%) transparent;
+}
+
+.graph-list > * {
+  flex: none;
 }
 
 .graph-item {
@@ -3460,8 +3471,7 @@ select.field-input {
 }
 
 .graph-more {
-  margin: auto 0 0;
-  padding: 5px 2px 0;
+  padding: 3px 2px 0;
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--quiet);

@@ -139,7 +139,7 @@ describe("nodeTaskLanes", () => {
       task({ id: "d", ownerHandle: "qa", status: "pending" }),
       ...[1, 2, 3, 4, 5].map((n) => task({ id: `p${n}`, ownerHandle: "dev", status: "pending" })),
     ];
-    const lanes = nodeTaskLanes("dev", tasks);
+    const lanes = nodeTaskLanes("dev", tasks, 4);
     expect(lanes.map((lane) => [lane.lane, lane.tasks.length, lane.more])).toEqual([
       ["in_progress", 1, 0],
       ["pending", 4, 1],
