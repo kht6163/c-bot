@@ -18,8 +18,8 @@ import {
   nodeActivity,
   nodeLog,
   nodeTaskLanes,
+  GRAPH_SLOT_W,
   slotAnchor,
-  slotWidth,
   type GraphCurve,
   type GraphFlight,
   type GraphSlot,
@@ -150,7 +150,7 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
           activity: nodeActivity(pane, events),
           log: nodeLog(events),
           lanes,
-          w: slotWidth(lanes.length),
+          w: GRAPH_SLOT_W,
         };
       }),
     [panes, codingEvents, botEvents, codingBusy, tasks],
@@ -598,28 +598,36 @@ function GraphNode({
             <More count={node.log.length - GRAPH_LIST_MAX} />
           </ul>
         </section>
-        {node.lanes.map((lane) => (
-          <section key={lane.lane} className={`graph-col graph-lane is-${lane.lane}`}>
-            <p className="graph-col-label">
-              {lane.label} <Count value={lane.tasks.length + lane.more} />
-            </p>
-            <ul className="graph-list">
-              {lane.tasks.map((task) => (
-                <li key={task.id} className="graph-task" title={task.title}>
-                  <span className="graph-task-dot" aria-hidden="true" />
-                  <span className="graph-task-body">
-                    <span className="graph-task-title">{task.title}</span>
-                    <span className="graph-task-meta">
-                      {task.requesterHandle !== task.ownerHandle ? `@${task.requesterHandle} 요청 · ` : ""}
-                      {timeAgo(task.updatedAt)}
-                    </span>
-                  </span>
-                </li>
-              ))}
-              <More count={lane.more} />
-            </ul>
-          </section>
-        ))}
+        <section className="graph-col">
+          <p className="graph-col-label">
+            작업 <Count value={node.lanes.reduce((sum, lane) => sum + lane.tasks.length + lane.more, 0)} />
+          </p>
+          {node.lanes.length === 0 ? <p className="graph-none">아직 없음</p> : null}
+          <ul className="graph-list">
+            {node.lanes.map((lane) => (
+              <li key={lane.lane} className={`graph-lane is-${lane.lane}`}>
+                <p className="graph-lane-label">
+                  {lane.label} <Count value={lane.tasks.length + lane.more} />
+                </p>
+                <ul className="graph-lane-tasks">
+                  {lane.tasks.map((task) => (
+                    <li key={task.id} className="graph-task" title={task.title}>
+                      <span className="graph-task-dot" aria-hidden="true" />
+                      <span className="graph-task-body">
+                        <span className="graph-task-title">{task.title}</span>
+                        <span className="graph-task-meta">
+                          {task.requesterHandle !== task.ownerHandle ? `@${task.requesterHandle} 요청 · ` : ""}
+                          {timeAgo(task.updatedAt)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                  <More count={lane.more} />
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </article>
   );

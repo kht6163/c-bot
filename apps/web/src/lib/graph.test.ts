@@ -20,7 +20,6 @@ import {
   nodeLog,
   nodeTaskLanes,
   slotAnchor,
-  slotWidth,
   stripAttribution,
 } from "./graph.ts";
 import type { TeamPane } from "./team.ts";
@@ -157,11 +156,11 @@ describe("graphLayout", () => {
   test("centres the lead over rows of specialists and sizes the board to fit", () => {
     const layout = graphLayout(
       [
-        { key: "lead", w: slotWidth(0) },
-        { key: "a", w: slotWidth(1) },
-        { key: "b", w: slotWidth(0) },
-        { key: "c", w: slotWidth(0) },
-        { key: "d", w: slotWidth(2) },
+        { key: "lead", w: 352 },
+        { key: "a", w: 532 },
+        { key: "b", w: 352 },
+        { key: "c", w: 352 },
+        { key: "d", w: 712 },
       ],
       Number.POSITIVE_INFINITY,
     );
@@ -180,7 +179,7 @@ describe("graphLayout", () => {
   });
 
   test("closes a row before it grows past the width cap", () => {
-    const wide = slotWidth(1);
+    const wide = 532;
     const layout = graphLayout(
       [
         { key: "lead", w: wide },

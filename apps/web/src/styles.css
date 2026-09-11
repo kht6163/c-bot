@@ -3594,6 +3594,36 @@ select.field-input {
   border-radius: 50%;
 }
 
+/* The 작업 column stacks its lanes, so every slot keeps the same width. */
+.graph-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.graph-lane + .graph-lane {
+  margin-top: 6px;
+}
+
+.graph-lane-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.graph-lane-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .graph-lane.is-in_progress .graph-task-dot {
   border-color: var(--accent);
   background: var(--accent);

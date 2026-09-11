@@ -12,6 +12,12 @@ import { toolHeadline } from "./tool-row.ts";
 
 export const GRAPH_COL_W = 172;
 export const GRAPH_COL_GAP = 8;
+/**
+ * Every slot is the same three columns wide (활동, 로그, 작업), whatever it
+ * holds: a slot that grew when its first job landed would shove its row
+ * sideways or run into a neighbour the user placed by hand.
+ */
+export const GRAPH_SLOT_W = 3 * GRAPH_COL_W + 2 * GRAPH_COL_GAP;
 export const GRAPH_SLOT_H = 292;
 export const GRAPH_SLOT_GAP = 40;
 export const GRAPH_ROW_GAP = 88;
@@ -228,17 +234,10 @@ export function nodeTaskLanes(
   });
 }
 
-/** Activity and log always show; a task lane only when it holds something. */
-export function slotWidth(taskLanes: number): number {
-  const cols = 2 + taskLanes;
-  return cols * GRAPH_COL_W + (cols - 1) * GRAPH_COL_GAP;
-}
-
 /**
  * The lead sits alone at the top; specialists fill rows beneath it, each row
- * centred. Slots keep their own width so a bot with three task lanes gets the
- * room without pushing the others out of line; a row closes when the next
- * slot would push it past `maxRowWidth` or the per-row cap.
+ * centred. A row closes when the next slot would push it past `maxRowWidth`
+ * or the per-row cap.
  */
 export function graphLayout(
   slots: readonly { key: string; w: number }[],
