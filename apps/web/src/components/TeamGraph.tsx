@@ -74,6 +74,8 @@ const TRAIL_STEP = 0.022;
 const HANDOFF_OFFSET_X = 58;
 /** Screen pixels the pointer must travel before a press on a node becomes a drag. */
 const DRAG_SLOP = 4;
+/** The zoom tools float over this much of the board's lower edge. */
+const TOOLS_CLEARANCE = 56;
 
 type Zoom = number | "fit";
 
@@ -181,6 +183,26 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedPane]);
+
+  // Under a narrow board the panel opens below it and takes its lower part,
+  // which can hide the node just picked: bring it back to the middle.
+  useEffect(() => {
+    const board = boardRef.current;
+    const node = board?.querySelector<HTMLElement>(".graph-slot.is-selected .graph-node");
+    if (!board || !node) {
+      return;
+    }
+    const seen = board.getBoundingClientRect();
+    const at = node.getBoundingClientRect();
+    const hidden =
+      at.top < seen.top ||
+      at.bottom > seen.bottom - TOOLS_CLEARANCE ||
+      at.left < seen.left ||
+      at.right > seen.right;
+    if (hidden) {
+      node.scrollIntoView({ block: "center", inline: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    }
+  }, [selected]);
 
   const nodes = useMemo(
     () =>

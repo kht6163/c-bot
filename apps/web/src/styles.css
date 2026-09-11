@@ -3598,6 +3598,7 @@ select.field-input {
 }
 
 .team-stage {
+  container: stage / inline-size;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -4652,21 +4653,24 @@ select.field-input {
   color: var(--quiet);
 }
 
-@media (max-width: 760px) {
-  .graph-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 4;
-    width: min(100%, 420px);
-    background: var(--overlay);
-    backdrop-filter: blur(28px);
-    box-shadow: var(--lift);
+/* Beside a narrow board the panel leaves no graph to see, and the stage reads
+   as one conversation. There it takes the lower part instead, and the board
+   stays in sight above it. The stage's own width decides, not the window's:
+   a docked rail and inspector narrow it just as a phone does. */
+@container stage (max-width: 700px) {
+  .graph-view {
+    flex-direction: column;
   }
 
-  .graph-view {
-    position: relative;
+  .graph-main {
+    min-height: 0;
+  }
+
+  .graph-panel {
+    flex: 0 0 56%;
+    width: auto;
+    border-top: 1px solid var(--edge-soft);
+    border-left: 0;
   }
 }
 
