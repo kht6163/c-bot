@@ -249,4 +249,20 @@ describe("visibleRows", () => {
     const rows = visibleRows(events);
     expect(rows.some((row) => row.kind === "status" && row.text === "생각 중")).toBe(true);
   });
+
+  test("a user message keeps its attached pictures for the bubble", () => {
+    const rows = visibleRows([
+      {
+        ...envelope(1),
+        type: "user/message",
+        text: "봐줘",
+        mentions: [],
+        images: [{ path: "a.png", mime: "image/png", data: "AAAA", width: 1, height: 1 }],
+      },
+      { ...envelope(2), type: "user/message", text: "글만", mentions: [] },
+    ]);
+    expect(rows[0]).toMatchObject({ kind: "user", images: [{ path: "a.png" }] });
+    expect(rows[1]).toMatchObject({ kind: "user" });
+    expect("images" in (rows[1] ?? {})).toBe(false);
+  });
 });

@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { asOptionalBoolean, asOptionalString, asString, type ToolDefinition } from "./types.ts";
 import { resolveWorkspacePath } from "./path.ts";
+import { imageMime } from "../workspace-inspect.ts";
 
 const READ_CAP = 512 * 1024;
 
@@ -22,9 +23,17 @@ export const readFileTool: ToolDefinition = {
   async execute(args, ctx) {
     const rel = asString(args, "path");
     const abs = resolveWorkspacePath(ctx.workspace, rel);
+    if (imageMime(rel)) {
+      throw new Error(
+        `${rel} is an image. read_file only reads UTF-8 text; ask the user to attach it with @${rel} so you receive the picture itself.`,
+      );
+    }
     const buf = await readFile(abs);
     if (buf.byteLength > READ_CAP) {
       throw new Error(`file larger than ${READ_CAP} bytes`);
+    }
+    if (buf.includes(0)) {
+      throw new Error(`${rel} is a binary file. read_file only reads UTF-8 text.`);
     }
     let text = buf.toString("utf8");
     const offset = typeof args.offset === "number" ? args.offset : undefined;

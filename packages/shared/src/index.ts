@@ -56,6 +56,7 @@ export {
   type IsoTime,
   type LoggedToolCall,
   type AttachedFile,
+  type AttachedImage,
   type Mention,
   type MemoryRecallEvent,
   type RecalledMemory,

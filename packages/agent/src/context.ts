@@ -1,8 +1,10 @@
 import type { SessionEvent } from "@cbot/shared";
-import type { ChatMessage } from "./session/derive.ts";
+import { contentText, imagePartCount, type ChatMessage } from "./session/derive.ts";
 
 /** Per-message wire overhead (role, separators) the provider counts too. */
 const MESSAGE_OVERHEAD = 4;
+/** What a picture under the edge limit costs on the providers we know; a guess like the rest. */
+const IMAGE_TOKENS = 1500;
 
 /**
  * Rough token count. No tokenizer is shipped, so this is deliberately an
@@ -27,7 +29,8 @@ export function estimateTokens(text: string): number {
 export function historyTokens(messages: readonly ChatMessage[]): number {
   let total = 0;
   for (const message of messages) {
-    total += MESSAGE_OVERHEAD + estimateTokens(message.content);
+    total += MESSAGE_OVERHEAD + estimateTokens(contentText(message.content));
+    total += IMAGE_TOKENS * imagePartCount(message.content);
     for (const call of message.toolCalls ?? []) {
       total += estimateTokens(call.name) + estimateTokens(call.arguments);
     }

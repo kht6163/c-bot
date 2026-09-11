@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+  contentText,
   loadConfig,
   saveConfig,
   saveProviderKey,
@@ -35,6 +36,12 @@ class HangingLlm implements LlmClient {
     throw new Error("aborted");
   }
 }
+
+/** A valid 1×1 PNG, so a picture test needs no image library of its own. */
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 async function seedProvider(home: string): Promise<void> {
   const config = await loadConfig(home);
@@ -442,7 +449,7 @@ class HopLlm implements LlmClient {
     const lastUser = [...request.messages].reverse().find((message) => message.role === "user");
     const hasToolResult = request.messages.some((message) => message.role === "tool");
     if (lead) {
-      if (lastUser?.content.includes("(@researcher)")) {
+      if (contentText(lastUser?.content ?? "").includes("(@researcher)")) {
         yield { type: "text", text: "Researcher reported back." };
         yield { type: "done", finishReason: "stop" };
         return;
@@ -794,6 +801,44 @@ describe("bot hop API", () => {
     expect(ack?.content).toContain("deliveryId");
     expect(ack?.content).not.toContain("테스트 파일입니다.");
 
+    runtime.store.close();
+  });
+
+  test("a mentioned picture lands on the user/message as an attached image", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-imgmsg-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-imgmsg-ws-"));
+    await Bun.write(join(workspace, "shot.png"), ONE_PIXEL_PNG);
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const sent = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "@shot.png 이게 뭐야" }),
+      }),
+      opts,
+    );
+    expect(sent.status).toBe(202);
+    const detail = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}`), opts);
+    const { events } = (await detail.json()) as {
+      events: { type: string; images?: { path: string; mime: string; width: number; height: number }[] }[];
+    };
+    const message = events.find((event) => event.type === "user/message");
+    expect(message?.images).toEqual([
+      expect.objectContaining({ path: "shot.png", mime: "image/png", width: 1, height: 1 }),
+    ]);
+    await waitForTurnEnd(async () => {
+      const res = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${session.id}`), opts);
+      return (await res.json()) as { events: { type: string }[] };
+    });
     runtime.store.close();
   });
 

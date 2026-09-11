@@ -1,11 +1,17 @@
-import { assertNever, type AttachedFile, type SessionEvent } from "@cbot/shared";
+import { assertNever, type AttachedFile, type AttachedImage, type SessionEvent } from "@cbot/shared";
 
 const ABORTED_TURN = "[사용자가 위 턴을 중단했습니다.]";
 const SUMMARY_HEAD = "이전 대화 요약 (원문은 세션 로그에 남아 있다):";
 
+/** One piece of a multimodal user message, in Chat Completions wire shape. */
+export type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string;
+  /** Parts only when a user message carries pictures; text otherwise. */
+  content: string | readonly ContentPart[];
   toolCallId?: string;
   toolCalls?: readonly {
     id: string;
@@ -31,7 +37,7 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
     }
     switch (event.type) {
       case "user/message":
-        messages.push({ role: "user", content: userContent(event.text, event.files) });
+        messages.push({ role: "user", content: userContent(event.text, event.files, event.images) });
         break;
       case "bot/message":
         messages.push({ role: "user", content: event.text });
@@ -113,12 +119,41 @@ function formatRecalledMemory(items: readonly { title: string; body: string }[])
   return `Recalled memory:\n${lines.join("\n")}`;
 }
 
-function userContent(text: string, files: readonly AttachedFile[] | undefined): string {
-  if (!files || files.length === 0) {
-    return text;
+function userContent(
+  text: string,
+  files: readonly AttachedFile[] | undefined,
+  images: readonly AttachedImage[] | undefined,
+): string | ContentPart[] {
+  let body = text;
+  if (files && files.length > 0) {
+    const attached = files
+      .map((file) => `Referenced file \`${file.path}\`:\n\`\`\`\n${file.content}\n\`\`\``)
+      .join("\n\n");
+    body = `${body}\n\n${attached}`;
   }
-  const attached = files
-    .map((file) => `Referenced file \`${file.path}\`:\n\`\`\`\n${file.content}\n\`\`\``)
-    .join("\n\n");
-  return `${text}\n\n${attached}`;
+  if (!images || images.length === 0) {
+    return body;
+  }
+  const names = images.map((image) => `\`${image.path}\``).join(", ");
+  return [
+    { type: "text", text: `${body}\n\nAttached image${images.length > 1 ? "s" : ""}: ${names}` },
+    ...images.map(
+      (image): ContentPart => ({
+        type: "image_url",
+        image_url: { url: `data:${image.mime};base64,${image.data}` },
+      }),
+    ),
+  ];
+}
+
+/** The text of a message as a tokenizer would see it; image parts count as nothing here. */
+export function contentText(content: ChatMessage["content"]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+}
+
+export function imagePartCount(content: ChatMessage["content"]): number {
+  return typeof content === "string" ? 0 : content.filter((part) => part.type === "image_url").length;
 }

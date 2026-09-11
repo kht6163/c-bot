@@ -14,6 +14,7 @@ import {
   saveConfig,
   saveProviderKey,
   loadMentionedFiles,
+  loadMentionedImages,
   runTurn,
   wokenByBot,
   sessionNeedsTurn,
@@ -142,15 +143,15 @@ export async function acceptUserMessage(
     return bot ? [{ handle: bot.handle, botId: bot.id }] : [];
   });
   const skip = new Set(mentions.map((item) => item.handle));
-  const files =
-    session.workspace && session.kind === "coding"
-      ? await loadMentionedFiles(session.workspace, tokens, skip)
-      : [];
+  const attachable = session.workspace && session.kind === "coding" ? session.workspace : null;
+  const files = attachable ? await loadMentionedFiles(attachable, tokens, skip) : [];
+  const images = attachable ? await loadMentionedImages(attachable, tokens, skip) : [];
   runtime.store.append(sessionId, {
     type: "user/message",
     text: trimmed,
     mentions,
     ...(files.length > 0 ? { files } : {}),
+    ...(images.length > 0 ? { images } : {}),
   });
   if (session.title === "새 세션") {
     runtime.store.setTitle(sessionId, titleFromText(trimmed));

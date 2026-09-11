@@ -100,7 +100,21 @@ export function SessionLog({ rows, empty, compact = false, sessionId, onApprove 
               <article key={row.key} className={`bubble ${row.kind}${row.live ? " live" : ""}`}>
                 {row.kind === "peer" ? <span className="who">@{row.handle}</span> : null}
                 {row.kind === "user" ? (
-                  <pre>{row.text}</pre>
+                  <>
+                    <pre>{row.text}</pre>
+                    {row.images ? (
+                      <div className="bubble-images">
+                        {row.images.map((image) => (
+                          <img
+                            key={image.path}
+                            src={`data:${image.mime};base64,${image.data}`}
+                            alt={image.path}
+                            title={`${image.path} · ${image.width}×${image.height}`}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <MarkdownView text={row.text} live={row.live} />
                 )}

@@ -1,7 +1,7 @@
-import type { SessionEvent, ToolCallId, ToolUiKind } from "@cbot/shared";
+import type { AttachedImage, SessionEvent, ToolCallId, ToolUiKind } from "@cbot/shared";
 
 export type ChatRow =
-  | { key: string; kind: "user"; text: string; live: false }
+  | { key: string; kind: "user"; text: string; live: false; images?: readonly AttachedImage[] }
   | { key: string; kind: "assistant"; text: string; live: boolean }
   | { key: string; kind: "peer"; text: string; live: false; handle: string }
   | {
@@ -66,7 +66,13 @@ export function visibleRows(events: readonly SessionEvent[]): ChatRow[] {
 
   for (const event of events) {
     if (event.type === "user/message") {
-      rows.push({ key: `u-${event.seq}`, kind: "user", text: event.text, live: false });
+      rows.push({
+        key: `u-${event.seq}`,
+        kind: "user",
+        text: event.text,
+        live: false,
+        ...(event.images && event.images.length > 0 ? { images: event.images } : {}),
+      });
     } else if (event.type === "bot/message") {
       rows.push({
         key: `p-${event.seq}`,

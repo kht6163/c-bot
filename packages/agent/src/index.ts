@@ -52,7 +52,7 @@ export {
   type CompactResult,
 } from "./compact.ts";
 export { compactBoundary, contextStart, estimateTokens, historyTokens } from "./context.ts";
-export { deriveMessages, type ChatMessage } from "./session/derive.ts";
+export { contentText, deriveMessages, type ChatMessage, type ContentPart } from "./session/derive.ts";
 export {
   LlmError,
   OpenAiCompatClient,
@@ -83,6 +83,13 @@ export { CODING_TOOLS, codingToolSchemas, findTool } from "./tools/registry.ts";
 export { schemaOf, type ToolContext, type ToolDefinition, type ToolSchema } from "./tools/types.ts";
 export { isInsideWorkspace, resolveWorkspacePath } from "./tools/path.ts";
 export { loadMentionedFiles, searchWorkspaceFiles } from "./workspace-files.ts";
+export {
+  IMAGE_EDGE_LIMIT,
+  attachableImageMime,
+  encodeImageForModel,
+  loadMentionedImages,
+  type EncodedImage,
+} from "./images.ts";
 export {
   gitCommit,
   gitStatus,

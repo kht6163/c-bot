@@ -25,6 +25,17 @@ export interface AttachedFile {
   content: string;
 }
 
+/** An image the model saw as a picture. `data` is what was sent, already shrunk to fit. */
+export interface AttachedImage {
+  path: string;
+  /** MIME of `data`; differs from the file when it was re-encoded to fit. */
+  mime: string;
+  /** base64 of the bytes the model saw. */
+  data: string;
+  width: number;
+  height: number;
+}
+
 export interface LoggedToolCall {
   id: ToolCallId;
   name: string;
@@ -49,6 +60,7 @@ export interface UserMessageEvent extends EventEnvelope {
   text: string;
   mentions: readonly Mention[];
   files?: readonly AttachedFile[];
+  images?: readonly AttachedImage[];
 }
 
 export interface AssistantChunkEvent extends EventEnvelope {

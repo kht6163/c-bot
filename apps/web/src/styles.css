@@ -1022,6 +1022,21 @@ button {
   color: var(--muted);
 }
 
+.bubble-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.bubble-images img {
+  max-width: 220px;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--edge);
+}
+
 .bubble pre {
   margin: 0;
   white-space: pre-wrap;
