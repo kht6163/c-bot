@@ -8,9 +8,13 @@ import {
   GRAPH_SLOT_H,
   USER_LABEL,
   avatarText,
+  curvePoint,
+  edgeCurve,
   edgePath,
+  flightProgress,
   freshFlights,
   graphLayout,
+  handoffCards,
   messageFlights,
   nodeActivity,
   nodeLog,
@@ -208,6 +212,24 @@ describe("graphLayout", () => {
     expect(edgePath(from, to, 1)).toContain("C 50");
     expect(edgePath(from, { x: 600, y: 400 }, 0)).toContain(`C ${from.x}`);
   });
+
+  test("a spark rides the same curve the edge draws, from end to end", () => {
+    const curve = edgeCurve({ x: 0, y: 0 }, { x: 300, y: 400 });
+    expect(curvePoint(curve, 0)).toEqual({ x: 0, y: 0 });
+    expect(curvePoint(curve, 1)).toEqual({ x: 300, y: 400 });
+    expect(curvePoint(curve, -1)).toEqual({ x: 0, y: 0 });
+    const mid = curvePoint(curve, 0.5);
+    expect(mid.x).toBeCloseTo(150, 5);
+    expect(mid.y).toBeCloseTo(200, 5);
+  });
+
+  test("flight progress eases from 0 to 1 and holds at the ends", () => {
+    expect(flightProgress(-50, 1000)).toBe(0);
+    expect(flightProgress(500, 1000)).toBeCloseTo(0.5, 5);
+    expect(flightProgress(100, 1000)).toBeLessThan(0.1);
+    expect(flightProgress(1000, 1000)).toBe(1);
+    expect(flightProgress(5000, 1000)).toBe(1);
+  });
 });
 
 describe("messageFlights", () => {
@@ -223,6 +245,42 @@ describe("messageFlights", () => {
       ["dlv_ask", "lead", "bot_dev"],
       ["dlv_peer", "bot_dev", "bot_qa"],
     ]);
+    expect(flights[0]?.label).toBe("please review");
+    expect(flights[0]?.preview).toBe("please review");
+  });
+
+  test("a job handed to a teammate flies to its owner, and flies back once it is done", () => {
+    const change = (
+      seq: number,
+      action: "add" | "update",
+      status: "pending" | "in_progress" | "completed",
+      ownerHandle = "dev",
+      requesterHandle = "leader",
+    ): SessionEvent => ({
+      ...at(seq),
+      type: "task/change",
+      action,
+      taskId: "tsk_1",
+      title: "write tests",
+      status,
+      ownerHandle,
+      requesterHandle,
+    });
+    const flights = messageFlights(
+      [lead, dev],
+      [
+        change(1, "add", "pending"),
+        change(2, "update", "in_progress"),
+        change(3, "update", "completed"),
+        change(4, "update", "completed"),
+        change(5, "add", "pending", "leader"),
+      ],
+      {},
+    );
+    expect(flights.map((flight) => [flight.kind, flight.from, flight.to, flight.label])).toEqual([
+      ["task", "lead", "bot_dev", "작업 · write tests"],
+      ["task", "bot_dev", "lead", "완료 · write tests"],
+    ]);
   });
 
   test("only unseen, recent deliveries fly", () => {
@@ -237,6 +295,17 @@ describe("messageFlights", () => {
     expect(freshFlights(flights, new Set(["dlv_seen"]), now).map((flight) => flight.id)).toEqual([
       "dlv_new",
     ]);
+  });
+});
+
+describe("handoffCards", () => {
+  test("keeps only the newest card for each receiver", () => {
+    const cards = handoffCards([
+      { id: "a", to: "bot_dev", start: 10 },
+      { id: "b", to: "bot_dev", start: 30 },
+      { id: "c", to: "lead", start: 20 },
+    ]);
+    expect(cards.map((card) => card.id).sort()).toEqual(["b", "c"]);
   });
 });
 

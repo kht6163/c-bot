@@ -25,7 +25,12 @@ export const GRAPH_ANCHOR_Y = 30;
 export const GRAPH_LIST_MAX = 60;
 /** A delivery older than this when first seen is history, not something to animate. */
 export const FLIGHT_FRESH_MS = 15_000;
-export const FLIGHT_MS = 1_600;
+export const FLIGHT_MS = 2_400;
+export const FLIGHT_LABEL_MAX = 44;
+export const FLIGHT_PREVIEW_MAX = 180;
+/** The message card shows up when the spark is this far along, and lingers after. */
+export const HANDOFF_AT = 0.58;
+export const HANDOFF_MS = 3_200;
 
 export interface GraphActivityItem {
   key: string;
@@ -70,10 +75,22 @@ export interface GraphPoint {
   y: number;
 }
 
+export interface GraphCurve {
+  from: GraphPoint;
+  c1: GraphPoint;
+  c2: GraphPoint;
+  to: GraphPoint;
+}
+
 export interface GraphFlight {
   id: string;
+  kind: "message" | "task";
   from: string;
   to: string;
+  /** Rides the spark along the edge. */
+  label: string;
+  /** Fills the card that pops up beside the receiver. */
+  preview: string;
   time: string;
 }
 
@@ -270,14 +287,45 @@ export function slotAnchor(slot: GraphSlot): GraphPoint {
  * from above. A near-vertical edge would run straight through the lead's own
  * columns, so it bows sideways instead.
  */
-export function edgePath(from: GraphPoint, to: GraphPoint, index = 0): string {
+export function edgeCurve(from: GraphPoint, to: GraphPoint, index = 0): GraphCurve {
   const dy = to.y - from.y;
   const lift = Math.max(48, Math.abs(dy) * 0.5);
   const bow = Math.abs(to.x - from.x) < 48 ? (index % 2 === 0 ? 150 : -150) : 0;
   const sign = dy >= 0 ? 1 : -1;
-  const cp1 = { x: from.x + bow, y: from.y + lift * sign };
-  const cp2 = { x: to.x + bow, y: to.y - lift * sign };
-  return `M ${round(from.x)} ${round(from.y)} C ${round(cp1.x)} ${round(cp1.y)}, ${round(cp2.x)} ${round(cp2.y)}, ${round(to.x)} ${round(to.y)}`;
+  return {
+    from,
+    c1: { x: from.x + bow, y: from.y + lift * sign },
+    c2: { x: to.x + bow, y: to.y - lift * sign },
+    to,
+  };
+}
+
+export function curvePath({ from, c1, c2, to }: GraphCurve): string {
+  return `M ${round(from.x)} ${round(from.y)} C ${round(c1.x)} ${round(c1.y)}, ${round(c2.x)} ${round(c2.y)}, ${round(to.x)} ${round(to.y)}`;
+}
+
+export function edgePath(from: GraphPoint, to: GraphPoint, index = 0): string {
+  return curvePath(edgeCurve(from, to, index));
+}
+
+/** Where a spark is at `t` (0 at `from`, 1 at `to`), clamped to the curve. */
+export function curvePoint({ from, c1, c2, to }: GraphCurve, t: number): GraphPoint {
+  const u = Math.min(1, Math.max(0, t));
+  const v = 1 - u;
+  const a = v * v * v;
+  const b = 3 * v * v * u;
+  const c = 3 * v * u * u;
+  const d = u * u * u;
+  return {
+    x: a * from.x + b * c1.x + c * c2.x + d * to.x,
+    y: a * from.y + b * c1.y + c * c2.y + d * to.y,
+  };
+}
+
+/** Eases in and out, so a spark leaves and lands instead of sliding at one speed. */
+export function flightProgress(elapsed: number, duration = FLIGHT_MS): number {
+  const t = Math.min(1, Math.max(0, elapsed / duration));
+  return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
 function round(value: number): number {
@@ -285,8 +333,10 @@ function round(value: number): number {
 }
 
 /**
- * Every delivery the open logs know about, as an arrow between two nodes. The
- * receiver is whoever owns the log; the sender is named in the event. A sender
+ * Every hand-off the open logs know about, as an arrow between two nodes.
+ * Deliveries: the receiver is whoever owns the log, the sender is named in the
+ * event. Board changes (always in the coding session's log): a job handed to
+ * someone else flies requester to owner, and finishing it flies back. An end
  * that is not on this session's team (a hidden bot, say) is dropped, since it
  * has no node to fly from.
  */
@@ -307,10 +357,62 @@ export function messageFlights(
       if (!from || from === pane.key) {
         continue;
       }
-      flights.push({ id: event.deliveryId, from, to: pane.key, time: event.time });
+      const text = stripAttribution(event.text);
+      flights.push({
+        id: event.deliveryId,
+        kind: "message",
+        from,
+        to: pane.key,
+        label: oneLine(text, FLIGHT_LABEL_MAX),
+        preview: oneLine(text, FLIGHT_PREVIEW_MAX),
+        time: event.time,
+      });
     }
   }
+  const status = new Map<string, string>();
+  for (const event of codingEvents) {
+    if (event.type !== "task/change") {
+      continue;
+    }
+    const was = status.get(event.taskId);
+    status.set(event.taskId, event.status);
+    const owner = byHandle.get(event.ownerHandle);
+    const requester = byHandle.get(event.requesterHandle);
+    if (!owner || !requester || owner === requester) {
+      continue;
+    }
+    const handed = event.action === "add";
+    const finished = event.action === "update" && event.status === "completed" && was !== "completed";
+    if (!handed && !finished) {
+      continue;
+    }
+    const said = `${handed ? "작업" : "완료"} · ${event.title}`;
+    flights.push({
+      id: `task-${event.seq}`,
+      kind: "task",
+      from: handed ? requester : owner,
+      to: handed ? owner : requester,
+      label: oneLine(said, FLIGHT_LABEL_MAX),
+      preview: oneLine(said, FLIGHT_PREVIEW_MAX),
+      time: event.time,
+    });
+  }
   return flights;
+}
+
+/**
+ * The newest card per receiver: a node shows one message at a time, so a
+ * later hand-off to the same bot replaces the card instead of stacking it.
+ */
+export function handoffCards<T extends { to: string; start: number }>(flying: readonly T[]): T[] {
+  const latest = new Map<string, T>();
+  for (const flight of flying) {
+    const held = latest.get(flight.to);
+    if (!held || flight.start >= held.start) {
+      latest.set(flight.to, flight);
+    }
+  }
+  return [...latest.values()];
 }
 
 /**
