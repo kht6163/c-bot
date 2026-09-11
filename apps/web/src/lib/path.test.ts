@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { folderName, projectPaths, projectTree, timeAgo } from "./path.ts";
+import { folderName, homePath, projectPaths, projectTree, timeAgo } from "./path.ts";
 
 describe("folderName", () => {
   test("takes the last path segment", () => {
     expect(folderName("/Users/me/project/c-bot")).toBe("c-bot");
     expect(folderName("C:\\Users\\me\\demo")).toBe("demo");
+  });
+});
+
+describe("homePath", () => {
+  test("shows the home folder as ~ and leaves other paths alone", () => {
+    expect(homePath("/Users/me/project/c-bot")).toBe("~/project/c-bot");
+    expect(homePath("/home/me")).toBe("~");
+    expect(homePath("/opt/Users/me/x")).toBe("/opt/Users/me/x");
   });
 });
 

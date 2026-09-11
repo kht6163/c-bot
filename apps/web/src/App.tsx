@@ -10,6 +10,7 @@ import {
   type SessionTeamMember,
 } from "@cbot/shared";
 import { Composer } from "./components/Composer.tsx";
+import { NewSessionDialog } from "./components/NewSessionDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { TeamPanel } from "./components/TeamPanel.tsx";
@@ -33,6 +34,7 @@ import {
   openEvents,
   openProject,
   pickNativeFolder,
+  renameSession,
   sendApproval,
   sendMessage,
   type BotView,
@@ -74,6 +76,8 @@ export function App() {
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   /** The bot the team panel opens on, NEW_BOT to make one, or undefined while it is closed. */
   const [teamTarget, setTeamTarget] = useState<string | undefined>();
+  /** The project folder the new-session dialog makes a session in, while it is open. */
+  const [newSessionIn, setNewSessionIn] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
@@ -482,7 +486,8 @@ export function App() {
     handleSend(next.text);
   }, [busy, selectedId, queues, handleSend]);
 
-  const overlayOpen = settingsOpen || workspaceOpen || teamTarget !== undefined;
+  const overlayOpen =
+    settingsOpen || workspaceOpen || teamTarget !== undefined || newSessionIn !== undefined;
 
   return (
     <>
@@ -505,16 +510,16 @@ export function App() {
         onSelectProject={(path) => {
           void switchProject(path);
         }}
-        onNewSession={(path) => {
-          void (async () => {
-            const session = await createSession(path);
-            setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
-            setProject(await fetchProject());
-            await openSession(session.id);
-          })();
-        }}
+        onNewSession={(path) => setNewSessionIn(path)}
         onOpenSession={(id) => {
           void openSession(id);
+        }}
+        onRenameSession={async (id, title) => {
+          const renamed = await renameSession(id, title);
+          setSessions((current) => current.map((item) => (item.id === id ? renamed : item)));
+          if (selectedRef.current === id) {
+            setSelected(renamed);
+          }
         }}
         onDeleteSession={(session) => {
           void (async () => {
@@ -722,6 +727,20 @@ export function App() {
           });
         }}
       />
+      {newSessionIn !== undefined ? (
+        <NewSessionDialog
+          project={newSessionIn}
+          onClose={() => setNewSessionIn(undefined)}
+          onCreated={(session) => {
+            setNewSessionIn(undefined);
+            setSessions((current) => [session, ...current.filter((s) => s.id !== session.id)]);
+            void (async () => {
+              setProject(await fetchProject());
+              await openSession(session.id);
+            })();
+          }}
+        />
+      ) : null}
       {teamTarget !== undefined ? (
         <TeamPanel
           target={teamTarget}

@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
 import {
   SESSION_FORMAT_VERSION,
+  UNTITLED_SESSION,
   asBotId,
   asSessionId,
   asToolCallId,
@@ -202,7 +203,7 @@ export class SessionStore {
     const now = new Date().toISOString();
     const summary: SessionSummary = {
       id: newSessionId(),
-      title: input.title?.trim() || "새 세션",
+      title: input.title?.trim() || UNTITLED_SESSION,
       kind: input.kind ?? "coding",
       botId: input.botId ?? null,
       parentId: input.parentId ?? null,
@@ -274,11 +275,9 @@ export class SessionStore {
       });
   }
 
+  /** A name is not activity: the session keeps its place in the list. */
   setTitle(id: SessionId, title: string): void {
-    const now = new Date().toISOString();
-    this.db
-      .query("UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?")
-      .run(title, now, id);
+    this.db.query("UPDATE sessions SET title = ? WHERE id = ?").run(title, id);
   }
 
   setWorkspace(id: SessionId, workspace: string | null): void {

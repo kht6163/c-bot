@@ -250,15 +250,12 @@ button {
   align-items: center;
 }
 
-.tree-parent .add-btn,
-.session-row .row-delete {
+.tree-parent .add-btn {
   opacity: 0;
 }
 
 .tree-parent:hover .add-btn,
-.tree-parent:focus-within .add-btn,
-.session-row:hover .row-delete,
-.session-row:focus-within .row-delete {
+.tree-parent:focus-within .add-btn {
   opacity: 1;
 }
 
@@ -266,6 +263,45 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+/* A session row trades its time for its actions while pointed at or tabbed into. */
+.session-actions {
+  display: none;
+}
+
+.session-row:hover .session-actions,
+.session-row:has(:focus-visible) .session-actions {
+  display: flex;
+}
+
+.session-row:hover .row-meta,
+.session-row:has(:focus-visible) .row-meta {
+  display: none;
+}
+
+.row-edit {
+  display: inline-grid;
+  place-items: center;
+}
+
+.row-rename {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in oklab, var(--accent) 52%, transparent);
+  border-radius: 9px;
+  outline: none;
+  background: var(--raised);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 12%, transparent);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.row-rename[aria-invalid="true"] {
+  border-color: color-mix(in oklab, var(--danger) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 14%, transparent);
 }
 
 .row-delete:hover {
@@ -1332,6 +1368,60 @@ button {
   background: var(--send);
   color: #08101e;
   font-weight: 600;
+}
+
+.modal-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ns-dialog {
+  width: min(460px, calc(100vw - 32px));
+  gap: 16px;
+  padding: 20px 20px 16px;
+}
+
+.ns-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.modal .ns-head h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 17px;
+}
+
+.ns-project {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ns-project-name {
+  flex: none;
+  font-weight: 500;
+}
+
+.ns-project-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--quiet);
+}
+
+.ns-dialog input {
+  height: 36px;
+  font-size: 13px;
 }
 
 .hint {

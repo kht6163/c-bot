@@ -31,7 +31,12 @@ import {
   type LlmProvider,
 } from "@cbot/agent";
 import type { ProjectView, SessionId, SessionListResponse, SessionTeamMember } from "@cbot/shared";
-import { isBotToolName, parseSlashCommand } from "@cbot/shared";
+import {
+  SESSION_TITLE_MAX,
+  isBotToolName,
+  normalizeSessionTitle,
+  parseSlashCommand,
+} from "@cbot/shared";
 import { runningCodingSessions } from "./activity.ts";
 import { runSlashCommand } from "./commands.ts";
 import {
@@ -255,7 +260,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
     }
     if (url.pathname === "/api/sessions" && req.method === "POST") {
       const body = await readJson(req);
-      const title = isRecord(body) && typeof body.title === "string" ? body.title : undefined;
+      const title = isRecord(body) ? sessionTitle(body.title) : undefined;
       const requested =
         isRecord(body) && typeof body.workspace === "string" && body.workspace.trim().length > 0
           ? resolve(body.workspace.trim())
@@ -277,7 +282,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         workspace = config.project.current;
       }
       const session = runtime.store.create({
-        ...(title !== undefined ? { title } : {}),
+        ...(title ? { title } : {}),
         workspace,
       });
       return Response.json({ session }, { status: 201 });
@@ -448,15 +453,36 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         throw new HttpError(404, "unknown session");
       }
       const body = await readJson(req);
-      if (!isRecord(body) || typeof body.workspace !== "string" || body.workspace.trim().length === 0) {
-        throw new HttpError(400, "workspace required");
+      if (!isRecord(body) || (body.title === undefined && body.workspace === undefined)) {
+        throw new HttpError(400, "title or workspace required");
       }
-      const workspace = resolve(body.workspace.trim());
-      const info = await stat(workspace).catch(() => null);
-      if (!info?.isDirectory()) {
-        throw new HttpError(400, "workspace is not a directory");
+      let title: string | undefined;
+      if (body.title !== undefined) {
+        if (session.kind !== "coding") {
+          throw new HttpError(400, "only coding sessions can be renamed");
+        }
+        title = sessionTitle(body.title);
+        if (!title) {
+          throw new HttpError(400, "title required");
+        }
       }
-      runtime.store.setWorkspace(id, workspace);
+      let workspace: string | undefined;
+      if (body.workspace !== undefined) {
+        if (typeof body.workspace !== "string" || body.workspace.trim().length === 0) {
+          throw new HttpError(400, "workspace required");
+        }
+        workspace = resolve(body.workspace.trim());
+        const info = await stat(workspace).catch(() => null);
+        if (!info?.isDirectory()) {
+          throw new HttpError(400, "workspace is not a directory");
+        }
+      }
+      if (title !== undefined) {
+        runtime.store.setTitle(id, title);
+      }
+      if (workspace !== undefined) {
+        runtime.store.setWorkspace(id, workspace);
+      }
       const updated = runtime.store.get(id);
       return Response.json({ session: updated });
     }
@@ -676,6 +702,21 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
 /** A bot as the web sees it: its profile plus where its skills folder is on disk. */
 function botView<T extends BotRecord>(home: string, bot: T): T & { skillsDir: string } {
   return { ...bot, skillsDir: skillsDir(home, bot.id) };
+}
+
+/** A session name as typed, folded to one line. Undefined when the field is absent. */
+function sessionTitle(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new HttpError(400, "title must be text");
+  }
+  const title = normalizeSessionTitle(value);
+  if (title.length > SESSION_TITLE_MAX) {
+    throw new HttpError(400, "title too long");
+  }
+  return title;
 }
 
 /** A bot's `tools` field: absent leaves it alone, null is every tool, a list names each one. */

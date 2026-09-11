@@ -271,6 +271,72 @@ describe("sessions API", () => {
     runtime.store.close();
   });
 
+  test("a session takes a name when made, keeps it past the first message, and can be renamed", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-names-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-names-ws-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    await seedProvider(home);
+    const runtime = await createRuntime(
+      env,
+      new ScriptedLlm([
+        { type: "text", text: "ok" },
+        { type: "done", finishReason: "stop" },
+      ]),
+    );
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const create = async (body: Record<string, unknown>) => {
+      const res = await handleHttp(
+        new Request("http://127.0.0.1/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+        opts,
+      );
+      return { status: res.status, body: (await res.json()) as { session: { id: string; title: string } } };
+    };
+    const rename = async (id: string, body: Record<string, unknown>) => {
+      const res = await handleHttp(
+        new Request(`http://127.0.0.1/api/sessions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+        opts,
+      );
+      return { status: res.status, body: (await res.json()) as { session?: { title: string } } };
+    };
+
+    const named = await create({ workspace, title: "  로그인\n  버그  " });
+    expect(named.status).toBe(201);
+    expect(named.body.session.title).toBe("로그인 버그");
+    expect((await create({ workspace, title: "   " })).body.session.title).toBe("새 세션");
+    expect((await create({ workspace, title: "x".repeat(81) })).status).toBe(400);
+
+    const id = named.body.session.id;
+    const sent = await handleHttp(
+      new Request(`http://127.0.0.1/api/sessions/${id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text: "첫 메시지" }),
+      }),
+      opts,
+    );
+    expect(sent.status).toBe(202);
+    await waitForTurnEnd(async () => {
+      const res = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${id}`), opts);
+      return (await res.json()) as { events: { type: string }[] };
+    });
+    const afterFirst = await handleHttp(new Request(`http://127.0.0.1/api/sessions/${id}`), opts);
+    expect(((await afterFirst.json()) as { session: { title: string } }).session.title).toBe("로그인 버그");
+
+    const renamed = await rename(id, { title: "결제 흐름" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.session?.title).toBe("결제 흐름");
+    const listed = await handleHttp(new Request("http://127.0.0.1/api/sessions"), opts);
+    const list = (await listed.json()) as { sessions: { id: string; title: string }[] };
+    expect(list.sessions.find((session) => session.id === id)?.title).toBe("결제 흐름");
+
+    expect((await rename(id, { title: " " })).status).toBe(400);
+    expect((await rename(id, { title: "x".repeat(81) })).status).toBe(400);
+    expect((await rename(id, {})).status).toBe(400);
+    const leader = runtime.store.list({ kind: "bot-chat" })[0];
+    expect(leader).toBeDefined();
+    expect((await rename(leader?.id ?? "", { title: "메일함" })).status).toBe(400);
+    runtime.store.close();
+  });
+
   test("project view and browse default to the launch directory", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-launch-"));
     const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });

@@ -3,6 +3,11 @@ export function folderName(path: string): string {
   return parts.at(-1) ?? path;
 }
 
+/** A path to show: the user's home folder reads as `~`. */
+export function homePath(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
+}
+
 export function projectPaths(input: {
   current: string | null;
   recents: string[];

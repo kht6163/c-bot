@@ -1,6 +1,7 @@
 import type { BotToolName } from "@cbot/shared";
 import type { BotView } from "./api.ts";
 import { toolsOff } from "./bot-tools.ts";
+import { homePath } from "./path.ts";
 import { shortModelName } from "./thinking.ts";
 
 /** The team panel's selection when it is making a bot rather than editing one. */
@@ -79,8 +80,7 @@ export function rosterMeta(draft: Pick<BotDraft, "model" | "tools">): string {
 
 /** A skills folder path to show: home as `~`, the long bot id cut in the middle. */
 export function shortSkillsPath(path: string): string {
-  const homeless = path.replace(/^\/(?:Users|home)\/[^/]+(?=\/)/, "~");
-  const trimmed = homeless.replace(/\bbot_([0-9a-f]{4})[0-9a-f-]{8,}([0-9a-f]{4})\b/i, "bot_$1…$2");
+  const trimmed = homePath(path).replace(/\bbot_([0-9a-f]{4})[0-9a-f-]{8,}([0-9a-f]{4})\b/i, "bot_$1…$2");
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
 

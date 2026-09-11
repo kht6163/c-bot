@@ -1,4 +1,5 @@
 import {
+  UNTITLED_SESSION,
   asToolCallId,
   isTransientReason,
   newToolCallId,
@@ -494,7 +495,7 @@ export function sessionNeedsTurn(events: readonly SessionEvent[]): boolean {
 export function titleFromText(text: string): string {
   const oneLine = text.trim().split(/\r?\n/, 1)[0] ?? "";
   if (oneLine.length <= 40) {
-    return oneLine || "새 세션";
+    return oneLine || UNTITLED_SESSION;
   }
   return `${oneLine.slice(0, 40)}…`;
 }

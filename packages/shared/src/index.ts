@@ -36,6 +36,7 @@ export {
   type TurnId,
 } from "./ids.ts";
 export { assertNever } from "./never.ts";
+export { SESSION_TITLE_MAX, UNTITLED_SESSION, normalizeSessionTitle } from "./session.ts";
 export {
   BOT_TOOLS,
   botToolEnabled,

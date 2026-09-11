@@ -41,6 +41,7 @@ import {
 } from "@cbot/bot";
 import { resolve } from "node:path";
 import {
+  UNTITLED_SESSION,
   atTokens,
   botToolEnabled,
   normalizeRule,
@@ -155,7 +156,7 @@ export async function acceptUserMessage(
     ...(files.length > 0 ? { files } : {}),
     ...(images.length > 0 ? { images } : {}),
   });
-  if (session.title === "새 세션") {
+  if (session.title === UNTITLED_SESSION) {
     runtime.store.setTitle(sessionId, titleFromText(trimmed));
   }
   wakeSession(runtime, sessionId);

@@ -72,6 +72,18 @@ describe("SessionStore", () => {
     store.close();
   });
 
+  test("renaming keeps the session's place in the list", async () => {
+    const store = await SessionStore.open(":memory:");
+    const older = store.create({ title: "older", workspace: "/tmp/alpha" });
+    await Bun.sleep(5);
+    const newer = store.create({ title: "newer", workspace: "/tmp/alpha" });
+    store.setTitle(older.id, "renamed");
+    expect(store.get(older.id)?.title).toBe("renamed");
+    expect(store.get(older.id)?.updatedAt).toBe(older.updatedAt);
+    expect(store.list().map((session) => session.id)).toEqual([newer.id, older.id]);
+    store.close();
+  });
+
   test("delete removes events and the session row", async () => {
     const store = await SessionStore.open(":memory:");
     const session = store.create({ title: "gone", workspace: "/tmp/alpha" });

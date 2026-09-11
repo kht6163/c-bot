@@ -1,7 +1,14 @@
-import { useState } from "react";
-import { type ProjectView, type SessionId, type SessionSummary } from "@cbot/shared";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  SESSION_TITLE_MAX,
+  normalizeSessionTitle,
+  type ProjectView,
+  type SessionId,
+  type SessionSummary,
+} from "@cbot/shared";
 import type { ActivityMap } from "../lib/activity.ts";
 import type { BotView } from "../lib/api.ts";
+import { isImeKeyboardEvent } from "../lib/ime.ts";
 import { projectTree, timeAgo } from "../lib/path.ts";
 
 type LinkState = "connecting" | "ok" | "down";
@@ -20,6 +27,8 @@ interface Props {
   onSelectProject: (path: string) => void;
   onNewSession: (path: string) => void;
   onOpenSession: (id: SessionId) => void;
+  /** Resolves once the new name is saved; a rejection keeps the field open. */
+  onRenameSession: (id: SessionId, title: string) => Promise<void>;
   onDeleteSession: (session: SessionSummary) => void;
   onDeleteProject: (path: string, name: string) => void;
   onNewBot: () => void;
@@ -40,6 +49,7 @@ export function Sidebar({
   onSelectProject,
   onNewSession,
   onOpenSession,
+  onRenameSession,
   onDeleteSession,
   onDeleteProject,
   onNewBot,
@@ -48,6 +58,17 @@ export function Sidebar({
 }: Props) {
   const tree = project ? projectTree(project, sessions) : [];
   const [folded, setFolded] = useState<Record<string, boolean>>({});
+  const [renaming, setRenaming] = useState<SessionId | undefined>();
+  const refocusRow = useRef<SessionId | undefined>(undefined);
+
+  useEffect(() => {
+    const id = refocusRow.current;
+    if (renaming !== undefined || !id) {
+      return;
+    }
+    refocusRow.current = undefined;
+    document.querySelector<HTMLButtonElement>(`[data-session-row="${id}"]`)?.focus();
+  }, [renaming]);
 
   return (
     <aside className="rail">
@@ -143,32 +164,64 @@ export function Sidebar({
                     </div>
                     {expanded && branch.sessions.length > 0 ? (
                       <ul className="row-list row-nest">
-                        {branch.sessions.map((session) => (
-                          <li key={session.id} className="session-row">
-                            <button
-                              type="button"
-                              className={session.id === selectedId ? "row active" : "row"}
-                              aria-current={session.id === selectedId ? "true" : undefined}
-                              onClick={() => onOpenSession(session.id)}
-                            >
-                              <span className="row-title">{session.title}</span>
-                              <ActivityDot state={session.id === selectedId ? undefined : activity[session.id]} />
-                              <span className="row-meta">{timeAgo(session.updatedAt)}</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="add-btn row-delete"
-                              aria-label={`${session.title} 세션 삭제`}
-                              onClick={() => {
-                                if (window.confirm(`"${session.title}" 세션을 삭제할까요?`)) {
-                                  onDeleteSession(session);
-                                }
-                              }}
-                            >
-                              ×
-                            </button>
-                          </li>
-                        ))}
+                        {branch.sessions.map((session) =>
+                          session.id === renaming ? (
+                            <li key={session.id} className="session-row">
+                              <RenameField
+                                initial={session.title}
+                                onSubmit={(title) => onRenameSession(session.id, title)}
+                                onDone={(byKey) => {
+                                  refocusRow.current = byKey ? session.id : undefined;
+                                  setRenaming(undefined);
+                                }}
+                              />
+                            </li>
+                          ) : (
+                            <li key={session.id} className="session-row">
+                              <button
+                                type="button"
+                                data-session-row={session.id}
+                                className={session.id === selectedId ? "row active" : "row"}
+                                aria-current={session.id === selectedId ? "true" : undefined}
+                                onClick={() => onOpenSession(session.id)}
+                                onDoubleClick={() => setRenaming(session.id)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "F2") {
+                                    event.preventDefault();
+                                    setRenaming(session.id);
+                                  }
+                                }}
+                              >
+                                <span className="row-title">{session.title}</span>
+                                <ActivityDot state={session.id === selectedId ? undefined : activity[session.id]} />
+                                <span className="row-meta">{timeAgo(session.updatedAt)}</span>
+                              </button>
+                              <div className="row-actions session-actions">
+                                <button
+                                  type="button"
+                                  className="add-btn row-edit"
+                                  aria-label={`${session.title} 이름 바꾸기`}
+                                  title="이름 바꾸기"
+                                  onClick={() => setRenaming(session.id)}
+                                >
+                                  <PencilIcon />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="add-btn row-delete"
+                                  aria-label={`${session.title} 세션 삭제`}
+                                  onClick={() => {
+                                    if (window.confirm(`"${session.title}" 세션을 삭제할까요?`)) {
+                                      onDeleteSession(session);
+                                    }
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </li>
+                          ),
+                        )}
                       </ul>
                     ) : null}
                   </li>
@@ -265,6 +318,105 @@ function SectionHead({
         +
       </button>
     </div>
+  );
+}
+
+/**
+ * A session name edited in place. Enter or leaving the field saves, Esc keeps
+ * the old name; an unchanged or empty name saves nothing.
+ */
+function RenameField({
+  initial,
+  onSubmit,
+  onDone,
+}: {
+  initial: string;
+  onSubmit: (title: string) => Promise<void>;
+  /** `byKey` when Enter or Esc closed the field, so focus can go back to the row. */
+  onDone: (byKey: boolean) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const [failed, setFailed] = useState(false);
+  // Busy while saving, closed once done: a blur the unmount fires must not save again.
+  const busy = useRef(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, []);
+
+  function finish(byKey: boolean) {
+    busy.current = true;
+    onDone(byKey);
+  }
+
+  function commit(byKey: boolean) {
+    if (busy.current) {
+      return;
+    }
+    const title = normalizeSessionTitle(value);
+    if (!title || title === initial) {
+      finish(byKey);
+      return;
+    }
+    busy.current = true;
+    onSubmit(title).then(
+      () => onDone(byKey),
+      () => {
+        busy.current = false;
+        setFailed(true);
+      },
+    );
+  }
+
+  return (
+    <input
+      ref={input}
+      className="row-rename"
+      value={value}
+      maxLength={SESSION_TITLE_MAX}
+      aria-label="세션 이름"
+      aria-invalid={failed || undefined}
+      title={failed ? "이름을 바꾸지 못했습니다. Esc로 되돌립니다" : undefined}
+      onChange={(event) => {
+        setValue(event.target.value);
+        setFailed(false);
+      }}
+      onKeyDown={(event) => {
+        if (isImeKeyboardEvent(event)) {
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit(true);
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finish(true);
+        }
+      }}
+      onBlur={() => {
+        if (failed) {
+          finish(false);
+          return;
+        }
+        commit(false);
+      }}
+    />
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M9.4 2.4 11.6 4.6 5 11.2l-2.8.6.6-2.8z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

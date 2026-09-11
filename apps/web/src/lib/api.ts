@@ -160,11 +160,24 @@ export async function fetchSessions(): Promise<SessionListResponse> {
   return api<SessionListResponse>("/api/sessions");
 }
 
-export async function createSession(workspace?: string): Promise<SessionSummary> {
+/** An empty or absent title leaves the session to take its name from the first message. */
+export async function createSession(
+  workspace?: string,
+  input: { title?: string } = {},
+): Promise<SessionSummary> {
   const body = await api<{ session: SessionSummary }>("/api/sessions", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(workspace !== undefined ? { workspace } : {}),
+    body: JSON.stringify({ ...(workspace !== undefined ? { workspace } : {}), ...input }),
+  });
+  return body.session;
+}
+
+export async function renameSession(id: SessionId, title: string): Promise<SessionSummary> {
+  const body = await api<{ session: SessionSummary }>(`/api/sessions/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title }),
   });
   return body.session;
 }
