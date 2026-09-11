@@ -4,6 +4,7 @@ import {
   deleteProvider,
   fetchRemoteModels,
   fetchSettings,
+  saveApprovalMode,
   updateProvider,
   type CatalogProviderView,
   type ProviderView,
@@ -28,6 +29,7 @@ export function SettingsDialog({ open, onClose, onChanged }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [page, setPage] = useState<"models" | "approval">("models");
   const closeRef = useRef<HTMLButtonElement>(null);
 
   async function reload() {
@@ -103,9 +105,23 @@ export function SettingsDialog({ open, onClose, onChanged }: Props) {
             설정
           </div>
           <div className="settings-nav-list">
-            <button type="button" className="settings-nav-item active" aria-current="true">
+            <button
+              type="button"
+              className={page === "models" ? "settings-nav-item active" : "settings-nav-item"}
+              aria-current={page === "models" ? "true" : undefined}
+              onClick={() => setPage("models")}
+            >
               <IconModels />
               <span>모델</span>
+            </button>
+            <button
+              type="button"
+              className={page === "approval" ? "settings-nav-item active" : "settings-nav-item"}
+              aria-current={page === "approval" ? "true" : undefined}
+              onClick={() => setPage("approval")}
+            >
+              <IconShield />
+              <span>승인</span>
             </button>
           </div>
         </nav>
@@ -122,6 +138,53 @@ export function SettingsDialog({ open, onClose, onChanged }: Props) {
             </button>
           </div>
           <div className="settings-options">
+            {page === "approval" ? (
+              <section className="models-section">
+                <h2 className="models-title">승인</h2>
+                <p className="models-intro">
+                  <code>bash</code> 같은 위험 도구는 실행 전에 대화에 승인 카드가 뜹니다. 끄면 모든 도구를 묻지
+                  않고 바로 실행합니다.
+                </p>
+                {saved ? (
+                  <p className="saved-notice" role="status" aria-live="polite">
+                    {saved}
+                  </p>
+                ) : null}
+                {error ? (
+                  <p className="hint danger" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+                <label className="switch-row">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={view?.approvalMode !== "allow"}
+                    disabled={!view}
+                    onChange={(event) => {
+                      const mode = event.target.checked ? "prompt" : "allow";
+                      setError("");
+                      void saveApprovalMode(mode)
+                        .then((next) => {
+                          setView(next);
+                          setSaved(mode === "prompt" ? "실행 전에 묻습니다" : "묻지 않고 실행합니다");
+                          onChanged?.();
+                        })
+                        .catch((err: unknown) => {
+                          setError(err instanceof Error ? err.message : "저장하지 못했습니다");
+                        });
+                    }}
+                  />
+                  <span className="switch-copy">
+                    <span className="switch-title">실행 전에 승인 요청</span>
+                    <span className="switch-note">
+                      다음 턴부터 적용됩니다. 이미 떠 있는 카드는 답해야 닫힙니다. 켜 둔 채로 특정 명령만 건너뛰려면
+                      카드의 <b>이 세션에서 허용</b>·<b>항상 허용</b>을 씁니다.
+                    </span>
+                  </span>
+                </label>
+              </section>
+            ) : (
             <section className="models-section">
               <h2 className="models-title">모델</h2>
               <p className="models-intro">API 키를 넣으면 아래 프로바이더의 모델을 쓸 수 있습니다.</p>
@@ -277,6 +340,7 @@ export function SettingsDialog({ open, onClose, onChanged }: Props) {
                 )}
               </div>
             </section>
+            )}
           </div>
         </div>
       </div>
@@ -888,6 +952,20 @@ function IconModels() {
       <rect x="9" y="2" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
       <rect x="2" y="9" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
       <rect x="9" y="9" width="5" height="5" rx="1.2" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function IconShield() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 1.8 13 3.6v4.1c0 3-2.1 5.3-5 6.5-2.9-1.2-5-3.5-5-6.5V3.6L8 1.8Z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="m5.8 8 1.6 1.6L10.4 6.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

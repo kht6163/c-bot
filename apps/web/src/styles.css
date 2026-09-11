@@ -1798,6 +1798,48 @@ button {
   color: var(--quiet);
 }
 
+.switch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--glass-2);
+  box-shadow: var(--hi);
+  cursor: pointer;
+}
+
+.switch-row input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.switch-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.switch-title {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+}
+
+.switch-note {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--quiet);
+}
+
+.switch-note b {
+  font-weight: 500;
+  color: var(--muted);
+}
+
 .saved-notice {
   margin: 0;
   font-size: 12px;

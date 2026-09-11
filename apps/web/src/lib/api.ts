@@ -335,12 +335,22 @@ export interface SettingsView {
   activeModel: string | null;
   activeThinking: string | null;
   hasApiKey: boolean;
+  /** `prompt` asks before risky tools; `allow` runs every tool without a card. */
+  approvalMode: "prompt" | "allow";
   providers: ProviderView[];
   catalog: CatalogProviderView[];
 }
 
 export async function fetchSettings(): Promise<SettingsView> {
   return api<SettingsView>("/api/settings");
+}
+
+export async function saveApprovalMode(mode: "prompt" | "allow"): Promise<SettingsView> {
+  return api<SettingsView>("/api/settings/approval", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
 }
 
 export async function saveActiveModel(input: {

@@ -546,6 +546,19 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const secrets = await loadSecrets(runtime.env.home);
       return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets));
     }
+    if (url.pathname === "/api/settings/approval" && req.method === "PUT") {
+      const body = await readJson(req);
+      if (!isRecord(body) || (body.mode !== "prompt" && body.mode !== "allow")) {
+        throw new HttpError(400, "mode must be prompt or allow");
+      }
+      const config = await loadConfig(runtime.env.home);
+      await saveConfig(runtime.env.home, {
+        ...config,
+        approval: { ...config.approval, mode: body.mode },
+      });
+      const secrets = await loadSecrets(runtime.env.home);
+      return Response.json(toSettingsView(await loadConfig(runtime.env.home), secrets));
+    }
     if (url.pathname === "/api/providers" && req.method === "POST") {
       const body = await readJson(req);
       if (!isRecord(body)) {
@@ -665,6 +678,7 @@ function toSettingsView(
     activeModel: config.llm.activeModel,
     activeThinking: config.llm.activeThinking,
     hasApiKey: providers.some((item) => item.hasApiKey),
+    approvalMode: config.approval.mode,
     providers,
     catalog: SHIPPED_PROVIDERS.filter((item) => !added.has(item.id)),
   };

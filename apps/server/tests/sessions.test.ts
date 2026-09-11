@@ -329,6 +329,42 @@ describe("providers API", () => {
   });
 });
 
+describe("approval settings API", () => {
+  test("PUT flips the approval mode in config.yaml and GET reports it", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-approval-mode-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]));
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+
+    const before = (await (await handleHttp(new Request("http://127.0.0.1/api/settings"), opts)).json()) as {
+      approvalMode: string;
+    };
+    expect(before.approvalMode).toBe("prompt");
+
+    const off = await handleHttp(
+      new Request("http://127.0.0.1/api/settings/approval", {
+        method: "PUT",
+        body: JSON.stringify({ mode: "allow" }),
+      }),
+      opts,
+    );
+    expect(off.status).toBe(200);
+    expect(((await off.json()) as { approvalMode: string }).approvalMode).toBe("allow");
+    expect((await loadConfig(home)).approval.mode).toBe("allow");
+
+    const bad = await handleHttp(
+      new Request("http://127.0.0.1/api/settings/approval", {
+        method: "PUT",
+        body: JSON.stringify({ mode: "sometimes" }),
+      }),
+      opts,
+    );
+    expect(bad.status).toBe(400);
+    expect((await loadConfig(home)).approval.mode).toBe("allow");
+    runtime.store.close();
+  });
+});
+
 describe("bots API", () => {
   test("creates a bot with a pinned model and deletes it", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-botapi-"));
