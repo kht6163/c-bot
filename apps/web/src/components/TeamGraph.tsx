@@ -173,7 +173,8 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
       const target = event.target;
       const typing =
         target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
-      if (event.key === "Escape" && !typing) {
+      // A sheet or drawer over the graph takes the Esc for itself.
+      if (event.key === "Escape" && !typing && !event.defaultPrevented) {
         setSelected(null);
       }
     };

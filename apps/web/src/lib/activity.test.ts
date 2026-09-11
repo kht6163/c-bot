@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { asSessionId } from "@cbot/shared";
-import { applyActivity, clearActivity, seedActivity } from "./activity.ts";
+import { applyActivity, clearActivity, hiddenActivity, seedActivity } from "./activity.ts";
 
 const a = asSessionId("session-a");
 const b = asSessionId("session-b");
+const c = asSessionId("session-c");
 
 describe("session activity marks", () => {
   test("a running frame marks the session even while it is the one open", () => {
@@ -34,5 +35,21 @@ describe("session activity marks", () => {
     const state = applyActivity({}, a, true, undefined);
     expect(applyActivity(state, a, true, undefined)).toBe(state);
     expect(clearActivity(state, b)).toBe(state);
+  });
+});
+
+describe("the drawer's mark for hidden rows", () => {
+  test("a finished session outranks one still working", () => {
+    expect(hiddenActivity({ [b]: "running", [c]: "done" }, [a, b, c], a)).toBe("done");
+    expect(hiddenActivity({ [b]: "running" }, [a, b, c], a)).toBe("running");
+  });
+
+  test("the open session never counts, running or not", () => {
+    expect(hiddenActivity({ [a]: "running" }, [a, b], a)).toBeUndefined();
+    expect(hiddenActivity({ [a]: "done" }, [a, b], a)).toBeUndefined();
+  });
+
+  test("a mark on a session the sidebar does not list is ignored", () => {
+    expect(hiddenActivity({ [c]: "done" }, [a, b], undefined)).toBeUndefined();
   });
 });

@@ -37,6 +37,29 @@ export function applyActivity(
   return current[sessionId] === "done" ? current : { ...current, [sessionId]: "done" };
 }
 
+/**
+ * The one mark a closed drawer shows for the rows it hides: `done` as soon as
+ * any listed session other than the open one has finished, else `running`
+ * while one works. Marks of sessions the sidebar does not list do not count.
+ */
+export function hiddenActivity(
+  current: ActivityMap,
+  listed: readonly SessionId[],
+  selectedId: SessionId | undefined,
+): SessionActivity | undefined {
+  let running = false;
+  for (const id of listed) {
+    if (id === selectedId) {
+      continue;
+    }
+    if (current[id] === "done") {
+      return "done";
+    }
+    running ||= current[id] === "running";
+  }
+  return running ? "running" : undefined;
+}
+
 /** Opening or deleting a session takes its mark off the sidebar. */
 export function clearActivity(current: ActivityMap, sessionId: SessionId): ActivityMap {
   if (!(sessionId in current)) {

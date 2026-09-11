@@ -11,13 +11,16 @@ import {
   type SessionTeamMember,
 } from "@cbot/shared";
 import { Composer } from "./components/Composer.tsx";
+import { MobileBar, PanelIcon } from "./components/MobileBar.tsx";
 import { NewSessionDialog } from "./components/NewSessionDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
-import { Sidebar } from "./components/Sidebar.tsx";
+import { RAIL_ID, Sidebar } from "./components/Sidebar.tsx";
 import { TeamPanel } from "./components/TeamPanel.tsx";
 import { TeamStage } from "./components/TeamStage.tsx";
 import { Inspector } from "./components/Inspector.tsx";
 import { loadInspectorWidth, saveInspectorWidth } from "./lib/inspector.ts";
+import { DOCK_QUERY, PHONE_QUERY, useMediaQuery } from "./lib/media.ts";
+import { folderName } from "./lib/path.ts";
 import { NEW_BOT } from "./lib/team-panel.ts";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
@@ -48,7 +51,13 @@ import {
 } from "./lib/team.ts";
 import { ApiError } from "./lib/api-json.ts";
 import { reconnectDelay } from "./lib/reconnect.ts";
-import { applyActivity, clearActivity, seedActivity, type ActivityMap } from "./lib/activity.ts";
+import {
+  applyActivity,
+  clearActivity,
+  hiddenActivity,
+  seedActivity,
+  type ActivityMap,
+} from "./lib/activity.ts";
 import {
   clearQueue,
   dropQueued,
@@ -93,6 +102,12 @@ export function App() {
     loadInspectorWidth(window.localStorage, window.innerWidth),
   );
   const [inspectorTick, setInspectorTick] = useState(0);
+  const phone = useMediaQuery(PHONE_QUERY);
+  const dock = useMediaQuery(DOCK_QUERY);
+  /** The rail as a drawer over the chat; only a phone has one. */
+  const [railOpen, setRailOpen] = useState(false);
+  /** The inspector as a sheet over the chat, where it cannot dock beside it. */
+  const [sheetOpen, setSheetOpen] = useState(false);
   const socketRef = useRef<WebSocket | undefined>(undefined);
   const selectedRef = useRef<SessionId | undefined>(undefined);
   const eventsRef = useRef<SessionEvent[]>([]);
@@ -490,15 +505,71 @@ export function App() {
 
   const overlayOpen =
     settingsOpen || workspaceOpen || teamTarget !== undefined || newSessionIn !== undefined;
+  const drawer = phone && railOpen;
+  const sheet = !dock && sheetOpen && selectedId !== undefined;
+  const docked = dock && inspectorOpen && selectedId !== undefined;
+  const layer = sheet ? "sheet" : drawer ? "drawer" : null;
+
+  // Left open across a breakpoint, a drawer or sheet would pop up unasked the
+  // next time the window narrows.
+  useEffect(() => setRailOpen(false), [phone]);
+  useEffect(() => setSheetOpen(false), [dock]);
+
+  useEffect(() => {
+    if (!layer) {
+      return;
+    }
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const root =
+      layer === "drawer"
+        ? document.getElementById(RAIL_ID)
+        : document.querySelector<HTMLElement>(".inspector.is-sheet");
+    root
+      ?.querySelector<HTMLElement>(layer === "drawer" ? "button" : '[role="tab"][aria-selected="true"]')
+      ?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return;
+      }
+      event.preventDefault();
+      if (layer === "sheet") {
+        setSheetOpen(false);
+      } else {
+        setRailOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      // Back to the button that opened the layer, unless focus has already moved on.
+      const active = document.activeElement;
+      if (!active || active === document.body || root?.contains(active)) {
+        opener?.focus();
+      }
+    };
+  }, [layer]);
+
+  function openPanel() {
+    if (dock) {
+      setInspectorOpen(true);
+    } else {
+      setSheetOpen(true);
+    }
+  }
+
+  const selectedSummary = selected ?? sessions.find((item) => item.id === selectedId);
+  const selectedHome = selectedSummary ? sessionProject(selectedSummary) : null;
 
   return (
     <>
     <div
-      className={selectedId && inspectorOpen ? "app has-inspector" : "app"}
+      className={["app", docked ? "has-inspector" : "", drawer ? "rail-open" : ""].filter(Boolean).join(" ")}
       // The width is a custom property so the narrow-window media query can still win.
       style={{ "--inspector-w": `${inspectorWidth}px` } as CSSProperties}
-      {...(overlayOpen ? { inert: true, "aria-hidden": true } : {})}
+      // The sheet keeps the chat in sight under its scrim, so it only makes it inert.
+      {...(overlayOpen ? { inert: true, "aria-hidden": true } : sheet ? { inert: true } : {})}
     >
+      {phone ? <div className="rail-scrim" aria-hidden="true" onClick={() => setRailOpen(false)} /> : null}
       <Sidebar
         project={project}
         sessions={sessions}
@@ -507,13 +578,21 @@ export function App() {
         selectedId={selectedId}
         link={link}
         hasApiKey={hasApiKey}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onClose={phone ? () => setRailOpen(false) : undefined}
+        onOpenSettings={() => {
+          setRailOpen(false);
+          setSettingsOpen(true);
+        }}
         onOpenProjectPicker={openNativeProject}
         onSelectProject={(path) => {
           void switchProject(path);
         }}
-        onNewSession={(path) => setNewSessionIn(path)}
+        onNewSession={(path) => {
+          setRailOpen(false);
+          setNewSessionIn(path);
+        }}
         onOpenSession={(id) => {
+          setRailOpen(false);
           void openSession(id);
         }}
         onRenameSession={async (id, title) => {
@@ -582,8 +661,14 @@ export function App() {
             }
           })();
         }}
-        onNewBot={() => setTeamTarget(NEW_BOT)}
-        onEditBot={(id) => setTeamTarget(id)}
+        onNewBot={() => {
+          setRailOpen(false);
+          setTeamTarget(NEW_BOT);
+        }}
+        onEditBot={(id) => {
+          setRailOpen(false);
+          setTeamTarget(id);
+        }}
         onDeleteBot={(id) => {
           void (async () => {
             const bot = bots.find((item) => item.id === id);
@@ -612,7 +697,21 @@ export function App() {
           })();
         }}
       />
-      <section className="main">
+      <section className="main" inert={drawer}>
+        {phone ? (
+          <MobileBar
+            title={selectedSummary?.title}
+            project={selectedHome ? folderName(selectedHome) : undefined}
+            activity={hiddenActivity(
+              activity,
+              sessions.map((item) => item.id),
+              selectedId,
+            )}
+            menuOpen={drawer}
+            onMenu={() => setRailOpen(true)}
+            onPanel={selectedId ? openPanel : undefined}
+          />
+        ) : null}
         {selectedId ? (
           <TeamStage
             codingSessionId={selectedId}
@@ -631,27 +730,10 @@ export function App() {
               void sendApproval(sessionId, callId, allow, remember);
             }}
             barEnd={
-              inspectorOpen ? null : (
-                <button type="button" className="view-toggle" onClick={() => setInspectorOpen(true)}>
-                  <svg
-                    className="bar-icon"
-                    width="13"
-                    height="13"
-                    viewBox="0 0 14 14"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <rect
-                      x="1.6"
-                      y="2.6"
-                      width="10.8"
-                      height="8.8"
-                      rx="1.6"
-                      stroke="currentColor"
-                      strokeWidth="1.3"
-                    />
-                    <path d="M9.2 2.6v8.8" stroke="currentColor" strokeWidth="1.3" />
-                  </svg>
+              // A phone opens the panel from its top bar; a docked panel that is open needs no button.
+              phone || docked ? null : (
+                <button type="button" className="view-toggle" onClick={openPanel}>
+                  <PanelIcon size={13} />
                   패널
                 </button>
               )
@@ -719,7 +801,7 @@ export function App() {
           />
         ) : null}
       </section>
-      {selectedId && inspectorOpen ? (
+      {docked ? (
         <Inspector
           sessionId={selectedId}
           refreshKey={inspectorTick}
@@ -732,6 +814,19 @@ export function App() {
         />
       ) : null}
     </div>
+      {sheet ? (
+        <>
+          <div className="sheet-scrim" aria-hidden="true" onClick={() => setSheetOpen(false)} />
+          <Inspector
+            sheet
+            sessionId={selectedId}
+            refreshKey={inspectorTick}
+            width={inspectorWidth}
+            onWidth={setInspectorWidth}
+            onClose={() => setSheetOpen(false)}
+          />
+        </>
+      ) : null}
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

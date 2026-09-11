@@ -56,6 +56,19 @@ body,
   margin: 0;
 }
 
+/* An app shell, not a page: no text inflation on rotate, no grey flash on tap,
+   and no pull-to-refresh that would throw away a draft. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   font-family: var(--font);
   background: var(--surface);
@@ -254,7 +267,6 @@ button {
   opacity: 0;
 }
 
-.tree-parent:hover .add-btn,
 .tree-parent:focus-within .add-btn {
   opacity: 1;
 }
@@ -270,14 +282,43 @@ button {
   display: none;
 }
 
-.session-row:hover .session-actions,
 .session-row:has(:focus-visible) .session-actions {
   display: flex;
 }
 
-.session-row:hover .row-meta,
 .session-row:has(:focus-visible) .row-meta {
   display: none;
+}
+
+/* Hover reveals only where there is hover: on a touch screen a tap that
+   changes what is shown gets spent as a hover and never opens the row. */
+@media (hover: hover) {
+  .tree-parent:hover .add-btn {
+    opacity: 1;
+  }
+
+  .session-row:hover .session-actions {
+    display: flex;
+  }
+
+  .session-row:hover .row-meta {
+    display: none;
+  }
+}
+
+/* Without hover the actions stay in reach; the open session's row carries its own. */
+@media (hover: none) {
+  .tree-parent .add-btn {
+    opacity: 1;
+  }
+
+  .session-row:has(.row.active) .session-actions {
+    display: flex;
+  }
+
+  .session-row:has(.row.active) .row-meta {
+    display: none;
+  }
 }
 
 .row-edit {
@@ -882,10 +923,14 @@ button {
 }
 
 .composer-hint {
+  min-width: 0;
   margin-right: auto;
   padding-left: 8px;
+  overflow: hidden;
   font-size: 12px;
   color: var(--quiet);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .send-btn {
@@ -1303,6 +1348,9 @@ button {
 
 .modal {
   width: min(440px, calc(100vw - 32px));
+  /* A short screen, such as a phone on its side, scrolls the dialog instead of cutting it. */
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
   background: var(--overlay);
   backdrop-filter: blur(32px) saturate(150%);
   border: 1px solid var(--border);
@@ -1768,61 +1816,6 @@ button {
   width: 100%;
   margin-bottom: 4px;
   text-align: left;
-}
-
-@media (max-width: 1099px) {
-  .app.has-inspector {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
-
-  .inspector {
-    display: none;
-  }
-}
-
-@media (max-width: 720px) {
-  .app,
-  .app.has-inspector {
-    grid-template-columns: 1fr;
-    grid-template-rows: 42vh minmax(0, 1fr);
-  }
-
-  .rail {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    height: 42vh;
-    overflow: hidden;
-  }
-
-  .composer.dock {
-    padding: 0 16px 12px;
-  }
-
-  .settings-panel {
-    width: calc(100vw - 24px);
-    height: min(800px, calc(100vh - 24px));
-    flex-direction: column;
-  }
-
-  .settings-nav {
-    width: 100%;
-    flex-direction: row;
-    align-items: center;
-    padding: 14px 12px 0;
-  }
-
-  .settings-nav-list {
-    flex-direction: row;
-  }
-
-  .settings-header {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    height: auto;
-    padding: 0;
-    z-index: 1;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2685,9 +2678,21 @@ select.field-input {
   color: var(--quiet);
 }
 
-.bot-row:hover .bot-delete,
 .bot-row:focus-within .bot-delete {
   opacity: 1;
+}
+
+/* Same as the session tree: revealed by hover only where hover exists. */
+@media (hover: hover) {
+  .bot-row:hover .bot-delete {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .bot-row .bot-delete {
+    opacity: 1;
+  }
 }
 
 .bot-delete:hover {
@@ -3581,7 +3586,9 @@ select.field-input {
     padding: 0 16px 16px;
   }
 
+  /* Stacked, a column keeps its full height; shrunk, its sections spill over the next one. */
   .team-col {
+    flex: none;
     overflow: visible;
   }
 
@@ -3851,6 +3858,11 @@ select.field-input {
     top: auto !important;
     width: 100% !important;
     z-index: auto !important;
+  }
+
+  /* Stacked notes do not move, so a swipe on a title scrolls the board. */
+  .bot-note-head {
+    touch-action: pan-y;
   }
 
   .note-e,
@@ -4288,7 +4300,8 @@ select.field-input {
   color: var(--quiet);
 }
 
-/* Each column scrolls on its own; the wheel stays inside it at the ends. */
+/* Each column scrolls on its own; the wheel stays inside it at the ends. Only
+   the vertical axis is held, so a sideways swipe on a column still pans the board. */
 .graph-list {
   display: flex;
   flex: 1;
@@ -4298,7 +4311,7 @@ select.field-input {
   margin: 0 -4px 0 0;
   padding: 0 4px 0 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   list-style: none;
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 14%) transparent;
@@ -5499,4 +5512,379 @@ body.resizing {
 
 .task-left {
   color: var(--muted);
+}
+
+/* ── Phone bar, drawer and sheet ──────────────────────────────────────────
+   The phone's top bar, the rail when it is a drawer, and the inspector when it
+   opens over the chat. Both overlays are L2: they float over the page the way
+   a menu does. The layout blocks close the file so they beat every base rule. */
+
+.mobile-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 50px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--edge-soft);
+}
+
+.bar-btn {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.bar-btn:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+/* Sits off the corner of the menu icon, clear of its lines. */
+.bar-dot {
+  position: absolute;
+  top: 8px;
+  right: 7px;
+}
+
+.mobile-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px;
+}
+
+.mobile-title-main,
+.mobile-title-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-title-main {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--text);
+}
+
+.mobile-title-sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--quiet);
+}
+
+/* Pulled into the brand row's padding so the row keeps its height. */
+.rail-close {
+  margin: -9px -6px -9px auto;
+}
+
+.rail-scrim,
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(4 6 10 / 46%);
+}
+
+.sheet-scrim {
+  z-index: 50;
+  animation: scrim-in 220ms ease;
+}
+
+.inspector.is-sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 51;
+  width: min(400px, 100%);
+  border-left: 1px solid var(--edge);
+  background: var(--overlay);
+  backdrop-filter: blur(28px) saturate(150%);
+  box-shadow: var(--lift);
+  animation: sheet-in 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Too narrow to dock the inspector (DOCK_QUERY in lib/media.ts is the exact
+   complement): the rail narrows and the inspector opens as the sheet above. */
+@media (max-width: 1099.98px) {
+  .app {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+}
+
+/* A phone (PHONE_QUERY in lib/media.ts): one column, and the rail slides in over it. */
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rail {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: min(304px, 86vw);
+    border-right: 1px solid var(--edge);
+    background: var(--overlay);
+    backdrop-filter: blur(28px) saturate(150%);
+    box-shadow: var(--lift);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      visibility 0s linear 240ms;
+  }
+
+  .app.rail-open .rail {
+    transform: none;
+    visibility: visible;
+    transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .rail-scrim {
+    z-index: 39;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 240ms ease,
+      visibility 0s linear 240ms;
+  }
+
+  .app.rail-open .rail-scrim {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 240ms ease;
+  }
+
+  .stage-bar {
+    gap: 6px;
+    padding: 4px 10px;
+  }
+
+  .view-mode {
+    padding: 0 8px;
+  }
+
+  .view-mode-label {
+    display: none;
+  }
+
+  .stage-hint {
+    padding: 4px 16px 0;
+  }
+
+  .log {
+    padding: 16px 16px 12px;
+  }
+
+  .bubble.user {
+    max-width: 88%;
+  }
+
+  .composer.dock {
+    padding: 0 12px 12px;
+  }
+
+  .hero {
+    padding: 20px 16px;
+  }
+
+  .hero h1 {
+    font-size: 26px;
+  }
+
+  /* Settings and the team panel take the whole screen: an inset card only wastes it. */
+  .settings-panel,
+  .team-panel {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .settings-panel {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 56px 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--edge-soft);
+  }
+
+  .settings-nav-title {
+    padding: 0 6px;
+  }
+
+  .settings-nav-list {
+    flex-direction: row;
+  }
+
+  .settings-nav-item {
+    height: 36px;
+    padding: 0 12px;
+  }
+
+  .settings-header {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    height: auto;
+    padding: 0;
+  }
+
+  .settings-options {
+    padding: 18px 16px 24px;
+  }
+
+  .team-head {
+    gap: 12px;
+    padding: 14px 12px 12px 16px;
+  }
+
+  .team-avatar.is-lg {
+    width: 40px;
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .team-name {
+    font-size: 18px;
+  }
+
+  /* The model chip and the roster switch get a row of their own under the name. */
+  .team-head-tools {
+    order: 1;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 0;
+  }
+
+  /* The chip now starts the row at the left edge, so its menu opens rightward. */
+  .team-head .model-chip-menu {
+    right: auto;
+    left: 0;
+  }
+
+  .team-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-foot {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+}
+
+/* A finger needs a bigger target than a pointer; the layout keeps its shape. */
+@media (pointer: coarse) {
+  .row,
+  .tree-parent {
+    min-height: 40px;
+  }
+
+  .tree-parent {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+  }
+
+  .caret,
+  .caret-slot {
+    width: 20px;
+    height: 32px;
+    line-height: 32px;
+  }
+
+  .add-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .row-rename {
+    height: 40px;
+  }
+
+  .settings-close,
+  .inspector-close {
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .agent-tab,
+  .view-toggle {
+    height: 34px;
+  }
+
+  .view-mode {
+    height: 30px;
+  }
+
+  .inspector-tab {
+    height: 32px;
+  }
+
+  .queue-drop {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* iOS zooms the page into any field set under 16px and leaves it zoomed, so
+     this one size outranks every field's own. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* The prompt's gutter and measuring mirror keep the textarea's line box. */
+  .prompt-area,
+  .prompt-mirror,
+  .prompt-gutter {
+    line-height: 24px;
+  }
+
+  .prompt-mirror {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail,
+  .app.rail-open .rail,
+  .rail-scrim,
+  .app.rail-open .rail-scrim,
+  .inspector.is-sheet,
+  .sheet-scrim {
+    animation: none;
+    transition: none;
+  }
 }

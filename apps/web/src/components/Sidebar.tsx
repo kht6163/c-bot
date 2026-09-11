@@ -34,7 +34,12 @@ interface Props {
   onNewBot: () => void;
   onEditBot: (id: string) => void;
   onDeleteBot: (id: string) => void;
+  /** Present while the rail is a drawer over the chat; shows its close button. */
+  onClose?: (() => void) | undefined;
 }
+
+/** The menu button that opens the drawer points here. */
+export const RAIL_ID = "app-rail";
 
 export function Sidebar({
   project,
@@ -55,6 +60,7 @@ export function Sidebar({
   onNewBot,
   onEditBot,
   onDeleteBot,
+  onClose,
 }: Props) {
   const tree = project ? projectTree(project, sessions) : [];
   const [folded, setFolded] = useState<Record<string, boolean>>({});
@@ -71,10 +77,17 @@ export function Sidebar({
   }, [renaming]);
 
   return (
-    <aside className="rail">
+    <aside className="rail" id={RAIL_ID}>
       <div className="brand-row">
         <BrandMark />
         <div className="brand">c-bot</div>
+        {onClose ? (
+          <button type="button" className="bar-btn rail-close" aria-label="메뉴 닫기" onClick={onClose}>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <path d="m3.5 3.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
       </div>
       <button
         type="button"

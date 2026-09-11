@@ -18,9 +18,11 @@ interface Props {
   width: number;
   onWidth: (px: number) => void;
   onClose: () => void;
+  /** Opens over the chat instead of beside it: a modal sheet with no width to drag. */
+  sheet?: boolean;
 }
 
-export function Inspector({ sessionId, refreshKey, width, onWidth, onClose }: Props) {
+export function Inspector({ sessionId, refreshKey, width, onWidth, onClose, sheet = false }: Props) {
   const [tab, setTabState] = useState<InspectorTab>(() => loadInspectorTab(window.localStorage));
 
   function setTab(next: InspectorTab): void {
@@ -46,24 +48,29 @@ export function Inspector({ sessionId, refreshKey, width, onWidth, onClose }: Pr
   }
 
   return (
-    <aside className="inspector">
-      <div
-        className="inspector-resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="패널 너비"
-        aria-valuenow={width}
-        aria-valuemin={INSPECTOR_MIN_W}
-        tabIndex={0}
-        onPointerDown={startDrag}
-        onKeyDown={(event) => {
-          const step = event.key === "ArrowLeft" ? 16 : event.key === "ArrowRight" ? -16 : 0;
-          if (step !== 0) {
-            event.preventDefault();
-            onWidth(clampInspectorWidth(width + step, window.innerWidth));
-          }
-        }}
-      />
+    <aside
+      className={sheet ? "inspector is-sheet" : "inspector"}
+      {...(sheet ? { role: "dialog", "aria-modal": true, "aria-label": "세션 패널" } : {})}
+    >
+      {sheet ? null : (
+        <div
+          className="inspector-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="패널 너비"
+          aria-valuenow={width}
+          aria-valuemin={INSPECTOR_MIN_W}
+          tabIndex={0}
+          onPointerDown={startDrag}
+          onKeyDown={(event) => {
+            const step = event.key === "ArrowLeft" ? 16 : event.key === "ArrowRight" ? -16 : 0;
+            if (step !== 0) {
+              event.preventDefault();
+              onWidth(clampInspectorWidth(width + step, window.innerWidth));
+            }
+          }}
+        />
+      )}
       <div className="inspector-head">
         <div className="inspector-tabs" role="tablist" aria-label="세션 패널">
           <button

@@ -115,10 +115,12 @@ export function TeamStage({
                   type="button"
                   className={mode === item.mode ? "view-mode is-on" : "view-mode"}
                   aria-pressed={mode === item.mode}
+                  // A phone shows the icon alone; the name stays for assistive tech.
+                  aria-label={item.label}
                   onClick={() => onViewMode(item.mode)}
                 >
                   <ModeIcon mode={item.mode} />
-                  {item.label}
+                  <span className="view-mode-label">{item.label}</span>
                 </button>
               ))}
             </div>
