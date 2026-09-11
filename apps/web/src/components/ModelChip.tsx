@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { SettingsView } from "../lib/api.ts";
 import { matchesQuery } from "../lib/search.ts";
-import { effortLabel } from "../lib/thinking.ts";
+import { defaultEffort, effortLabel } from "../lib/thinking.ts";
 
 export interface ModelChoice {
   provider: string;
@@ -11,13 +11,19 @@ export interface ModelChoice {
 
 interface Props {
   settings: SettingsView;
+  /** A bot's pin. Absent follows the app's active model; a null model means the app default. */
+  value?: { provider: string | null; model: string | null; thinking: string | null };
+  /** Offers "기본 모델", which clears the pin (`onChange(null)`). */
+  allowDefault?: boolean;
+  /** Which way the menu opens from the chip. */
+  placement?: "up" | "down";
   disabled?: boolean;
-  onChange: (next: ModelChoice) => void;
+  onChange: (next: ModelChoice | null) => void;
 }
 
 type Pane = "root" | "model" | "effort";
 
-export function ModelChip({ settings, disabled, onChange }: Props) {
+export function ModelChip({ settings, value, allowDefault, placement = "up", disabled, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<Pane>("root");
   const [query, setQuery] = useState("");
@@ -25,14 +31,17 @@ export function ModelChip({ settings, disabled, onChange }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
   const id = useId();
   const groups = settings.providers.filter((item) => item.models.length > 0);
-  const currentProvider = groups.find((item) => item.id === settings.activeProvider) ?? groups[0];
-  const currentModel =
-    currentProvider?.models.find((item) => item === settings.activeModel) ?? currentProvider?.models[0];
+  const pinned = value !== undefined;
+  const currentProvider = pinned
+    ? groups.find((item) => item.id === value.provider)
+    : (groups.find((item) => item.id === settings.activeProvider) ?? groups[0]);
+  const currentModel = pinned
+    ? (value.model ?? undefined)
+    : (currentProvider?.models.find((item) => item === settings.activeModel) ?? currentProvider?.models[0]);
   const efforts = currentModel ? (currentProvider?.thinking[currentModel] ?? []) : [];
+  const wanted = pinned ? value.thinking : settings.activeThinking;
   const currentEffort =
-    currentModel && settings.activeThinking && efforts.includes(settings.activeThinking)
-      ? settings.activeThinking
-      : (efforts[0] ?? null);
+    currentModel && wanted && efforts.includes(wanted) ? wanted : defaultEffort(efforts);
 
   const filtered = useMemo(
     () =>
@@ -85,7 +94,7 @@ export function ModelChip({ settings, disabled, onChange }: Props) {
     return null;
   }
 
-  const modelLabel = currentModel ?? "모델 선택";
+  const modelLabel = currentModel ?? (allowDefault ? "기본 모델" : "모델 선택");
   const effortText = currentEffort ? effortLabel(currentEffort) : undefined;
 
   return (
@@ -128,7 +137,12 @@ export function ModelChip({ settings, disabled, onChange }: Props) {
         </svg>
       </button>
       {open ? (
-        <div className="model-chip-menu" id={`${id}-menu`} role="menu" aria-label="모델">
+        <div
+          className={placement === "down" ? "model-chip-menu is-down" : "model-chip-menu"}
+          id={`${id}-menu`}
+          role="menu"
+          aria-label="모델"
+        >
           {pane === "root" ? (
             <>
               <button
@@ -166,6 +180,22 @@ export function ModelChip({ settings, disabled, onChange }: Props) {
                 onChange={(event) => setQuery(event.target.value)}
               />
               <div className="model-chip-groups">
+                {allowDefault && !query.trim() ? (
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={!currentModel}
+                    className="model-chip-option"
+                    onClick={() => {
+                      onChange(null);
+                      setOpen(false);
+                      setPane("root");
+                    }}
+                  >
+                    <span className="model-chip-option-label">기본 모델</span>
+                    <span className="model-chip-check">{currentModel ? null : <IconCheck />}</span>
+                  </button>
+                ) : null}
                 {filtered.length === 0 ? (
                   <p className="model-chip-empty">맞는 모델이 없습니다</p>
                 ) : (
@@ -188,7 +218,7 @@ export function ModelChip({ settings, disabled, onChange }: Props) {
                               const thinking =
                                 currentEffort && nextEfforts.includes(currentEffort)
                                   ? currentEffort
-                                  : (nextEfforts[0] ?? null);
+                                  : defaultEffort(nextEfforts);
                               onChange({ provider: group.id, model, thinking });
                               setOpen(false);
                               setPane("root");

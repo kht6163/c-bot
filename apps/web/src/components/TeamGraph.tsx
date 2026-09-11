@@ -45,6 +45,7 @@ import {
 } from "../lib/graph.ts";
 import { timeAgo } from "../lib/path.ts";
 import type { NoteStorage, TeamPane } from "../lib/team.ts";
+import { LeadMark } from "./LeadMark.tsx";
 
 interface Props {
   sessionId: SessionId;
@@ -834,15 +835,6 @@ function ArrangeIcon() {
       <rect x="1.5" y="9.5" width="4" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
       <rect x="8.5" y="9.5" width="4" height="3" rx="0.8" stroke="currentColor" strokeWidth="1.2" />
       <path d="M7 4.5V7M3.5 9.5V7h7v2.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function LeadMark({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <path d="M11 2.2 19 6.6v8.8L11 19.8 3 15.4V6.6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-      <circle cx="11" cy="11" r="2.5" fill="currentColor" />
     </svg>
   );
 }

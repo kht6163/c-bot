@@ -387,9 +387,10 @@ describe("bots API", () => {
     );
     expect(created.status).toBe(201);
     const { bot } = (await created.json()) as {
-      bot: { id: string; handle: string; provider: string; model: string; thinking: string };
+      bot: { id: string; handle: string; provider: string; model: string; thinking: string; skillsDir: string };
     };
     expect(bot.handle).toBe("researcher");
+    expect(bot.skillsDir).toBe(join(home, "bots", bot.id, "skills"));
     expect(bot.provider).toBe("acme");
     expect(bot.model).toBe("alpha");
     expect(bot.thinking).toBe("xhigh");
@@ -401,8 +402,9 @@ describe("bots API", () => {
       opts,
     );
     expect(patched.status).toBe(200);
-    const after = (await patched.json()) as { bot: { thinking: string } };
+    const after = (await patched.json()) as { bot: { thinking: string; skillsDir: string } };
     expect(after.bot.thinking).toBe("high");
+    expect(after.bot.skillsDir).toBe(bot.skillsDir);
     const listedBefore = await handleHttp(new Request("http://127.0.0.1/api/bots"), opts);
     const before = (await listedBefore.json()) as { bots: { handle: string; role: string }[] };
     expect(before.bots.some((item) => item.handle === "leader" && item.role === "leader")).toBe(true);

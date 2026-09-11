@@ -38,6 +38,8 @@ export interface BotView {
   tools: BotToolName[] | null;
   soul?: string;
   skills?: string[];
+  /** Where the bot's skills folder is on disk. */
+  skillsDir?: string;
 }
 
 export async function fetchBots(): Promise<BotView[]> {
@@ -53,6 +55,7 @@ export async function createBot(input: {
   model?: string | null;
   thinking?: string | null;
   tools?: BotToolName[] | null;
+  soul?: string;
 }): Promise<BotView> {
   const body = await api<{ bot: BotView }>("/api/bots", {
     method: "POST",

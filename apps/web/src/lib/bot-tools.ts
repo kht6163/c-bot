@@ -25,7 +25,7 @@ export const TOOL_HINTS: Record<BotToolName | "message_agent", string> = {
   todo_write: "턴 안에서 쓰는 할 일 메모",
   memory: "이 봇의 메모리 찾기·기록",
   task: "세션 작업 보드 등록·수정",
-  message_agent: "다른 봇에게 메시지. 봇끼리 말하는 통로라 끌 수 없습니다",
+  message_agent: "봇끼리 말하는 통로라 늘 켜져 있습니다",
 };
 
 /** The choice after switching one tool; switching the last one back on is the default again. */

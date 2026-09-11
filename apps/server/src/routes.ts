@@ -34,7 +34,18 @@ import type { ProjectView, SessionId, SessionListResponse, SessionTeamMember } f
 import { isBotToolName, parseSlashCommand } from "@cbot/shared";
 import { runningCodingSessions } from "./activity.ts";
 import { runSlashCommand } from "./commands.ts";
-import { createBot, deleteBot, listBots, loadBot, MemoryStore, TaskStore, taskBoardId, updateBot } from "@cbot/bot";
+import {
+  createBot,
+  deleteBot,
+  listBots,
+  loadBot,
+  MemoryStore,
+  skillsDir,
+  TaskStore,
+  taskBoardId,
+  updateBot,
+  type BotRecord,
+} from "@cbot/bot";
 import { asBotId, asSessionId, asToolCallId } from "@cbot/shared";
 import { HttpError, isRecord, jsonError, readJson } from "./json.ts";
 import { homedir } from "node:os";
@@ -107,7 +118,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       const bots = [];
       for (const record of records) {
         const loaded = await loadBot(runtime.env.home, record.id);
-        bots.push(loaded ?? record);
+        bots.push(botView(runtime.env.home, loaded ?? record));
       }
       return Response.json({ bots });
     }
@@ -129,7 +140,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
         thinking: typeof body.thinking === "string" ? body.thinking : null,
         ...(tools !== undefined ? { tools } : {}),
       });
-      return Response.json({ bot }, { status: 201 });
+      return Response.json({ bot: botView(runtime.env.home, bot) }, { status: 201 });
     }
     const memListMatch = /^\/api\/bots\/([^/]+)\/memories$/.exec(url.pathname);
     if (memListMatch) {
@@ -225,7 +236,7 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
       if (!bot) {
         throw new HttpError(404, "unknown bot");
       }
-      return Response.json({ bot });
+      return Response.json({ bot: botView(runtime.env.home, bot) });
     }
     if (botMatch && req.method === "DELETE") {
       const id = asBotId(decodeURIComponent(botMatch[1] ?? ""));
@@ -660,6 +671,11 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
   } catch (err) {
     return jsonError(err);
   }
+}
+
+/** A bot as the web sees it: its profile plus where its skills folder is on disk. */
+function botView<T extends BotRecord>(home: string, bot: T): T & { skillsDir: string } {
+  return { ...bot, skillsDir: skillsDir(home, bot.id) };
 }
 
 /** A bot's `tools` field: absent leaves it alone, null is every tool, a list names each one. */

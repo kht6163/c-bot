@@ -10,22 +10,20 @@ import {
   type SessionTeamMember,
 } from "@cbot/shared";
 import { Composer } from "./components/Composer.tsx";
-import { EditBotDialog } from "./components/EditBotDialog.tsx";
-import { NewBotDialog } from "./components/NewBotDialog.tsx";
 import { SettingsDialog } from "./components/SettingsDialog.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { TeamPanel } from "./components/TeamPanel.tsx";
 import { TeamStage } from "./components/TeamStage.tsx";
 import { Inspector } from "./components/Inspector.tsx";
 import { loadInspectorWidth, saveInspectorWidth } from "./lib/inspector.ts";
+import { NEW_BOT } from "./lib/team-panel.ts";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import {
-  createBot,
   createSession,
   deleteBot,
   deleteProject,
   deleteSession,
   fetchBots,
-  updateBot,
   fetchHealth,
   fetchProject,
   fetchSession,
@@ -74,8 +72,8 @@ export function App() {
   const [events, setEvents] = useState<SessionEvent[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
-  const [newBotOpen, setNewBotOpen] = useState(false);
-  const [editBotId, setEditBotId] = useState<string | undefined>();
+  /** The bot the team panel opens on, NEW_BOT to make one, or undefined while it is closed. */
+  const [teamTarget, setTeamTarget] = useState<string | undefined>();
   const [hasApiKey, setHasApiKey] = useState(false);
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
@@ -484,8 +482,7 @@ export function App() {
     handleSend(next.text);
   }, [busy, selectedId, queues, handleSend]);
 
-  const overlayOpen = settingsOpen || workspaceOpen || newBotOpen || Boolean(editBotId);
-  const editBot = bots.find((item) => item.id === editBotId);
+  const overlayOpen = settingsOpen || workspaceOpen || teamTarget !== undefined;
 
   return (
     <>
@@ -566,8 +563,8 @@ export function App() {
             }
           })();
         }}
-        onNewBot={() => setNewBotOpen(true)}
-        onEditBot={(id) => setEditBotId(id)}
+        onNewBot={() => setTeamTarget(NEW_BOT)}
+        onEditBot={(id) => setTeamTarget(id)}
         onDeleteBot={(id) => {
           void (async () => {
             const bot = bots.find((item) => item.id === id);
@@ -725,28 +722,15 @@ export function App() {
           });
         }}
       />
-      <NewBotDialog
-        open={newBotOpen}
-        onClose={() => setNewBotOpen(false)}
-        onCreate={async (input) => {
-          const bot = await createBot(input);
-          const nextBots = [...bots.filter((item) => item.id !== bot.id), bot];
-          setBots(nextBots);
-          setNewBotOpen(false);
-        }}
-      />
-      <EditBotDialog
-        bot={editBot}
-        onClose={() => setEditBotId(undefined)}
-        onSave={async (input) => {
-          if (!editBotId) {
-            return;
-          }
-          const bot = await updateBot(editBotId, input);
-          setBots((current) => current.map((item) => (item.id === bot.id ? bot : item)));
-          setEditBotId(undefined);
-        }}
-      />
+      {teamTarget !== undefined ? (
+        <TeamPanel
+          target={teamTarget}
+          bots={bots}
+          onClose={() => setTeamTarget(undefined)}
+          onSaved={(bot) => setBots((current) => current.map((item) => (item.id === bot.id ? bot : item)))}
+          onCreated={(bot) => setBots((current) => [...current.filter((item) => item.id !== bot.id), bot])}
+        />
+      ) : null}
       <WorkspacePicker
         open={workspaceOpen}
         current={project?.current ?? null}
