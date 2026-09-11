@@ -35,7 +35,8 @@ export const ARRANGE_MS = 360;
 export const GRAPH_LIST_MAX = 60;
 /** A delivery older than this when first seen is history, not something to animate. */
 export const FLIGHT_FRESH_MS = 15_000;
-export const FLIGHT_MS = 2_400;
+/** How long a spark takes to cross its edge, slow enough to follow the label it carries. */
+export const FLIGHT_MS = 4_800;
 export const FLIGHT_LABEL_MAX = 44;
 export const FLIGHT_PREVIEW_MAX = 180;
 /** The message card shows up when the spark is this far along, and lingers after. */
