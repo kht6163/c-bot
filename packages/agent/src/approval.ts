@@ -1,8 +1,9 @@
-import type { ToolCallId } from "@cbot/shared";
+import type { SessionId, ToolCallId } from "@cbot/shared";
 
 interface Pending {
   settle: (allow: boolean) => void;
   rule: string | undefined;
+  sessionId: SessionId;
 }
 
 export class ApprovalGate {
@@ -14,7 +15,12 @@ export class ApprovalGate {
   }
 
   /** An aborted turn resolves as "not allowed"; the caller checks the signal to tell the two apart. */
-  wait(callId: ToolCallId, signal?: AbortSignal, rule?: string): Promise<boolean> {
+  wait(
+    callId: ToolCallId,
+    sessionId: SessionId,
+    signal?: AbortSignal,
+    rule?: string,
+  ): Promise<boolean> {
     return new Promise((resolve) => {
       if (signal?.aborted) {
         resolve(false);
@@ -26,14 +32,14 @@ export class ApprovalGate {
         resolve(allow);
       };
       const onAbort = () => settle(false);
-      this.pending.set(callId, { settle, rule });
+      this.pending.set(callId, { settle, rule, sessionId });
       signal?.addEventListener("abort", onAbort, { once: true });
     });
   }
 
-  settle(callId: ToolCallId, allow: boolean): boolean {
+  settle(callId: ToolCallId, allow: boolean, sessionId: SessionId): boolean {
     const entry = this.pending.get(callId);
-    if (!entry) {
+    if (!entry || entry.sessionId !== sessionId) {
       return false;
     }
     entry.settle(allow);

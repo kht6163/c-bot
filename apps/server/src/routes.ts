@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   SHIPPED_PROVIDERS,
   WorktreeError,
@@ -33,6 +33,8 @@ import {
   shippedProvider,
   upsertProvider,
   validateProviderId,
+  isInsideWorkspace,
+  resolveWorkspacePath,
   type LlmProvider,
 } from "@cbot/agent";
 import type {
@@ -973,9 +975,9 @@ function toProjectView(current: string | null, recents: string[], launchDir: str
   };
 }
 
+/** True when path (after realpath) stays under root. Symlink escapes are rejected. */
 function isUnderRoot(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path));
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  return isInsideWorkspace(root, path);
 }
 
 async function browseDir(
@@ -986,10 +988,16 @@ async function browseDir(
   parent: string | null;
   entries: { name: string; path: string; type: "dir" | "file" }[];
 }> {
-  const path = resolve(raw && raw.trim().length > 0 ? raw : fallback);
+  const requested = resolve(raw && raw.trim().length > 0 ? raw : fallback);
   const home = resolve(homedir());
   const launch = resolve(fallback);
-  if (!isUnderRoot(home, path) && !isUnderRoot(launch, path)) {
+  let path: string | null = null;
+  if (isUnderRoot(home, requested)) {
+    path = resolveWorkspacePath(home, requested);
+  } else if (isUnderRoot(launch, requested)) {
+    path = resolveWorkspacePath(launch, requested);
+  }
+  if (!path) {
     throw new HttpError(403, "path outside allowed browse roots");
   }
   const info = await stat(path).catch(() => null);
