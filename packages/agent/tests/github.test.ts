@@ -181,7 +181,11 @@ describe("git push auth helpers", () => {
     try {
       const cleaned = scrubEnv(process.env);
       expect(cleaned.GITHUB_TOKEN).toBeUndefined();
-      const merged = { ...cleaned, GIT_TERMINAL_PROMPT: "0", ...gitPushAuthEnv(token) };
+      const merged: Record<string, string | undefined> = {
+        ...cleaned,
+        GIT_TERMINAL_PROMPT: "0",
+        ...gitPushAuthEnv(token),
+      };
       expect(merged.GITHUB_TOKEN).toBeUndefined();
       expect(merged.GIT_CONFIG_VALUE_0).toContain(token);
     } finally {
