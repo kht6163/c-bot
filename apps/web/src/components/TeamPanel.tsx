@@ -2,12 +2,16 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createBot, fetchSettings, updateBot, type BotView, type SettingsView } from "../lib/api.ts";
 import { avatarText } from "../lib/graph.ts";
 import {
+  AUTO_COMPACT_IDLE_PRESETS,
   NEW_BOT,
+  autoCompactIdleFromPreset,
+  autoCompactIdlePresetOf,
   draftChanges,
   draftOf,
   emptyDraft,
   isDirty,
   lineCount,
+  parseAutoCompactIdlePreset,
   rosterMeta,
   shortSkillsPath,
   type BotDraft,
@@ -140,6 +144,8 @@ export function TeamPanel({ target, bots, onClose, onSaved, onCreated }: Props) 
         thinking: draft.thinking,
         hidden: draft.hidden,
         tools: draft.tools,
+        autoCompactIdle: draft.autoCompactIdle,
+        autoCompactIdleMs: draft.autoCompactIdleMs,
       });
       drop(id);
       onSaved(next);
@@ -351,6 +357,33 @@ export function TeamPanel({ target, bots, onClose, onSaved, onCreated }: Props) 
                 </div>
               </section>
               <BotToolList value={draft.tools} changed={changes.tools} onChange={(tools) => edit({ tools })} />
+              <section className="team-sec" aria-label="자동 요약">
+                <div className="team-sec-head">
+                  <h3 className="team-sec-title">자동 요약</h3>
+                  {changes.autoCompact ? <span className="team-dirty" title="저장하지 않은 변경" /> : null}
+                </div>
+                <label className="team-field">
+                  유휴 시 컨텍스트 요약
+                  <select
+                    className="team-input"
+                    value={autoCompactIdlePresetOf(draft)}
+                    onChange={(event) =>
+                      edit(autoCompactIdleFromPreset(parseAutoCompactIdlePreset(event.target.value)))
+                    }
+                  >
+                    {AUTO_COMPACT_IDLE_PRESETS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="team-note">
+                  끔이 기본입니다. 켜면 이 봇 세션만, 유휴 시간과 컨텍스트 한도(
+                  <span className="team-mono">compactAt</span>)를 함께 넘길 때{" "}
+                  <span className="team-mono">/compact</span>와 같은 요약을 합니다.
+                </p>
+              </section>
             </div>
             <div className="team-col">
               <section className="team-sec team-prompt" aria-labelledby={promptId}>

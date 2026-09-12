@@ -42,3 +42,14 @@ export { recallIntoSession } from "./recall.ts";
 export { TaskStore, taskBoardId, tasksDbPath, type TaskEntry } from "./task-store.ts";
 export { taskTool } from "./task-tool.ts";
 export { cjkTokens, cjkSearchText, cjkMatchQuery } from "./cjk-tokenize.ts";
+export {
+  AUTO_COMPACT_IDLE_PRESETS,
+  autoCompactIdleFromPreset,
+  autoCompactIdlePresetOf,
+  idleCompactReady,
+  lastActivityMs,
+  maxEventSeq,
+  parseAutoCompactIdlePreset,
+  type AutoCompactIdlePreset,
+} from "./idle-compact.ts";
+export { DEFAULT_AUTO_COMPACT_IDLE_MS } from "./types.ts";

@@ -251,6 +251,10 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
           ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
           ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
           ...(tools !== undefined ? { tools } : {}),
+          ...(typeof body.autoCompactIdle === "boolean" ? { autoCompactIdle: body.autoCompactIdle } : {}),
+          ...(typeof body.autoCompactIdleMs === "number" && Number.isFinite(body.autoCompactIdleMs)
+            ? { autoCompactIdleMs: body.autoCompactIdleMs }
+            : {}),
         });
       } catch (err) {
         if (err instanceof Error && err.message === "leader cannot be hidden") {

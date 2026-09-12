@@ -54,6 +54,7 @@ import {
 import { codingSessionOf, isCodingSessionRunning } from "./activity.ts";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
+import { flushPendingIdleCompact } from "./idle-compact.ts";
 
 export interface Runtime {
   env: ProcessEnv;
@@ -342,6 +343,9 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
     busy.delete(sessionId);
     if (pendingWake.delete(sessionId)) {
       wakeSession(runtime, sessionId);
+    } else {
+      // Idle auto-compact that armed while this turn (or approval) was open runs once.
+      flushPendingIdleCompact(runtime, sessionId, isSessionBusy);
     }
   }
 }
