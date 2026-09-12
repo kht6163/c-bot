@@ -3618,7 +3618,7 @@ select.field-input {
   min-width: 0;
 }
 
-.stage-split-label {
+.stage-mode-label {
   flex: 1;
   margin: 0;
   min-width: 0;
@@ -3711,68 +3711,6 @@ select.field-input {
   color: var(--quiet);
 }
 
-.split-board {
-  position: relative;
-  isolation: isolate;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 7%) 1px, transparent 0);
-  background-size: 22px 22px;
-}
-
-.split-board-space {
-  position: relative;
-  min-width: 100%;
-  min-height: 100%;
-}
-
-.bot-note {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: var(--glass-2);
-  backdrop-filter: blur(20px) saturate(140%);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--hi), var(--lift);
-  overflow: hidden;
-}
-
-/* The raised note is the one the eye should land on: a ring, not a bigger
-   shadow, since every note already floats on the same board. */
-.bot-note.is-top {
-  border-color: color-mix(in oklab, var(--accent) 46%, transparent);
-  box-shadow:
-    var(--hi),
-    var(--lift),
-    0 0 0 3px color-mix(in oklab, var(--accent) 14%, transparent);
-}
-
-.bot-note-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 7px 0 12px;
-  border-bottom: 1px solid var(--edge-soft);
-  background: rgb(255 255 255 / 3%);
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-}
-
-.bot-note.collapsed .bot-note-head {
-  border-bottom: 0;
-}
-
-.bot-note-head:active {
-  cursor: grabbing;
-}
-
 .bar-icon {
   flex: none;
   display: block;
@@ -3785,93 +3723,7 @@ select.field-input {
   color: var(--text);
 }
 
-.bot-note .log.pane {
-  flex: 1;
-  min-height: 0;
-  /* Keep the scrollbars outside the edge and corner resize hit areas. */
-  width: calc(100% - 14px);
-  margin: 0 14px 14px 0;
-}
-
-.note-fold {
-  margin-left: auto;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.note-fold:hover {
-  color: var(--text);
-  background: var(--row-hover);
-}
-
-.note-resize {
-  position: absolute;
-  z-index: 2;
-  touch-action: none;
-}
-
-.note-e {
-  top: 32px;
-  right: 0;
-  width: 8px;
-  bottom: 10px;
-  cursor: col-resize;
-}
-
-.note-s {
-  left: 0;
-  right: 10px;
-  bottom: 0;
-  height: 8px;
-  cursor: row-resize;
-}
-
-.note-se {
-  right: 0;
-  bottom: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-}
-
-@media (max-width: 899px) {
-  .split-board-space {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 8px;
-    min-width: 0 !important;
-    min-height: 0 !important;
-  }
-
-  .bot-note {
-    position: relative !important;
-    left: auto !important;
-    top: auto !important;
-    width: 100% !important;
-    z-index: auto !important;
-  }
-
-  /* Stacked notes do not move, so a swipe on a title scrolls the board. */
-  .bot-note-head {
-    touch-action: pan-y;
-  }
-
-  .note-e,
-  .note-se {
-    display: none;
-  }
-}
-
-/* One control for the three ways to look at a team; the pressed one is a tab,
+/* One control for the two ways to look at a team; the pressed one is a tab,
    not a lit button, so the accent stays on the thing being worked on. */
 .view-modes {
   flex: none;

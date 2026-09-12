@@ -12,6 +12,7 @@ import type { SessionStore } from "@cbot/agent";
 import { loadSkills } from "./skills.ts";
 import {
   BOT_CHAT_TITLE,
+  DEFAULT_AUTO_COMPACT_IDLE_MS,
   LEADER_HANDLE,
   type BotProfile,
   type BotRecord,
@@ -146,6 +147,8 @@ export async function createBot(
     hidden: false,
     tools: input.tools ? normalizeBotTools(input.tools) : null,
     sessionId: session.id,
+    autoCompactIdle: false,
+    autoCompactIdleMs: DEFAULT_AUTO_COMPACT_IDLE_MS,
   };
   const dir = join(botsDir(home), id);
   await mkdir(join(dir, "memory"), { recursive: true });
@@ -168,6 +171,8 @@ export async function updateBot(
     thinking?: string | null;
     hidden?: boolean;
     tools?: readonly string[] | null;
+    autoCompactIdle?: boolean;
+    autoCompactIdleMs?: number;
   },
 ): Promise<BotProfile | undefined> {
   const loaded = await loadBot(home, id);
@@ -190,6 +195,12 @@ export async function updateBot(
     tools:
       patch.tools === undefined ? loaded.tools : patch.tools === null ? null : normalizeBotTools(patch.tools),
     sessionId: loaded.sessionId,
+    autoCompactIdle:
+      patch.autoCompactIdle !== undefined ? patch.autoCompactIdle : loaded.autoCompactIdle,
+    autoCompactIdleMs:
+      patch.autoCompactIdleMs !== undefined
+        ? Math.max(0, Math.round(patch.autoCompactIdleMs))
+        : loaded.autoCompactIdleMs,
   };
   await writeRecord(home, record);
   const soul = patch.soul !== undefined ? patch.soul : loaded.soul;
@@ -248,6 +259,8 @@ function serializeProfile(record: BotRecord): string {
     `hidden: ${record.hidden}`,
     `tools: ${record.tools ? JSON.stringify(record.tools) : "null"}`,
     `sessionId: ${JSON.stringify(record.sessionId)}`,
+    `autoCompactIdle: ${record.autoCompactIdle}`,
+    `autoCompactIdleMs: ${record.autoCompactIdleMs}`,
     "",
   ].join("\n");
 }
@@ -271,6 +284,10 @@ function parseProfileYaml(raw: string): BotRecord | undefined {
   const handle = parsed.handle;
   const role: BotRole =
     parsed.role === "leader" || handle === LEADER_HANDLE ? "leader" : "specialist";
+  const idleMs =
+    typeof parsed.autoCompactIdleMs === "number" && Number.isFinite(parsed.autoCompactIdleMs)
+      ? Math.max(0, Math.round(parsed.autoCompactIdleMs))
+      : DEFAULT_AUTO_COMPACT_IDLE_MS;
   return {
     id: asBotId(parsed.id),
     handle,
@@ -285,6 +302,8 @@ function parseProfileYaml(raw: string): BotRecord | undefined {
       ? normalizeBotTools(parsed.tools.filter((item): item is string => typeof item === "string"))
       : null,
     sessionId: asSessionId(parsed.sessionId),
+    autoCompactIdle: parsed.autoCompactIdle === true,
+    autoCompactIdleMs: idleMs,
   };
 }
 

@@ -49,6 +49,11 @@ describe("roster", () => {
     expect(pinned.thinking).toBe("xhigh");
     const reloaded = await loadBot(home, pinned.id);
     expect(reloaded?.thinking).toBe("xhigh");
+    expect(reloaded?.autoCompactIdle).toBe(false);
+    expect(reloaded?.autoCompactIdleMs).toBe(60_000);
+    await updateBot(home, pinned.id, { autoCompactIdle: true, autoCompactIdleMs: 30_000 });
+    expect((await loadBot(home, pinned.id))?.autoCompactIdle).toBe(true);
+    expect((await loadBot(home, pinned.id))?.autoCompactIdleMs).toBe(30_000);
     expect(await deleteBot(home, writer.id)).toBe(true);
     expect((await listBots(home)).map((b) => b.handle)).toEqual(["coder", "researcher"]);
     store.close();

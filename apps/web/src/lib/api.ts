@@ -41,6 +41,9 @@ export interface BotView {
   skills?: string[];
   /** Where the bot's skills folder is on disk. */
   skillsDir?: string;
+  /** Idle auto-compact (same `/compact` path). Default off. */
+  autoCompactIdle: boolean;
+  autoCompactIdleMs: number;
 }
 
 export async function fetchBots(): Promise<BotView[]> {
@@ -77,6 +80,8 @@ export async function updateBot(
     thinking?: string | null;
     hidden?: boolean;
     tools?: BotToolName[] | null;
+    autoCompactIdle?: boolean;
+    autoCompactIdleMs?: number;
   },
 ): Promise<BotView> {
   const body = await api<{ bot: BotView }>(`/api/bots/${id}`, {

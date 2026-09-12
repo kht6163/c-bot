@@ -24,6 +24,8 @@ const bot: BotView = {
   tools: null,
   soul: "# Reviewer\n",
   skills: ["review"],
+  autoCompactIdle: false,
+  autoCompactIdleMs: 60_000,
 };
 
 describe("team panel drafts", () => {
@@ -35,10 +37,13 @@ describe("team panel drafts", () => {
   test("each edit marks only its own section", () => {
     const saved = draftOf(bot);
     const changes = draftChanges(saved, { ...saved, tools: ["read_file"], soul: "# Reviewer\n\n더\n" });
-    expect(changes).toEqual({ basics: false, model: false, tools: true, soul: true, hidden: false });
+    expect(changes).toEqual({ basics: false, model: false, tools: true, soul: true, hidden: false, autoCompact: false });
     expect(draftChanges(saved, { ...saved, thinking: "low" }).model).toBe(true);
     expect(draftChanges(saved, { ...saved, title: "Critic" }).basics).toBe(true);
     expect(draftChanges(saved, { ...saved, hidden: true }).hidden).toBe(true);
+    expect(draftChanges(saved, { ...saved, autoCompactIdle: true, autoCompactIdleMs: 30_000 }).autoCompact).toBe(
+      true,
+    );
   });
 
   test("a new bot starts with every tool and the default model", () => {
