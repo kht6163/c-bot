@@ -171,7 +171,13 @@ export async function settleApproval(
   allow: boolean,
   remember?: ApprovalRemember,
 ): Promise<boolean> {
+  // Capture rule before settle clears the pending entry; only remember if this
+  // session actually owns the approval (wrong-session settle returns false).
   const rule = allow && remember ? runtime.approvals.ruleOf(callId) : undefined;
+  const ok = runtime.approvals.settle(callId, allow, sessionId);
+  if (!ok) {
+    return false;
+  }
   if (rule) {
     // The running turn read config.yaml when it started, so "always" also
     // lands in the session set to cover the rest of this turn.
@@ -181,7 +187,7 @@ export async function settleApproval(
     const config = await loadConfig(runtime.env.home);
     await saveConfig(runtime.env.home, allowCommand(config, rule));
   }
-  return runtime.approvals.settle(callId, allow);
+  return true;
 }
 
 export function rememberSessionRule(sessionId: SessionId, rule: string): void {

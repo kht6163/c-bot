@@ -6,10 +6,12 @@ import {
   GithubError,
   fetchGithubIssue,
   formatIssueContext,
+  gitPushAuthEnv,
   issueBranchName,
   loadGithubToken,
   parseGithubRemote,
   parseIssueRef,
+  pushGitArgs,
   saveGithubToken,
   type FetchLike,
 } from "../src/github.ts";
@@ -154,5 +156,37 @@ describe("allowGithubWriteTools", () => {
     expect(allowGithubWriteTools(undefined)).toBe(true);
     expect(allowGithubWriteTools(null)).toBe(true);
     expect(allowGithubWriteTools("specialist")).toBe(false);
+  });
+});
+
+
+describe("git push auth helpers", () => {
+  test("push argv never contains the token; auth lives in GIT_CONFIG env", () => {
+    const token = "ghp_super_secret_token_value";
+    const args = pushGitArgs("cbot/issue-1");
+    const env = gitPushAuthEnv(token);
+    expect(args.join(" ")).not.toContain(token);
+    expect(JSON.stringify(args)).not.toContain(token);
+    expect(args).toEqual(["push", "-u", "origin", "HEAD:refs/heads/cbot/issue-1"]);
+    expect(env.GIT_CONFIG_COUNT).toBe("1");
+    expect(env.GIT_CONFIG_KEY_0).toBe("http.extraHeader");
+    expect(env.GIT_CONFIG_VALUE_0).toBe(`Authorization: Bearer ${token}`);
+  });
+
+  test("scrubbed child env drops GITHUB_TOKEN before GIT_CONFIG overlays", async () => {
+    const { scrubEnv } = await import("../src/tools/bash.ts");
+    const token = "ghp_environ_should_not_leak";
+    const previous = process.env.GITHUB_TOKEN;
+    process.env.GITHUB_TOKEN = token;
+    try {
+      const cleaned = scrubEnv(process.env);
+      expect(cleaned.GITHUB_TOKEN).toBeUndefined();
+      const merged = { ...cleaned, GIT_TERMINAL_PROMPT: "0", ...gitPushAuthEnv(token) };
+      expect(merged.GITHUB_TOKEN).toBeUndefined();
+      expect(merged.GIT_CONFIG_VALUE_0).toContain(token);
+    } finally {
+      if (previous === undefined) delete process.env.GITHUB_TOKEN;
+      else process.env.GITHUB_TOKEN = previous;
+    }
   });
 });

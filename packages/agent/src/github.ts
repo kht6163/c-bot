@@ -4,6 +4,7 @@
  */
 import { chmod } from "node:fs/promises";
 import { secretsPath } from "./config.ts";
+import { scrubEnv } from "./tools/bash.ts";
 
 export const GITHUB_TOKEN_ENV = "GITHUB_TOKEN";
 
@@ -294,12 +295,23 @@ export async function currentBranch(cwd: string): Promise<string | null> {
   return branch.ok ? branch.out.trim() || null : null;
 }
 
+/** Env that injects Authorization via git config (never put the token on argv). */
+export function gitPushAuthEnv(token: string): Record<string, string> {
+  return {
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.extraHeader",
+    GIT_CONFIG_VALUE_0: `Authorization: Bearer ${token}`,
+  };
+}
+
+/** argv for `git push` — no secrets. */
+export function pushGitArgs(branch: string): string[] {
+  return ["push", "-u", "origin", `HEAD:refs/heads/${branch}`];
+}
+
 export async function pushBranch(cwd: string, branch: string, token?: string): Promise<void> {
-  // Bearer header lets HTTPS remotes push with GITHUB_TOKEN without rewriting the remote URL.
-  const extra = token
-    ? (["-c", `http.extraHeader=Authorization: Bearer ${token}`] as const)
-    : ([] as const);
-  const pushed = await runGit(cwd, [...extra, "push", "-u", "origin", `HEAD:refs/heads/${branch}`]);
+  // Bearer via GIT_CONFIG_* so the token never appears in process argv (ps).
+  const pushed = await runGit(cwd, pushGitArgs(branch), token ? gitPushAuthEnv(token) : undefined);
   if (!pushed.ok) {
     const err = pushed.err.trim();
     if (/Authentication failed|could not read Username|Invalid username|403|401/i.test(err)) {
@@ -438,14 +450,18 @@ async function readEnvFile(path: string): Promise<Record<string, string>> {
   return out;
 }
 
-async function runGit(cwd: string, args: string[]): Promise<{ ok: boolean; out: string; err: string }> {
+async function runGit(
+  cwd: string,
+  args: string[],
+  envOverrides?: Record<string, string>,
+): Promise<{ ok: boolean; out: string; err: string }> {
   try {
     const proc = Bun.spawn(["git", "-c", "core.quotePath=false", ...args], {
       cwd,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      env: { ...scrubEnv(process.env), GIT_TERMINAL_PROMPT: "0", ...envOverrides },
     });
     const [out, err, code] = await Promise.all([
       new Response(proc.stdout).text(),

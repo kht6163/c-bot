@@ -1,4 +1,4 @@
-import { mkdtemp, stat } from "node:fs/promises";
+import { mkdtemp, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -351,6 +351,24 @@ describe("sessions API", () => {
     const browse = await handleHttp(new Request("http://127.0.0.1/api/fs/browse"), opts);
     const listing = (await browse.json()) as { path: string };
     expect(listing.path).toBe(launchDir);
+    runtime.store.close();
+  });
+
+  test("browse rejects symlink escape outside allowed roots", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-browse-home-"));
+    const outside = await mkdtemp(join(tmpdir(), "cbot-browse-out-"));
+    const launchDir = resolve(home);
+    await symlink(outside, join(launchDir, "escape"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]), launchDir);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const browse = await handleHttp(
+      new Request(
+        `http://127.0.0.1/api/fs/browse?path=${encodeURIComponent(join(launchDir, "escape"))}`,
+      ),
+      opts,
+    );
+    expect(browse.status).toBe(403);
     runtime.store.close();
   });
 });
