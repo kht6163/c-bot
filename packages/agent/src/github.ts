@@ -4,6 +4,7 @@
  */
 import { chmod } from "node:fs/promises";
 import { secretsPath } from "./config.ts";
+import { scrubEnv } from "./tools/bash.ts";
 
 export const GITHUB_TOKEN_ENV = "GITHUB_TOKEN";
 
@@ -460,7 +461,7 @@ async function runGit(
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...envOverrides },
+      env: { ...scrubEnv(process.env), GIT_TERMINAL_PROMPT: "0", ...envOverrides },
     });
     const [out, err, code] = await Promise.all([
       new Response(proc.stdout).text(),
