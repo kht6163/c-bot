@@ -172,7 +172,6 @@ async function runIdleCompactForSession(
   }
   runningIdleCompact.add(sessionId);
   pendingIdleCompact.delete(sessionId);
-  attemptedAtSeq.set(sessionId, seq);
   try {
     const secrets = await loadSecrets(runtime.env.home);
     const endpoint = resolveLlmEndpoint(config, secrets, {
@@ -180,7 +179,7 @@ async function runIdleCompactForSession(
       model: bot.model,
     });
     // Same summary boundary as `/compact` (keepRecentTurns: 0); `auto: true` marks the event.
-    await compactSession(sessionId, {
+    const result = await compactSession(sessionId, {
       store: runtime.store,
       llm: runtime.llm,
       apiKey: endpoint?.apiKey,
@@ -189,6 +188,11 @@ async function runIdleCompactForSession(
       keepRecentTurns: 0,
       auto: true,
     });
+    // Only stamp after a durable outcome. LLM/config failure must leave the seq
+    // free so the next tick can retry; nothing_to_compact still stamps to avoid a loop.
+    if (result.ok || result.reason === "nothing_to_compact") {
+      attemptedAtSeq.set(sessionId, seq);
+    }
   } finally {
     runningIdleCompact.delete(sessionId);
   }

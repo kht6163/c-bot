@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
+  LlmError,
   loadConfig,
   saveConfig,
   saveProviderKey,
@@ -138,6 +139,58 @@ describe("idle auto compact", () => {
       }
       await Bun.sleep(20);
     }
+    expect(runtime.store.events(coding).some((event) => event.type === "context/compact")).toBe(true);
+    runtime.store.close();
+  });
+
+  test("LLM failure does not stamp attemptedAtSeq — same seq retries", async () => {
+    resetIdleCompactState();
+    const home = await mkdtemp(join(tmpdir(), "cbot-idle-fail-"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3081" });
+    const config = await loadConfig(home);
+    await saveConfig(
+      home,
+      {
+        ...upsertProvider(config, {
+          id: "acme",
+          displayName: "Acme",
+          baseURL: "https://llm.example/v1",
+          models: ["demo"],
+        }),
+        context: { autoCompact: true, maxTokens: 80, compactAt: 0.5, keepRecentTurns: 2 },
+      },
+    );
+    await saveProviderKey(home, "acme", "test-key");
+    const flip: LlmClient & { fails: number } = {
+      fails: 1,
+      async *stream() {
+        if (flip.fails > 0) {
+          flip.fails -= 1;
+          throw new LlmError("compact boom", "network");
+        }
+        yield { type: "text", text: "세션 요약본" };
+        yield { type: "done", finishReason: "stop" };
+      },
+    };
+    const runtime = await createRuntime(env, flip);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const created = await handleHttp(
+      new Request("http://127.0.0.1/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ workspace: home }),
+      }),
+      opts,
+    );
+    const { session } = (await created.json()) as { session: { id: string } };
+    const bots = await listBots(home);
+    const leader = bots.find((bot) => bot.role === "leader")!;
+    await updateBot(home, leader.id, { autoCompactIdle: true, autoCompactIdleMs: 1_000 });
+    const coding = asSessionId(session.id);
+    seedHeavyTurns(runtime, coding, "fail");
+    const now = Date.now() + 120_000;
+    await tickIdleCompact(runtime, () => false, now);
+    expect(runtime.store.events(coding).some((event) => event.type === "context/compact")).toBe(false);
+    await tickIdleCompact(runtime, () => false, now);
     expect(runtime.store.events(coding).some((event) => event.type === "context/compact")).toBe(true);
     runtime.store.close();
   });
