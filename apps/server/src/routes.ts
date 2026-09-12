@@ -77,10 +77,14 @@ import {
   settleApproval,
   type Runtime,
 } from "./runtime.ts";
+import { handleGithubWebhook } from "./github-webhook.ts";
 
 export async function handleApi(req: Request, runtime: Runtime): Promise<Response> {
   const url = new URL(req.url);
   try {
+    if (url.pathname === "/api/github/webhook" && req.method === "POST") {
+      return handleGithubWebhook(req, runtime);
+    }
     if (url.pathname === "/api/project" && req.method === "GET") {
       const config = await loadConfig(runtime.env.home);
       return Response.json(

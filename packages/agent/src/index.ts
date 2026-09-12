@@ -131,25 +131,36 @@ export {
 
 export {
   GITHUB_TOKEN_ENV,
+  GITHUB_WEBHOOK_SECRET_ENV,
   GithubError,
   createDraftPullRequest,
   currentBranch,
   defaultBaseBranch,
   fetchGithubIssue,
+  formatCiFailureReworkContext,
   formatIssueContext,
   formatIssueNotice,
+  formatReviewReworkContext,
   gitPushAuthEnv,
   issueBranchName,
   loadGithubToken,
+  loadGithubWebhookSecret,
   parseGithubRemote,
   parseIssueRef,
   pushBranch,
   pushGitArgs,
   resolveGithubRepo,
   saveGithubToken,
+  saveGithubWebhookSecret,
+  verifyGithubWebhookSignature,
   type FetchLike,
   type GithubErrorCode,
   type GithubIssue,
   type GithubIssueRef,
 } from "./github.ts";
+export {
+  GithubWebhookStore,
+  githubWebhookDbPath,
+  normalizePrUrl,
+} from "./github-webhook-store.ts";
 export { allowGithubWriteTools, githubCreatePrTool } from "./tools/github.ts";

@@ -1,8 +1,9 @@
 /**
- * GitHub issue fetch and draft-PR helpers. Tokens live only under $CBOT_HOME/.env
- * (GITHUB_TOKEN). Never return or log the raw token.
+ * GitHub issue fetch, draft-PR, and webhook HMAC helpers. Secrets live only under
+ * $CBOT_HOME/.env (GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET). Never return or log them.
  */
 import { chmod } from "node:fs/promises";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { secretsPath } from "./config.ts";
 import { scrubEnv } from "./tools/bash.ts";
 
@@ -472,4 +473,112 @@ async function runGit(
   } catch (error) {
     return { ok: false, out: "", err: error instanceof Error ? error.message : String(error) };
   }
+}
+
+export const GITHUB_WEBHOOK_SECRET_ENV = "GITHUB_WEBHOOK_SECRET";
+
+export async function loadGithubWebhookSecret(
+  home: string,
+  processEnv: Record<string, string | undefined> = process.env,
+): Promise<string | undefined> {
+  const fromEnv = processEnv[GITHUB_WEBHOOK_SECRET_ENV]?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const file = await readEnvFile(secretsPath(home));
+  const fromFile = file[GITHUB_WEBHOOK_SECRET_ENV]?.trim();
+  return fromFile || undefined;
+}
+
+export async function saveGithubWebhookSecret(home: string, secret: string): Promise<void> {
+  const path = secretsPath(home);
+  const current = await readEnvFile(path);
+  if (secret.trim()) {
+    current[GITHUB_WEBHOOK_SECRET_ENV] = secret.trim();
+  } else {
+    delete current[GITHUB_WEBHOOK_SECRET_ENV];
+  }
+  const body = Object.entries(current)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n")
+    .concat("\n");
+  await Bun.write(path, body);
+  await chmod(path, 0o600);
+}
+
+/**
+ * Verify GitHub webhook HMAC (X-Hub-Signature-256). Missing/empty secret or
+ * signature → false. Uses timing-safe compare.
+ */
+export function verifyGithubWebhookSignature(
+  secret: string,
+  rawBody: string,
+  signatureHeader: string | null | undefined,
+): boolean {
+  if (!secret || !signatureHeader) {
+    return false;
+  }
+  const digest = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const expected = `sha256=${digest}`;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signatureHeader);
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
+}
+
+export function formatReviewReworkContext(input: {
+  prUrl?: string;
+  body: string;
+  path?: string;
+  line?: number | null;
+  commentUrl?: string;
+  author?: string;
+}): string {
+  const loc =
+    input.path != null && input.path.length > 0
+      ? input.line != null
+        ? `파일: \`${input.path}\` L${input.line}`
+        : `파일: \`${input.path}\``
+      : null;
+  return [
+    "GitHub 리뷰/이슈 코멘트 (CI·리뷰 자동 재작업)",
+    input.prUrl ? `PR: ${input.prUrl}` : null,
+    loc,
+    input.commentUrl ? `코멘트: ${input.commentUrl}` : null,
+    input.author ? `작성자: ${input.author}` : null,
+    "",
+    input.body.trim() || "(내용 없음)",
+    "",
+    "위 피드백을 반영해 수정하라. 끝나면 github_create_pr 도구로 다시 push·드래프트 PR을 갱신한다 (승인 카드 필요).",
+    "강제 push·머지·미리보기 브라우저는 하지 마라.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+export function formatCiFailureReworkContext(input: {
+  prUrl?: string;
+  branch?: string;
+  name: string;
+  conclusion: string;
+  htmlUrl?: string;
+  summary?: string;
+}): string {
+  return [
+    "GitHub CI 실패 (자동 재작업)",
+    input.prUrl ? `PR: ${input.prUrl}` : null,
+    input.branch ? `브랜치: \`${input.branch}\`` : null,
+    `체크/워크플로: ${input.name}`,
+    `결론: ${input.conclusion}`,
+    input.htmlUrl ? `URL: ${input.htmlUrl}` : null,
+    "",
+    input.summary?.trim() || "(상세 요약 없음)",
+    "",
+    "실패한 CI를 고친 뒤 github_create_pr 도구로 다시 push한다 (승인 카드 필요).",
+    "강제 push·머지·미리보기 브라우저는 하지 마라.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
 }
