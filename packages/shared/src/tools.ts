@@ -14,6 +14,7 @@ export const BOT_TOOLS = [
   "todo_write",
   "memory",
   "task",
+  "github_create_pr",
 ] as const;
 
 export type BotToolName = (typeof BOT_TOOLS)[number];

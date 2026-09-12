@@ -128,3 +128,26 @@ export {
   type FilePreview,
   type RawImage,
 } from "./workspace-inspect.ts";
+
+export {
+  GITHUB_TOKEN_ENV,
+  GithubError,
+  createDraftPullRequest,
+  currentBranch,
+  defaultBaseBranch,
+  fetchGithubIssue,
+  formatIssueContext,
+  formatIssueNotice,
+  issueBranchName,
+  loadGithubToken,
+  parseGithubRemote,
+  parseIssueRef,
+  pushBranch,
+  resolveGithubRepo,
+  saveGithubToken,
+  type FetchLike,
+  type GithubErrorCode,
+  type GithubIssue,
+  type GithubIssueRef,
+} from "./github.ts";
+export { allowGithubWriteTools, githubCreatePrTool } from "./tools/github.ts";

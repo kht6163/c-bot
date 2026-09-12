@@ -21,6 +21,8 @@ import {
   sessionNeedsTurn,
   sessionsDbPath,
   titleFromText,
+  allowGithubWriteTools,
+  githubCreatePrTool,
   type LlmClient,
   type ToolDefinition,
 } from "@cbot/agent";
@@ -277,6 +279,15 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
         systemPrompt = withProtocol(base, protocolSection(me, roster, me.soul));
         pin = { provider: me.provider, model: me.model, thinking: me.thinking };
         await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
+      }
+      // Leader-only GitHub write: specialists never receive push/PR tools.
+      // Also respects the leader's tool choice when bot mode is on.
+      if (
+        workspace &&
+        allowGithubWriteTools(me?.role) &&
+        (!me || botToolEnabled(me.tools, "github_create_pr"))
+      ) {
+        extraTools = [...extraTools, githubCreatePrTool({ home: runtime.env.home })];
       }
       const endpoint = resolveLlmEndpoint(config, secrets, pin);
       const active = config.llm.providers.find((item) => item.id === (pin?.provider || config.llm.activeProvider));

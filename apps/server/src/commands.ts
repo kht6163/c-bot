@@ -26,6 +26,7 @@ import {
   sessionAllowRules,
   type Runtime,
 } from "./runtime.ts";
+import { runIssueCommand } from "./issue.ts";
 
 const INIT_PROMPT = [
   "이 워크스페이스를 위한 AGENTS.md 초안을 써라.",
@@ -77,6 +78,9 @@ export async function runSlashCommand(
         return;
       }
       await acceptUserMessage(runtime, sessionId, INIT_PROMPT);
+      return;
+    case "issue":
+      await runIssueCommand(runtime, sessionId, session, command.args);
       return;
   }
 }

@@ -1,5 +1,5 @@
 import { readdir, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   SHIPPED_PROVIDERS,
   WorktreeError,
@@ -973,6 +973,11 @@ function toProjectView(current: string | null, recents: string[], launchDir: str
   };
 }
 
+function isUnderRoot(root: string, path: string): boolean {
+  const rel = relative(resolve(root), resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
 async function browseDir(
   raw: string | null,
   fallback: string,
@@ -982,6 +987,11 @@ async function browseDir(
   entries: { name: string; path: string; type: "dir" | "file" }[];
 }> {
   const path = resolve(raw && raw.trim().length > 0 ? raw : fallback);
+  const home = resolve(homedir());
+  const launch = resolve(fallback);
+  if (!isUnderRoot(home, path) && !isUnderRoot(launch, path)) {
+    throw new HttpError(403, "path outside allowed browse roots");
+  }
   const info = await stat(path).catch(() => null);
   if (!info?.isDirectory()) {
     throw new HttpError(400, "not a directory");
