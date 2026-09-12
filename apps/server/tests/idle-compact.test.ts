@@ -166,7 +166,7 @@ describe("idle auto compact", () => {
       async *stream() {
         if (flip.fails > 0) {
           flip.fails -= 1;
-          throw new LlmError("compact boom", "network");
+          throw new LlmError("compact boom", "provider_server_error");
         }
         yield { type: "text", text: "세션 요약본" };
         yield { type: "done", finishReason: "stop" };
