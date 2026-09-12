@@ -71,10 +71,10 @@ export async function processGithubWebhook(
   const event = req.headers.get("x-github-event")?.trim() ?? "";
   const store = await webhookStore(runtime.env.home);
 
-  if (deliveryId) {
-    if (!store.claimDelivery(deliveryId)) {
-      return { status: 200, body: { ok: true, duplicate: true, deliveryId } };
-    }
+  // Duplicate check only — claim after a successful queue so GitHub retries
+  // still work if inject/parse fails mid-flight.
+  if (deliveryId && store.hasDelivery(deliveryId)) {
+    return { status: 200, body: { ok: true, duplicate: true, deliveryId } };
   }
 
   let payload: unknown;
@@ -112,7 +112,20 @@ export async function processGithubWebhook(
 
   // Direct acceptUserMessage — never slash-command parsing — so `/issue` in a
   // comment body cannot open a new session or trigger auto-write.
-  await acceptUserMessage(runtime, session.id, actionable.text);
+  try {
+    await acceptUserMessage(runtime, session.id, actionable.text);
+  } catch (error) {
+    console.info(
+      `[github-webhook] inject failed delivery=${deliveryId || "-"} session=${session.id}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return { status: 500, body: { ok: false, error: "inject_failed" } };
+  }
+
+  if (deliveryId) {
+    store.claimDelivery(deliveryId);
+  }
 
   return {
     status: 200,

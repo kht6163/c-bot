@@ -291,6 +291,36 @@ describe("POST /api/github/webhook", () => {
     h.runtime.store.close();
   });
 
+  test("inject failure does not claim delivery — retries can proceed", async () => {
+    const h = await harness();
+    const delivery = "fail-inject-1";
+    const realAppend = h.runtime.store.append.bind(h.runtime.store);
+    h.runtime.store.append = ((..._args: unknown[]) => {
+      throw new Error("inject boom");
+    }) as typeof h.runtime.store.append;
+    const failed = await postWebhook(h, "pull_request_review_comment", reviewCommentPayload(), {
+      "x-github-delivery": delivery,
+    });
+    expect(failed.status).toBe(500);
+    expect(failed.body.error).toBe("inject_failed");
+    h.runtime.store.append = realAppend;
+    const retried = await postWebhook(h, "pull_request_review_comment", reviewCommentPayload(), {
+      "x-github-delivery": delivery,
+    });
+    expect(retried.status).toBe(200);
+    expect(retried.body.queued).toBe(true);
+    const again = await postWebhook(h, "pull_request_review_comment", reviewCommentPayload(), {
+      "x-github-delivery": delivery,
+    });
+    expect(again.body.duplicate).toBe(true);
+    await waitForTurnEnd(h.runtime, h.sessionId);
+    const users = h.runtime.store
+      .events(h.sessionId as never)
+      .filter((e) => e.type === "user/message");
+    expect(users.length).toBe(1);
+    h.runtime.store.close();
+  });
+
   test("session busy → queue once", async () => {
     let release!: () => void;
     const gate = { release: new Promise<void>((r) => (release = r)) };
