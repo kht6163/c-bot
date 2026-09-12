@@ -186,6 +186,14 @@ export async function fetchGithubIssue(
     );
   }
   if (res.status === 403) {
+    const detail = (await res.text().catch(() => "")).slice(0, 300);
+    if (/rate limit/i.test(detail)) {
+      throw new GithubError(
+        "network",
+        "GitHub API rate limit에 걸렸습니다",
+        `잠시 기다리거나 ${GITHUB_TOKEN_ENV} 을 넣어 인증 요청으로 한도를 올리세요.`,
+      );
+    }
     throw new GithubError(
       "permission",
       "이 이슈를 읽을 권한이 없습니다",
