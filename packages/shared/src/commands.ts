@@ -10,7 +10,8 @@ export type SlashCommandName =
   | "model"
   | "approvals"
   | "bots"
-  | "init";
+  | "init"
+  | "issue";
 
 export interface SlashCommandSpec {
   name: SlashCommandName;
@@ -28,6 +29,7 @@ export const SLASH_COMMANDS: readonly SlashCommandSpec[] = [
   { name: "approvals", args: "[prompt|allow|forget <명령>|reset]", summary: "위험 도구 승인 정책과 허용 명령을 보거나 바꾼다" },
   { name: "bots", args: "", summary: "봇 로스터를 본다" },
   { name: "init", args: "", summary: "이 프로젝트의 AGENTS.md 초안을 쓰게 한다" },
+  { name: "issue", args: "<url|번호>", summary: "GitHub 이슈를 열어 워크트리 세션에서 작업한다" },
 ];
 
 export interface ParsedSlashCommand {

@@ -36,6 +36,9 @@ describe("isCommandAllowed", () => {
     expect(isCommandAllowed("git status; curl x", ["git status"])).toBe(false);
     expect(isCommandAllowed("git log | head", ["git log", "head"])).toBe(true);
     expect(isCommandAllowed("git log || true", ["git log"])).toBe(false);
+    expect(isCommandAllowed("echo hi & rm -rf /", ["echo"])).toBe(false);
+    expect(isCommandAllowed("echo hi & echo bye", ["echo"])).toBe(true);
+    expect(isCommandAllowed("git status\rrm -rf /", ["git status"])).toBe(false);
   });
 
   test("substitution and redirection never match", () => {

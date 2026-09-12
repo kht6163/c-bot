@@ -11,6 +11,14 @@ describe("parseSlashCommand", () => {
     expect(parseSlashCommand("/help")).toEqual({ name: "help", args: "" });
   });
 
+  test("parses /issue with a URL or number argument", () => {
+    expect(parseSlashCommand("/issue 12")).toEqual({ name: "issue", args: "12" });
+    expect(parseSlashCommand("/issue https://github.com/o/r/issues/1")).toEqual({
+      name: "issue",
+      args: "https://github.com/o/r/issues/1",
+    });
+  });
+
   test("keeps the rest of the line as arguments", () => {
     expect(parseSlashCommand("/compact 버그 원인만 남겨라")).toEqual({
       name: "compact",

@@ -53,7 +53,7 @@ describe("rosterMeta", () => {
   test("names the model and counts tools that are off", () => {
     expect(rosterMeta({ model: "cliproxyapi/grok-4.6", tools: null })).toBe("grok-4.6");
     expect(rosterMeta({ model: "grok-4.6", tools: ["read_file", "list_dir", "grep", "glob", "todo_write", "memory", "task"] })).toBe(
-      "grok-4.6 · 도구 3개 끔",
+      "grok-4.6 · 도구 4개 끔",
     );
   });
 });

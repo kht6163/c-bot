@@ -38,6 +38,20 @@ export interface LlmClient {
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+
+/** Placeholder keys used for anonymous OpenAI-compatible endpoints (e.g. Pollinations smoke). */
+export function isAnonymousApiKey(key: string): boolean {
+  const trimmed = key.trim();
+  return trimmed.length === 0 || /^(none|null|anonymous|-)$/i.test(trimmed);
+}
+
+function authHeaders(apiKey: string): Record<string, string> {
+  if (isAnonymousApiKey(apiKey)) {
+    return {};
+  }
+  return { authorization: `Bearer ${apiKey.trim()}` };
+}
+
 export class OpenAiCompatClient implements LlmClient {
   constructor(private readonly fetchFn: FetchLike = fetch) {}
 
@@ -53,7 +67,7 @@ export class OpenAiCompatClient implements LlmClient {
         method: "POST",
         ...(request.signal ? { signal: request.signal } : {}),
         headers: {
-          authorization: `Bearer ${request.apiKey}`,
+          ...authHeaders(request.apiKey),
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -349,10 +363,14 @@ export async function listRemoteModelCatalog(
 ): Promise<RemoteModel[]> {
   const key = input.apiKey.trim();
   const baseURL = trimSlash(input.baseURL.trim());
-  if (key.length === 0 || baseURL.length === 0) {
+  if (baseURL.length === 0) {
     return [];
   }
-  const headers = { authorization: `Bearer ${key}` };
+  // Anonymous placeholders still hit /models without an Authorization header.
+  if (key.length === 0) {
+    return [];
+  }
+  const headers = { ...authHeaders(key) };
   const primary = input.modelsQuery ? `${baseURL}/models?${input.modelsQuery}` : `${baseURL}/models`;
   let res = await fetchFn(primary, { headers });
   if (!res.ok && input.modelsQuery) {
@@ -448,7 +466,7 @@ export async function probeLlm(
   }
   try {
     const modelsRes = await fetchFn(`${baseURL}/models`, {
-      headers: { authorization: `Bearer ${key}` },
+      headers: { ...authHeaders(key) },
     });
     if (modelsRes.ok) {
       return { ok: true, message: "엔드포인트가 API 키를 수락했습니다.", model };
@@ -464,7 +482,7 @@ export async function probeLlm(
     const chatRes = await fetchFn(`${baseURL}/chat/completions`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${key}`,
+        ...authHeaders(key),
         "content-type": "application/json",
       },
       body: JSON.stringify({
