@@ -33,6 +33,8 @@ import {
   shippedProvider,
   upsertProvider,
   validateProviderId,
+  isInsideWorkspace,
+  resolveWorkspacePath,
   type LlmProvider,
 } from "@cbot/agent";
 import type {
@@ -75,10 +77,14 @@ import {
   settleApproval,
   type Runtime,
 } from "./runtime.ts";
+import { handleGithubWebhook } from "./github-webhook.ts";
 
 export async function handleApi(req: Request, runtime: Runtime): Promise<Response> {
   const url = new URL(req.url);
   try {
+    if (url.pathname === "/api/github/webhook" && req.method === "POST") {
+      return handleGithubWebhook(req, runtime);
+    }
     if (url.pathname === "/api/project" && req.method === "GET") {
       const config = await loadConfig(runtime.env.home);
       return Response.json(
@@ -245,6 +251,10 @@ export async function handleApi(req: Request, runtime: Runtime): Promise<Respons
           ...(body.model === null || typeof body.model === "string" ? { model: body.model } : {}),
           ...(body.thinking === null || typeof body.thinking === "string" ? { thinking: body.thinking } : {}),
           ...(tools !== undefined ? { tools } : {}),
+          ...(typeof body.autoCompactIdle === "boolean" ? { autoCompactIdle: body.autoCompactIdle } : {}),
+          ...(typeof body.autoCompactIdleMs === "number" && Number.isFinite(body.autoCompactIdleMs)
+            ? { autoCompactIdleMs: body.autoCompactIdleMs }
+            : {}),
         });
       } catch (err) {
         if (err instanceof Error && err.message === "leader cannot be hidden") {
@@ -973,6 +983,11 @@ function toProjectView(current: string | null, recents: string[], launchDir: str
   };
 }
 
+/** True when path (after realpath) stays under root. Symlink escapes are rejected. */
+function isUnderRoot(root: string, path: string): boolean {
+  return isInsideWorkspace(root, path);
+}
+
 async function browseDir(
   raw: string | null,
   fallback: string,
@@ -981,7 +996,18 @@ async function browseDir(
   parent: string | null;
   entries: { name: string; path: string; type: "dir" | "file" }[];
 }> {
-  const path = resolve(raw && raw.trim().length > 0 ? raw : fallback);
+  const requested = resolve(raw && raw.trim().length > 0 ? raw : fallback);
+  const home = resolve(homedir());
+  const launch = resolve(fallback);
+  let path: string | null = null;
+  if (isUnderRoot(home, requested)) {
+    path = resolveWorkspacePath(home, requested);
+  } else if (isUnderRoot(launch, requested)) {
+    path = resolveWorkspacePath(launch, requested);
+  }
+  if (!path) {
+    throw new HttpError(403, "path outside allowed browse roots");
+  }
   const info = await stat(path).catch(() => null);
   if (!info?.isDirectory()) {
     throw new HttpError(400, "not a directory");

@@ -1,30 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react";
+import { useMemo, type ReactNode } from "react";
 import type { ApprovalRemember, SessionEvent, SessionId, ToolCallId } from "@cbot/shared";
 import { visibleRows, type ChatRow } from "../lib/rows.ts";
-import {
-  loadNoteLayout,
-  mergeNotes,
-  mergeOrder,
-  moveNote,
-  noteExtent,
-  raiseNote,
-  resizeNote,
-  saveNoteLayout,
-  teamPanes,
-  toggleCollapsed,
-  visibleNote,
-  wheelResize,
-  type NoteRect,
-  type TeamPane,
-  type ViewMode,
-} from "../lib/team.ts";
+import { normalizeViewMode, teamPanes, type TeamPane, type ViewMode } from "../lib/team.ts";
 import { SessionLog } from "./SessionLog.tsx";
 import { TeamGraph } from "./TeamGraph.tsx";
 
@@ -75,20 +52,18 @@ export function TeamStage({
     () => teamPanes(codingSessionId, bots, leadHandle, leadTitle),
     [bots, codingSessionId, leadHandle, leadTitle],
   );
-  const canSplit = panes.length > 1;
-  const mode: ViewMode = canSplit ? viewMode : "agent";
+  const canTeam = panes.length > 1;
+  const mode: ViewMode = canTeam ? normalizeViewMode(viewMode) : "agent";
   const focused = panes.find((pane) => pane.key === focusedKey) ?? panes[0];
 
   return (
     <div className="team-stage">
-      {canSplit || barEnd ? (
+      {canTeam || barEnd ? (
         <div className="stage-bar">
-          {!canSplit ? (
+          {!canTeam ? (
             <div className="stage-fill" />
           ) : mode !== "agent" ? (
-            <p className="stage-split-label">
-              {mode === "split" ? "분할" : "그래프"} · {panes.length} 봇
-            </p>
+            <p className="stage-mode-label">그래프 · {panes.length} 봇</p>
           ) : (
             <div className="agent-tabs" role="tablist" aria-label="봇 세션">
               {panes.map((pane) => (
@@ -107,7 +82,7 @@ export function TeamStage({
               ))}
             </div>
           )}
-          {canSplit ? (
+          {canTeam ? (
             <div className="view-modes" role="group" aria-label="보기">
               {VIEW_MODES.map((item) => (
                 <button
@@ -115,7 +90,6 @@ export function TeamStage({
                   type="button"
                   className={mode === item.mode ? "view-mode is-on" : "view-mode"}
                   aria-pressed={mode === item.mode}
-                  // A phone shows the icon alone; the name stays for assistive tech.
                   aria-label={item.label}
                   onClick={() => onViewMode(item.mode)}
                 >
@@ -148,15 +122,6 @@ export function TeamStage({
             />
           )}
         />
-      ) : mode === "split" ? (
-        <NoteBoard
-          sessionId={codingSessionId}
-          panes={panes}
-          codingEvents={codingEvents}
-          botEvents={botEvents}
-          codingBusy={codingBusy}
-          onApprove={onApprove}
-        />
       ) : focused ? (
         <PaneLog
           pane={focused}
@@ -174,27 +139,11 @@ export function TeamStage({
   );
 }
 
-function Chevron({ down }: { down: boolean }) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path
-        d={down ? "M3 4.5 6 7.5 9 4.5" : "M3 7.5 6 4.5 9 7.5"}
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 const VIEW_MODES: { mode: ViewMode; label: string }[] = [
   { mode: "agent", label: "한 화면" },
-  { mode: "split", label: "분할" },
   { mode: "graph", label: "그래프" },
 ];
 
-/** One frame, two frames, or a node over two: the shape of each view. */
 function ModeIcon({ mode }: { mode: ViewMode }) {
   return (
     <svg className="bar-icon" width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -206,259 +155,9 @@ function ModeIcon({ mode }: { mode: ViewMode }) {
           <path d="M6 4.4 3.9 9.4M8 4.4l2.1 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </>
       ) : (
-        <>
-          <rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
-          {mode === "split" ? <path d="M7 2.6v8.8" stroke="currentColor" strokeWidth="1.3" /> : null}
-        </>
+        <rect x="1.6" y="2.6" width="10.8" height="8.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
       )}
     </svg>
-  );
-}
-
-function NoteBoard({
-  sessionId,
-  panes,
-  codingEvents,
-  botEvents,
-  codingBusy,
-  onApprove,
-}: {
-  sessionId: SessionId;
-  panes: TeamPane[];
-  codingEvents: SessionEvent[];
-  botEvents: Record<string, SessionEvent[]>;
-  codingBusy: boolean;
-  onApprove: (sessionId: SessionId, callId: ToolCallId, allow: boolean, remember?: ApprovalRemember) => void;
-}) {
-  const boardRef = useRef<HTMLDivElement>(null);
-  const notesRef = useRef<Record<string, NoteRect>>({});
-  const skipSave = useRef(true);
-  const drag = useRef<
-    | { kind: "move"; key: string; x: number; y: number; start: NoteRect }
-    | { kind: "resize"; key: string; x: number; y: number; start: NoteRect; edges: "e" | "s" | "se" }
-    | null
-  >(null);
-  const paneKeyStr = panes.map((pane) => pane.key).join("|");
-  const [notes, setNotes] = useState<Record<string, NoteRect>>(() => {
-    const keys = panes.map((pane) => pane.key);
-    return mergeNotes(keys, loadNoteLayout(sessionId, window.localStorage).notes);
-  });
-  const [order, setOrder] = useState<string[]>(() => {
-    const keys = panes.map((pane) => pane.key);
-    return mergeOrder(loadNoteLayout(sessionId, window.localStorage).order, keys);
-  });
-  notesRef.current = notes;
-
-  useEffect(() => {
-    skipSave.current = true;
-    const keys = paneKeyStr.length === 0 ? [] : paneKeyStr.split("|");
-    const saved = loadNoteLayout(sessionId, window.localStorage);
-    setNotes(mergeNotes(keys, saved.notes));
-    setOrder(mergeOrder(saved.order, keys));
-  }, [sessionId, paneKeyStr]);
-
-  useEffect(() => {
-    if (skipSave.current) {
-      skipSave.current = false;
-      return;
-    }
-    if (Object.keys(notes).length === 0) {
-      return;
-    }
-    saveNoteLayout(sessionId, { order, notes }, window.localStorage);
-  }, [notes, order, sessionId]);
-
-  useEffect(() => {
-    const board = boardRef.current;
-    if (!board) {
-      return;
-    }
-    const onWheel = (event: WheelEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const head = target.closest("[data-note-wheel]");
-      if (!head) {
-        return;
-      }
-      const article = head.closest("[data-note-key]");
-      const key = article instanceof HTMLElement ? article.dataset.noteKey : undefined;
-      const current = key ? notesRef.current[key] : undefined;
-      if (!key || !current) {
-        return;
-      }
-      event.preventDefault();
-      patchNote(key, wheelResize(current, event.deltaY, event.shiftKey));
-    };
-    board.addEventListener("wheel", onWheel, { passive: false });
-    return () => board.removeEventListener("wheel", onWheel);
-  }, []);
-
-  function patchNote(key: string, next: NoteRect): void {
-    setNotes((current) => ({ ...current, [key]: next }));
-  }
-
-  function bringFront(key: string): void {
-    setOrder((current) => raiseNote(current, key));
-  }
-
-  function onDragMove(event: ReactPointerEvent<HTMLElement>): void {
-    const state = drag.current;
-    if (!state || !event.currentTarget.hasPointerCapture(event.pointerId)) {
-      return;
-    }
-    const dx = event.clientX - state.x;
-    const dy = event.clientY - state.y;
-    if (state.kind === "move") {
-      patchNote(state.key, moveNote(state.start, dx, dy));
-      return;
-    }
-    patchNote(state.key, resizeNote(state.start, dx, dy, state.edges));
-  }
-
-  function onDragEnd(event: ReactPointerEvent<HTMLElement>): void {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    drag.current = null;
-  }
-
-  const extent = noteExtent(Object.values(notes));
-  const topKey = order[order.length - 1];
-
-  function startResize(
-    event: ReactPointerEvent<HTMLElement>,
-    key: string,
-    start: NoteRect,
-    edges: "e" | "s" | "se",
-  ): void {
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    bringFront(key);
-    drag.current = { kind: "resize", key, x: event.clientX, y: event.clientY, start, edges };
-  }
-
-  return (
-    <div className="split-board" ref={boardRef}>
-      <div className="split-board-space" style={{ minWidth: extent.w, minHeight: extent.h }}>
-        {panes.map((pane) => {
-          const note = notes[pane.key];
-          if (!note) {
-            return null;
-          }
-          const box = visibleNote(note);
-          const z = order.indexOf(pane.key) + 1;
-          return (
-            <article
-              key={pane.key}
-              className={`bot-note${pane.key === topKey ? " is-top" : ""}${note.collapsed ? " collapsed" : ""}`}
-              data-note-key={pane.key}
-              style={{ left: box.x, top: box.y, width: box.w, height: box.h, zIndex: z }}
-              onPointerDown={() => bringFront(pane.key)}
-            >
-              <header
-                className="bot-note-head"
-                data-note-wheel
-                onPointerDown={(event) => {
-                  if (event.button !== 0) {
-                    return;
-                  }
-                  const target = event.target;
-                  if (target instanceof Element && target.closest("button")) {
-                    return;
-                  }
-                  event.preventDefault();
-                  event.currentTarget.setPointerCapture(event.pointerId);
-                  drag.current = {
-                    kind: "move",
-                    key: pane.key,
-                    x: event.clientX,
-                    y: event.clientY,
-                    start: note,
-                  };
-                }}
-                onPointerMove={onDragMove}
-                onPointerUp={onDragEnd}
-                onPointerCancel={onDragEnd}
-                onDoubleClick={(event) => {
-                  if ((event.target as Element).closest("button")) {
-                    return;
-                  }
-                  patchNote(pane.key, toggleCollapsed(note));
-                }}
-              >
-                <span
-                  className={`agent-dot${paneBusy(pane, codingEvents, botEvents) ? " live" : ""}`}
-                  aria-hidden="true"
-                />
-                <span className="bot-pane-name">@{pane.handle}</span>
-                {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
-                <button
-                  type="button"
-                  className="note-fold"
-                  aria-expanded={!note.collapsed}
-                  aria-label={note.collapsed ? "펼치기" : "접기"}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    patchNote(pane.key, toggleCollapsed(note));
-                  }}
-                >
-                  <Chevron down={note.collapsed} />
-                </button>
-              </header>
-              {note.collapsed ? null : (
-                <PaneLog
-                  pane={pane}
-                  codingEvents={codingEvents}
-                  botEvents={botEvents}
-                  codingBusy={codingBusy}
-                  compact
-                  onApprove={onApprove}
-                />
-              )}
-              {note.collapsed ? null : (
-                <>
-                  <div
-                    className="note-resize note-e"
-                    data-note-wheel
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label="너비 조절"
-                    onPointerDown={(event) => startResize(event, pane.key, note, "e")}
-                    onPointerMove={onDragMove}
-                    onPointerUp={onDragEnd}
-                    onPointerCancel={onDragEnd}
-                  />
-                  <div
-                    className="note-resize note-s"
-                    data-note-wheel
-                    role="separator"
-                    aria-orientation="horizontal"
-                    aria-label="높이 조절"
-                    onPointerDown={(event) => startResize(event, pane.key, note, "s")}
-                    onPointerMove={onDragMove}
-                    onPointerUp={onDragEnd}
-                    onPointerCancel={onDragEnd}
-                  />
-                  <div
-                    className="note-resize note-se"
-                    data-note-wheel
-                    role="separator"
-                    aria-label="크기 조절"
-                    onPointerDown={(event) => startResize(event, pane.key, note, "se")}
-                    onPointerMove={onDragMove}
-                    onPointerUp={onDragEnd}
-                    onPointerCancel={onDragEnd}
-                  />
-                </>
-              )}
-            </article>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

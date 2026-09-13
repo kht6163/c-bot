@@ -46,6 +46,7 @@ import {
 import {
   fallbackAfterDelete,
   mergeEventList,
+  normalizeViewMode,
   specialistSessionIds,
   type ViewMode,
 } from "./lib/team.ts";
@@ -93,7 +94,8 @@ export function App() {
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
   const [queues, setQueues] = useState<Queues>({});
-  const [viewMode, setViewMode] = useState<ViewMode>("agent");
+  const [viewMode, setViewModeState] = useState<ViewMode>("agent");
+  const setViewMode = (mode: ViewMode) => setViewModeState(normalizeViewMode(mode));
   const [focusedKey, setFocusedKey] = useState("lead");
   const [team, setTeam] = useState<SessionTeamMember[]>([]);
   const [botEvents, setBotEvents] = useState<Record<string, SessionEvent[]>>({});

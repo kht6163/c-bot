@@ -21,6 +21,8 @@ import {
   sessionNeedsTurn,
   sessionsDbPath,
   titleFromText,
+  allowGithubWriteTools,
+  githubCreatePrTool,
   type LlmClient,
   type ToolDefinition,
 } from "@cbot/agent";
@@ -52,6 +54,7 @@ import {
 import { codingSessionOf, isCodingSessionRunning } from "./activity.ts";
 import type { ProcessEnv } from "./env.ts";
 import { EventHub } from "./hub.ts";
+import { flushPendingIdleCompact } from "./idle-compact.ts";
 
 export interface Runtime {
   env: ProcessEnv;
@@ -169,7 +172,13 @@ export async function settleApproval(
   allow: boolean,
   remember?: ApprovalRemember,
 ): Promise<boolean> {
+  // Capture rule before settle clears the pending entry; only remember if this
+  // session actually owns the approval (wrong-session settle returns false).
   const rule = allow && remember ? runtime.approvals.ruleOf(callId) : undefined;
+  const ok = runtime.approvals.settle(callId, allow, sessionId);
+  if (!ok) {
+    return false;
+  }
   if (rule) {
     // The running turn read config.yaml when it started, so "always" also
     // lands in the session set to cover the rest of this turn.
@@ -179,7 +188,7 @@ export async function settleApproval(
     const config = await loadConfig(runtime.env.home);
     await saveConfig(runtime.env.home, allowCommand(config, rule));
   }
-  return runtime.approvals.settle(callId, allow);
+  return true;
 }
 
 export function rememberSessionRule(sessionId: SessionId, rule: string): void {
@@ -278,6 +287,15 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
         pin = { provider: me.provider, model: me.model, thinking: me.thinking };
         await recallIntoSession(runtime.env.home, me.id, runtime.store, sessionId);
       }
+      // Leader-only GitHub write: specialists never receive push/PR tools.
+      // Also respects the leader's tool choice when bot mode is on.
+      if (
+        workspace &&
+        allowGithubWriteTools(me?.role) &&
+        (!me || botToolEnabled(me.tools, "github_create_pr"))
+      ) {
+        extraTools = [...extraTools, githubCreatePrTool({ home: runtime.env.home })];
+      }
       const endpoint = resolveLlmEndpoint(config, secrets, pin);
       const active = config.llm.providers.find((item) => item.id === (pin?.provider || config.llm.activeProvider));
       const modelId = endpoint?.model ?? "";
@@ -325,6 +343,9 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
     busy.delete(sessionId);
     if (pendingWake.delete(sessionId)) {
       wakeSession(runtime, sessionId);
+    } else {
+      // Idle auto-compact that armed while this turn (or approval) was open runs once.
+      flushPendingIdleCompact(runtime, sessionId, isSessionBusy);
     }
   }
 }

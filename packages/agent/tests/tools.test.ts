@@ -1,11 +1,11 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { readFileTool, writeFileTool, editFileTool, listDirTool } from "../src/tools/fs.ts";
 import { grepTool, globTool } from "../src/tools/search.ts";
 import { resolveWorkspacePath } from "../src/tools/path.ts";
-import { bashTool } from "../src/tools/bash.ts";
+import { bashTool, scrubEnv } from "../src/tools/bash.ts";
 import { findTool } from "../src/tools/registry.ts";
 import { ApprovalGate } from "../src/approval.ts";
 import { runTurn } from "../src/loop.ts";
@@ -18,6 +18,19 @@ const ctx = (workspace: string) => ({ workspace, approvalMode: "allow" as const 
 describe("workspace paths", () => {
   test("rejects parent traversal", () => {
     expect(() => resolveWorkspacePath("/tmp/ws", "../secret")).toThrow(/escapes/);
+  });
+
+  test("rejects symlink escape outside the workspace", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-symlink-ws-"));
+    const outside = await mkdtemp(join(tmpdir(), "cbot-symlink-out-"));
+    await writeFile(join(outside, "secret.txt"), "nope");
+    await mkdir(join(workspace, "safe"), { recursive: true });
+    const link = join(workspace, "escape");
+    await symlink(outside, link);
+    expect(() => resolveWorkspacePath(workspace, "escape/secret.txt")).toThrow(/escapes/);
+    await expect(writeFileTool.execute({ path: "escape/pwned.txt", content: "x" }, ctx(workspace))).rejects.toThrow(
+      /escapes/,
+    );
   });
 });
 
@@ -67,6 +80,26 @@ describe("bash", () => {
   test("offers the command prefix as the rule an approval can remember", () => {
     expect(bashTool.approvalRule?.({ command: "git status --short" })).toBe("git status");
     expect(bashTool.approvalRule?.({ command: "" })).toBeUndefined();
+  });
+
+  test("an allowed prefix does not cover a backgrounded second command", () => {
+    const prompt = { workspace: "/tmp", approvalMode: "prompt" as const, allowedCommands: ["echo"] };
+    expect(bashTool.needsApproval({ command: "echo hi & rm -rf /" }, prompt)).toBe(true);
+  });
+
+  test("scrubEnv drops API keys and tokens from the child environment", () => {
+    const cleaned = scrubEnv({
+      PATH: "/usr/bin",
+      OPENAI_API_KEY: "sk-secret",
+      GH_TOKEN: "ghp_x",
+      MY_SECRET: "x",
+      HOME: "/home/box",
+    });
+    expect(cleaned.PATH).toBe("/usr/bin");
+    expect(cleaned.HOME).toBe("/home/box");
+    expect(cleaned.OPENAI_API_KEY).toBeUndefined();
+    expect(cleaned.GH_TOKEN).toBeUndefined();
+    expect(cleaned.MY_SECRET).toBeUndefined();
   });
 });
 

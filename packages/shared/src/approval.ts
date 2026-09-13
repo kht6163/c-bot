@@ -25,7 +25,7 @@ const RUNNERS = new Set([
   "uv",
 ]);
 
-const SEGMENT_SPLIT = /\|\||&&|[;|\n]/;
+const SEGMENT_SPLIT = /\|\||&&|[\n\r;&|]/;
 const UNSAFE = /[`$<>]/;
 
 /** The words a rule made from this command would keep: the program, plus its subcommand for runners. */

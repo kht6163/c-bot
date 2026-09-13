@@ -301,6 +301,14 @@ export class SessionStore {
       .run(workspace, now, id);
   }
 
+  /** Attach a worktree checkout to a coding session (used by `/issue`). */
+  setWorktree(id: SessionId, workspace: string, worktree: SessionWorktree): void {
+    const now = new Date().toISOString();
+    this.db
+      .query("UPDATE sessions SET workspace = ?, worktree = ?, updated_at = ? WHERE id = ?")
+      .run(workspace, JSON.stringify(worktree), now, id);
+  }
+
   events(id: SessionId): SessionEvent[] {
     const rows = this.db
       .query("SELECT payload FROM events WHERE session_id = ? ORDER BY seq ASC")

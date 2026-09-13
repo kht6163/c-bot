@@ -1,6 +1,23 @@
 import { commandPrefix, isCommandAllowed } from "@cbot/shared";
 import { asString, type ToolDefinition } from "./types.ts";
 
+const SECRET_ENV = /(?:^|_)(API_KEY|TOKEN|SECRET|PASSWORD|PRIVATE_KEY)$/i;
+
+/** Drop secret-like variables so bash children cannot read provider keys. */
+export function scrubEnv(
+  env: Record<string, string | undefined> = process.env,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (SECRET_ENV.test(key) || key.endsWith("_API_KEY")) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+
 const TIMEOUT_MS = 60_000;
 const OUTPUT_CAP = 200_000;
 
@@ -33,7 +50,7 @@ export const bashTool: ToolDefinition = {
       cwd: ctx.workspace,
       stdout: "pipe",
       stderr: "pipe",
-      env: process.env,
+      env: scrubEnv(process.env),
     });
     const timer = setTimeout(() => {
       proc.kill();

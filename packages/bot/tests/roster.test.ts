@@ -49,6 +49,11 @@ describe("roster", () => {
     expect(pinned.thinking).toBe("xhigh");
     const reloaded = await loadBot(home, pinned.id);
     expect(reloaded?.thinking).toBe("xhigh");
+    expect(reloaded?.autoCompactIdle).toBe(false);
+    expect(reloaded?.autoCompactIdleMs).toBe(60_000);
+    await updateBot(home, pinned.id, { autoCompactIdle: true, autoCompactIdleMs: 30_000 });
+    expect((await loadBot(home, pinned.id))?.autoCompactIdle).toBe(true);
+    expect((await loadBot(home, pinned.id))?.autoCompactIdleMs).toBe(30_000);
     expect(await deleteBot(home, writer.id)).toBe(true);
     expect((await listBots(home)).map((b) => b.handle)).toEqual(["coder", "researcher"]);
     store.close();
@@ -123,6 +128,7 @@ describe("bot tools", () => {
       ...CODING_TOOLS.map((tool) => tool.name),
       memoryTool(home, bot.id).name,
       taskTool({ home, store, sessionId: bot.sessionId, actor: bot, roster: [bot] }).name,
+      "github_create_pr",
     ];
     expect([...given].sort()).toEqual([...BOT_TOOLS].sort());
     const talk = messageAgentTool({
@@ -244,6 +250,7 @@ describe("message_agent", () => {
 
   test("specialist reply to the lead lands on the originating coding session", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-hop-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-hop-ws-"));
     const store = await SessionStore.open(join(home, "sessions", "sessions.sqlite"));
     const leader = await ensureLeaderBot(home, store);
     const researcher = await createBot(home, store, {
@@ -253,7 +260,7 @@ describe("message_agent", () => {
     });
     const coding = store.create({
       kind: "coding",
-      workspace: "/Users/hantaekim/project/test",
+      workspace,
     });
     const woken: string[] = [];
     const fromLead = messageAgentTool({
@@ -308,11 +315,11 @@ describe("message_agent", () => {
     );
     expect(onCoding[0]?.type === "bot/message" && onCoding[0].text).toContain("테스트 파일입니다.");
     expect(woken).toEqual([hop!.id, coding.id]);
-    expect(workspaceForMailbox(store, hop!.id)).toBe("/Users/hantaekim/project/test");
+    expect(workspaceForMailbox(store, hop!.id)).toBe(workspace);
 
     const other = store.create({
       kind: "coding",
-      workspace: "/Users/hantaekim/project/test",
+      workspace,
     });
     const fromLeadOther = messageAgentTool({
       home,

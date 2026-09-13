@@ -376,7 +376,7 @@ async function runStep(
         content: "승인 대기 중",
         pendingApproval: true,
       });
-      const allowed = await ctx.approvals.wait(call.id, ctx.signal, tool.approvalRule?.(args));
+      const allowed = await ctx.approvals.wait(call.id, sessionId, ctx.signal, tool.approvalRule?.(args));
       if (ctx.signal?.aborted) {
         ctx.store.append(sessionId, {
           type: "tool/result",

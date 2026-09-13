@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { asBotId, asDeliveryId, asToolCallId, asTurnId } from "@cbot/shared";
+import { asBotId, asDeliveryId, asSessionId, asToolCallId, asTurnId } from "@cbot/shared";
 import { runTurn, sessionNeedsTurn, titleFromText, wokenByBot, type TurnContext } from "../src/loop.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { LlmClient, LlmRequest, LlmStreamEvent } from "../src/llm/client.ts";
@@ -229,13 +229,29 @@ describe("approval rules", () => {
     await waitFor(() => approvals.ruleOf(asToolCallId("call_1")) !== undefined);
     expect(approvals.ruleOf(asToolCallId("call_1"))).toBe("echo");
     rules.push("echo");
-    approvals.settle(asToolCallId("call_1"), true);
+    approvals.settle(asToolCallId("call_1"), true, session.id);
     await turn;
     const events = store.events(session.id);
     const pending = events.filter((e) => e.type === "tool/result" && e.pendingApproval);
     expect(pending).toHaveLength(1);
     expect(deriveMessages(events).filter((m) => m.role === "tool")).toHaveLength(2);
     store.close();
+  });
+});
+
+
+describe("ApprovalGate session binding", () => {
+  test("settle with the wrong session leaves the approval pending", async () => {
+    const gate = new ApprovalGate();
+    const callId = asToolCallId("call_cross");
+    const sessionA = asSessionId("session-a");
+    const sessionB = asSessionId("session-b");
+    const waiting = gate.wait(callId, sessionA, undefined, "echo");
+    expect(gate.settle(callId, true, sessionB)).toBe(false);
+    expect(gate.ruleOf(callId)).toBe("echo");
+    expect(gate.settle(callId, true, sessionA)).toBe(true);
+    expect(await waiting).toBe(true);
+    expect(gate.ruleOf(callId)).toBeUndefined();
   });
 });
 

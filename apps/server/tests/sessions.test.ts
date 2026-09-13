@@ -1,4 +1,4 @@
-import { mkdtemp, stat } from "node:fs/promises";
+import { mkdtemp, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -353,6 +353,24 @@ describe("sessions API", () => {
     expect(listing.path).toBe(launchDir);
     runtime.store.close();
   });
+
+  test("browse rejects symlink escape outside allowed roots", async () => {
+    const home = await mkdtemp(join(tmpdir(), "cbot-browse-home-"));
+    const outside = await mkdtemp(join(tmpdir(), "cbot-browse-out-"));
+    const launchDir = resolve(home);
+    await symlink(outside, join(launchDir, "escape"));
+    const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
+    const runtime = await createRuntime(env, new ScriptedLlm([]), launchDir);
+    const opts = { web: "none" as const, distDir: "/tmp", runtime };
+    const browse = await handleHttp(
+      new Request(
+        `http://127.0.0.1/api/fs/browse?path=${encodeURIComponent(join(launchDir, "escape"))}`,
+      ),
+      opts,
+    );
+    expect(browse.status).toBe(403);
+    runtime.store.close();
+  });
 });
 
 describe("providers API", () => {
@@ -511,13 +529,14 @@ describe("bots API", () => {
 
   test("lists git status and session tasks on the coding session", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-inspect-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-inspect-ws-"));
     const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
-    const runtime = await createRuntime(env, new ScriptedLlm([]), TEST_WORKSPACE);
+    const runtime = await createRuntime(env, new ScriptedLlm([]), workspace);
     const opts = { web: "none" as const, distDir: "/tmp", runtime };
     const created = await handleHttp(
       new Request("http://127.0.0.1/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ workspace: TEST_WORKSPACE }),
+        body: JSON.stringify({ workspace }),
       }),
       opts,
     );
@@ -546,9 +565,8 @@ describe("bots API", () => {
   });
 });
 
-const TEST_WORKSPACE = "/Users/hantaekim/project/test";
-
 class HopLlm implements LlmClient {
+  constructor(private readonly workspace: string) {}
   async *stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
     const lead = request.system.includes("`@leader`") && request.system.includes("the lead");
     const lastUser = [...request.messages].reverse().find((message) => message.role === "user");
@@ -577,7 +595,7 @@ class HopLlm implements LlmClient {
       return;
     }
     if (!hasToolResult) {
-      if (!request.system.includes(TEST_WORKSPACE)) {
+      if (!request.system.includes(this.workspace)) {
         throw new Error("specialist turn missing summoner workspace");
       }
       yield {
@@ -837,9 +855,10 @@ async function waitUntil(label: string, check: () => Promise<boolean>): Promise<
 describe("bot hop API", () => {
   test("lead summons a specialist over HTTP and the reply lands on the coding session", async () => {
     const home = await mkdtemp(join(tmpdir(), "cbot-hop-http-"));
+    const workspace = await mkdtemp(join(tmpdir(), "cbot-hop-ws-"));
     const env = loadProcessEnv({ CBOT_HOME: home, CBOT_PORT: "3080" });
     await seedProvider(home);
-    const runtime = await createRuntime(env, new HopLlm());
+    const runtime = await createRuntime(env, new HopLlm(workspace));
     const opts = { web: "none" as const, distDir: "/tmp", runtime };
 
     const health = await handleHttp(new Request("http://127.0.0.1/api/health"), opts);
@@ -893,7 +912,7 @@ describe("bot hop API", () => {
     const created = await handleHttp(
       new Request("http://127.0.0.1/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ workspace: TEST_WORKSPACE }),
+        body: JSON.stringify({ workspace }),
       }),
       opts,
     );
@@ -901,7 +920,7 @@ describe("bot hop API", () => {
     const { session } = (await created.json()) as {
       session: { id: string; workspace: string };
     };
-    expect(session.workspace).toBe(resolve(TEST_WORKSPACE));
+    expect(session.workspace).toBe(resolve(workspace));
 
     const sent = await handleHttp(
       new Request(`http://127.0.0.1/api/sessions/${session.id}/messages`, {

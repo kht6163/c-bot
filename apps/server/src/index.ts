@@ -2,7 +2,8 @@ import { join, resolve } from "node:path";
 import { applyEnvFile } from "@cbot/agent";
 import { loadProcessEnv } from "./env.ts";
 import { handleHttp, type WebMode } from "./http.ts";
-import { createRuntime } from "./runtime.ts";
+import { startIdleCompactWatcher } from "./idle-compact.ts";
+import { createRuntime, isSessionBusy } from "./runtime.ts";
 import { webDistDir } from "./web-dist.ts";
 import { onWsMessage, onWsOpen } from "./ws.ts";
 
@@ -13,6 +14,7 @@ await applyEnvFile(join(env.home, ".env"));
 const production = process.env.NODE_ENV === "production";
 const web: WebMode = production ? "static" : "vite";
 const runtime = await createRuntime(env, undefined, resolve(repoRoot));
+startIdleCompactWatcher(runtime, isSessionBusy);
 
 const server = Bun.serve({
   hostname: env.host,
