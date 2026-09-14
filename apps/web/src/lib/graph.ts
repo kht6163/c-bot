@@ -10,14 +10,20 @@ import { toolHeadline } from "./tool-row.ts";
  * and the task board, so the board can be laid out and tested without a DOM.
  */
 
-export const GRAPH_COL_W = 172;
-export const GRAPH_COL_GAP = 8;
 /**
- * Every slot is the same three columns wide (활동, 로그, 작업), whatever it
- * holds: a slot that grew when its first job landed would shove its row
- * sideways or run into a neighbour the user placed by hand.
+ * One column at a time (활동, 로그, 작업 are tabs), so the width that used to
+ * be split three ways carries one list. Three 172px columns put 11px text in a
+ * 172px track, and the fit zoom then multiplied that down to 6px on any board
+ * narrow enough to hold three bots.
  */
-export const GRAPH_SLOT_W = 3 * GRAPH_COL_W + 2 * GRAPH_COL_GAP;
+export const GRAPH_COL_W = 332;
+export const GRAPH_COL_PAD = 8;
+/**
+ * Every slot is the same width whatever it holds: a slot that grew when its
+ * first job landed would shove its row sideways or run into a neighbour the
+ * user placed by hand.
+ */
+export const GRAPH_SLOT_W = GRAPH_COL_W + 2 * GRAPH_COL_PAD;
 export const GRAPH_SLOT_H = 292;
 export const GRAPH_SLOT_GAP = 40;
 export const GRAPH_ROW_GAP = 88;
@@ -391,8 +397,70 @@ export function samePlacements(
   return keys.every((key) => a[key]?.x === b[key]?.x && a[key]?.y === b[key]?.y);
 }
 
+/** Which list a node is showing. One at a time, so the width goes to the text. */
+export type GraphTab = "activity" | "log" | "task";
+
+export const GRAPH_TABS: readonly GraphTab[] = ["activity", "log", "task"];
+export const GRAPH_TAB_DEFAULT: GraphTab = "activity";
+
+/** Per node, keyed the way placements are. Nodes not in here show the default. */
+export type GraphTabs = Record<string, GraphTab>;
+
+export function isGraphTab(value: unknown): value is GraphTab {
+  return typeof value === "string" && (GRAPH_TABS as readonly string[]).includes(value);
+}
+
 export function graphStorageKey(sessionId: string): string {
   return `cbot.graph.v1.${sessionId}`;
+}
+
+export function graphTabsStorageKey(sessionId: string): string {
+  return `cbot.graph.tabs.v1.${sessionId}`;
+}
+
+export function parseGraphTabs(raw: string | null): GraphTabs {
+  if (!raw) {
+    return {};
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    // A corrupt entry is dropped; every node falls back to the default tab.
+    return {};
+  }
+  const stored = data && typeof data === "object" ? (data as { tabs?: unknown }).tabs : undefined;
+  if (!stored || typeof stored !== "object") {
+    return {};
+  }
+  const out: GraphTabs = {};
+  for (const [key, value] of Object.entries(stored as Record<string, unknown>)) {
+    if (isGraphTab(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+export function loadGraphTabs(sessionId: string, storage: NoteStorage | undefined): GraphTabs {
+  try {
+    return parseGraphTabs(storage?.getItem(graphTabsStorageKey(sessionId)) ?? null);
+  } catch {
+    // Storage the browser refuses to read: every node starts on the default.
+    return {};
+  }
+}
+
+export function saveGraphTabs(
+  sessionId: string,
+  tabs: Readonly<GraphTabs>,
+  storage: NoteStorage | undefined,
+): void {
+  try {
+    storage?.setItem(graphTabsStorageKey(sessionId), JSON.stringify({ v: 1, tabs }));
+  } catch {
+    // Quota or private mode: the choice is just not remembered.
+  }
 }
 
 export function parseGraphPlacements(raw: string | null): GraphPlacements {

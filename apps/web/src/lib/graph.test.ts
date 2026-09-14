@@ -19,15 +19,18 @@ import {
   graphLayout,
   handoffCards,
   loadGraphPlacements,
+  loadGraphTabs,
   messageFlights,
   nodeActivity,
   nodeLog,
   nodeTaskLanes,
   parseGraphPlacements,
+  parseGraphTabs,
   placeSlots,
   placedLayout,
   samePlacements,
   saveGraphPlacements,
+  saveGraphTabs,
   slotAnchor,
   stripAttribution,
   tweenPlacements,
@@ -314,6 +317,36 @@ describe("placement", () => {
     expect(loadGraphPlacements("ses_1", refusing)).toEqual({});
     expect(() => saveGraphPlacements("ses_1", {}, refusing)).not.toThrow();
     expect(loadGraphPlacements("ses_1", undefined)).toEqual({});
+  });
+});
+
+describe("tab choice", () => {
+  test("a node remembers its tab per session, and a bad one falls back", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+    };
+    saveGraphTabs("ses_1", { lead: "log", qa: "task" }, storage);
+    expect(loadGraphTabs("ses_1", storage)).toEqual({ lead: "log", qa: "task" });
+    expect(loadGraphTabs("ses_2", storage)).toEqual({});
+    expect(parseGraphTabs("{nope")).toEqual({});
+    // A name no longer in the catalog drops out; the node takes the default.
+    expect(parseGraphTabs(JSON.stringify({ tabs: { a: "memory", b: "activity" } }))).toEqual({
+      b: "activity",
+    });
+    const refusing = {
+      getItem: (): string | null => {
+        throw new Error("denied");
+      },
+      setItem: () => {
+        throw new Error("denied");
+      },
+    };
+    expect(loadGraphTabs("ses_1", refusing)).toEqual({});
+    expect(() => saveGraphTabs("ses_1", {}, refusing)).not.toThrow();
   });
 });
 

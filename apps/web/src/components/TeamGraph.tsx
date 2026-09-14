@@ -14,6 +14,8 @@ import {
   FLIGHT_MS,
   GRAPH_LIST_MAX,
   GRAPH_SLOT_W,
+  GRAPH_TABS,
+  GRAPH_TAB_DEFAULT,
   HANDOFF_AT,
   HANDOFF_MS,
   autoPlacements,
@@ -27,6 +29,7 @@ import {
   freshFlights,
   handoffCards,
   loadGraphPlacements,
+  loadGraphTabs,
   messageFlights,
   nodeActivity,
   nodeLog,
@@ -35,6 +38,7 @@ import {
   placedLayout,
   samePlacements,
   saveGraphPlacements,
+  saveGraphTabs,
   slotAnchor,
   tweenPlacements,
   type GraphCurve,
@@ -42,6 +46,8 @@ import {
   type GraphPlacement,
   type GraphPlacements,
   type GraphSlot,
+  type GraphTab,
+  type GraphTabs,
 } from "../lib/graph.ts";
 import { timeAgo } from "../lib/path.ts";
 import type { NoteStorage, TeamPane } from "../lib/team.ts";
@@ -122,6 +128,7 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
   const [saved, setSaved] = useState<GraphPlacements>(() => loadGraphPlacements(sessionId, layoutStorage()));
   const savedRef = useRef(saved);
   savedRef.current = saved;
+  const [tabs, setTabs] = useState<GraphTabs>(() => loadGraphTabs(sessionId, layoutStorage()));
   const [held, setHeld] = useState<Held | null>(null);
   const [glide, setGlide] = useState<GraphPlacements | null>(null);
   const stopDrag = useRef<(() => void) | null>(null);
@@ -469,6 +476,12 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
                     selected={selected === node.pane.key}
                     dim={selected !== null && selected !== node.pane.key && !linked.has(node.pane.key)}
                     dragging={held?.key === node.pane.key}
+                    tab={tabs[node.pane.key] ?? GRAPH_TAB_DEFAULT}
+                    onTab={(next) => {
+                      const merged = { ...tabs, [node.pane.key]: next };
+                      setTabs(merged);
+                      saveGraphTabs(sessionId, merged, layoutStorage());
+                    }}
                     onGrab={(event) => grab(event, node.pane.key)}
                     onSelect={() => {
                       if (!swallowClick.current) {
@@ -713,6 +726,8 @@ function GraphNode({
   selected,
   dim,
   dragging,
+  tab,
+  onTab,
   onGrab,
   onSelect,
 }: {
@@ -722,6 +737,8 @@ function GraphNode({
   /** Another bot is open and this one does not talk to it. */
   dim: boolean;
   dragging: boolean;
+  tab: GraphTab;
+  onTab: (next: GraphTab) => void;
   onGrab: (event: ReactPointerEvent<HTMLElement>) => void;
   onSelect: () => void;
 }) {
@@ -760,85 +777,116 @@ function GraphNode({
           <span className="graph-role">{pane.role === "lead" ? "Lead" : pane.title}</span>
         </button>
       </div>
+      <div className="graph-tabs" role="tablist" aria-label={`@${pane.handle} 보기`}>
+        {GRAPH_TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            className={tab === name ? "graph-tab is-on" : "graph-tab"}
+            onClick={() => onTab(name)}
+          >
+            {TAB_LABEL[name]}
+            <Count value={tabCount(node, name)} />
+          </button>
+        ))}
+      </div>
+      {/* Only the chosen list is mounted: `hidden` would lose to the column's
+          own `display: flex`, and an unmounted list costs nothing to skip. */}
       <div className="graph-cols">
-        <section className="graph-col">
-          <p className="graph-col-label">
-            활동 <Count value={node.activity.length} />
-          </p>
-          {node.activity.length === 0 ? <p className="graph-none">아직 없음</p> : null}
-          <ul className="graph-list">
-            {node.activity.slice(0, GRAPH_LIST_MAX).map((item) => (
-              <li key={item.key} className="graph-item" title={item.text}>
-                <span className="graph-item-head">
-                  <span className="graph-chip">{item.from}</span>
-                  {item.to ? (
-                    <>
-                      <span className="graph-to" aria-hidden="true">
-                        →
-                      </span>
-                      <span className="graph-chip">{item.to}</span>
-                    </>
-                  ) : null}
-                  <span className="graph-time">{timeAgo(item.time)}</span>
-                </span>
-                <span className="graph-item-text">{item.text}</span>
-              </li>
-            ))}
-            <More count={node.activity.length - GRAPH_LIST_MAX} />
-          </ul>
-        </section>
-        <section className="graph-col">
-          <p className="graph-col-label">
-            로그 <Count value={node.log.length} />
-          </p>
-          {node.log.length === 0 ? <p className="graph-none">아직 없음</p> : null}
-          <ul className="graph-list">
-            {node.log.slice(0, GRAPH_LIST_MAX).map((item) => (
-              <li key={item.key} className={`graph-item is-${item.kind}`} title={item.detail || undefined}>
-                <span className="graph-item-head">
-                  <span className={`graph-mark is-${item.state}`} aria-hidden="true" />
-                  <span className="graph-tool">{item.name}</span>
-                  <span className="graph-time">{timeAgo(item.time)}</span>
-                </span>
-                {item.detail ? <span className="graph-item-text mono">{item.detail}</span> : null}
-              </li>
-            ))}
-            <More count={node.log.length - GRAPH_LIST_MAX} />
-          </ul>
-        </section>
-        <section className="graph-col">
-          <p className="graph-col-label">
-            작업 <Count value={node.lanes.reduce((sum, lane) => sum + lane.tasks.length + lane.more, 0)} />
-          </p>
-          {node.lanes.length === 0 ? <p className="graph-none">아직 없음</p> : null}
-          <ul className="graph-list">
-            {node.lanes.map((lane) => (
-              <li key={lane.lane} className={`graph-lane is-${lane.lane}`}>
-                <p className="graph-lane-label">
-                  {lane.label} <Count value={lane.tasks.length + lane.more} />
-                </p>
-                <ul className="graph-lane-tasks">
-                  {lane.tasks.map((task) => (
-                    <li key={task.id} className="graph-task" title={task.title}>
-                      <span className="graph-task-dot" aria-hidden="true" />
-                      <span className="graph-task-body">
-                        <span className="graph-task-title">{task.title}</span>
-                        <span className="graph-task-meta">
-                          {task.requesterHandle !== task.ownerHandle ? `@${task.requesterHandle} 요청 · ` : ""}
-                          {timeAgo(task.updatedAt)}
+        {tab === "activity" ? (
+          <section className="graph-col" role="tabpanel">
+            {node.activity.length === 0 ? <p className="graph-none">아직 없음</p> : null}
+            <ul className="graph-list">
+              {node.activity.slice(0, GRAPH_LIST_MAX).map((item) => (
+                <li key={item.key} className="graph-item" title={item.text}>
+                  <span className="graph-item-head">
+                    <span className="graph-chip">{item.from}</span>
+                    {item.to ? (
+                      <>
+                        <span className="graph-to" aria-hidden="true">
+                          →
                         </span>
-                      </span>
-                    </li>
-                  ))}
-                  <More count={lane.more} />
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </section>
+                        <span className="graph-chip">{item.to}</span>
+                      </>
+                    ) : null}
+                    <span className="graph-time">{timeAgo(item.time)}</span>
+                  </span>
+                  <span className="graph-item-text">{item.text}</span>
+                </li>
+              ))}
+              <More count={node.activity.length - GRAPH_LIST_MAX} />
+            </ul>
+          </section>
+        ) : null}
+        {tab === "log" ? (
+          <section className="graph-col" role="tabpanel">
+            {node.log.length === 0 ? <p className="graph-none">아직 없음</p> : null}
+            <ul className="graph-list">
+              {node.log.slice(0, GRAPH_LIST_MAX).map((item) => (
+                <li key={item.key} className={`graph-item is-${item.kind}`} title={item.detail || undefined}>
+                  <span className="graph-item-head">
+                    <span className={`graph-mark is-${item.state}`} aria-hidden="true" />
+                    <span className="graph-tool">{item.name}</span>
+                    <span className="graph-time">{timeAgo(item.time)}</span>
+                  </span>
+                  {item.detail ? <span className="graph-item-text mono">{item.detail}</span> : null}
+                </li>
+              ))}
+              <More count={node.log.length - GRAPH_LIST_MAX} />
+            </ul>
+          </section>
+        ) : null}
+        {tab === "task" ? (
+          <section className="graph-col" role="tabpanel">
+            {node.lanes.length === 0 ? <p className="graph-none">아직 없음</p> : null}
+            <ul className="graph-list">
+              {node.lanes.map((lane) => (
+                <li key={lane.lane} className={`graph-lane is-${lane.lane}`}>
+                  <p className="graph-lane-label">
+                    {lane.label} <Count value={lane.tasks.length + lane.more} />
+                  </p>
+                  <ul className="graph-lane-tasks">
+                    {lane.tasks.map((task) => (
+                      <li key={task.id} className="graph-task" title={task.title}>
+                        <span className="graph-task-dot" aria-hidden="true" />
+                        <span className="graph-task-body">
+                          <span className="graph-task-title">{task.title}</span>
+                          <span className="graph-task-meta">
+                            {task.requesterHandle !== task.ownerHandle ? `@${task.requesterHandle} 요청 · ` : ""}
+                            {timeAgo(task.updatedAt)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                    <More count={lane.more} />
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </div>
     </article>
   );
+}
+
+const TAB_LABEL: Record<GraphTab, string> = {
+  activity: "활동",
+  log: "로그",
+  task: "작업",
+};
+
+function tabCount(node: GraphNodeData, tab: GraphTab): number {
+  switch (tab) {
+    case "activity":
+      return node.activity.length;
+    case "log":
+      return node.log.length;
+    case "task":
+      return node.lanes.reduce((sum, lane) => sum + lane.tasks.length + lane.more, 0);
+  }
 }
 
 function Count({ value }: { value: number }) {
