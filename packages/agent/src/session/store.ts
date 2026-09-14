@@ -48,6 +48,7 @@ const EVENT_TYPES = new Set([
   "bot/delivery",
   "memory/recall",
   "task/change",
+  "agent/status",
   "context/compact",
   "context/clear",
   "system/notice",

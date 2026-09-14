@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { BOT_TOOLS } from "@cbot/shared";
 import type { BotView } from "./api.ts";
 import {
   draftChanges,
@@ -57,8 +58,10 @@ describe("team panel drafts", () => {
 describe("rosterMeta", () => {
   test("names the model and counts tools that are off", () => {
     expect(rosterMeta({ model: "cliproxyapi/grok-4.6", tools: null })).toBe("grok-4.6");
-    expect(rosterMeta({ model: "grok-4.6", tools: ["read_file", "list_dir", "grep", "glob", "todo_write", "memory", "task"] })).toBe(
-      "grok-4.6 · 도구 4개 끔",
+    // Counted against the live catalog, so adding a tool does not rewrite this.
+    const on = BOT_TOOLS.slice(0, 4);
+    expect(rosterMeta({ model: "grok-4.6", tools: [...on] })).toBe(
+      `grok-4.6 · 도구 ${BOT_TOOLS.length - on.length}개 끔`,
     );
   });
 });

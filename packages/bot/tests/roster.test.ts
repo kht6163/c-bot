@@ -11,6 +11,7 @@ import { messageAgentTool, workspaceForMailbox } from "../src/message-agent.ts";
 import { MemoryStore } from "../src/memory-store.ts";
 import { memoryTool } from "../src/memory-tool.ts";
 import { taskTool } from "../src/task-tool.ts";
+import { statusTool } from "../src/status-tool.ts";
 import { recallIntoSession } from "../src/recall.ts";
 import { deriveMessages } from "@cbot/agent";
 
@@ -128,6 +129,7 @@ describe("bot tools", () => {
       ...CODING_TOOLS.map((tool) => tool.name),
       memoryTool(home, bot.id).name,
       taskTool({ home, store, sessionId: bot.sessionId, actor: bot, roster: [bot] }).name,
+      statusTool({ store, sessionId: bot.sessionId, actor: bot }).name,
       "github_create_pr",
     ];
     expect([...given].sort()).toEqual([...BOT_TOOLS].sort());

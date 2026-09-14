@@ -11,7 +11,11 @@ export interface ToolGroup {
 export const TOOL_GROUPS: readonly ToolGroup[] = [
   { label: "읽기", tools: ["read_file", "list_dir", "grep", "glob"] },
   { label: "쓰기·실행", tools: ["write_file", "edit_file", "bash", "github_create_pr"] },
-  { label: "기록·협업", tools: ["todo_write", "memory", "task"], locked: ["message_agent"] },
+  {
+    label: "기록·협업",
+    tools: ["todo_write", "memory", "task", "set_status"],
+    locked: ["message_agent"],
+  },
 ];
 
 export const TOOL_HINTS: Record<BotToolName | "message_agent", string> = {
@@ -26,6 +30,7 @@ export const TOOL_HINTS: Record<BotToolName | "message_agent", string> = {
   todo_write: "턴 안에서 쓰는 할 일 메모",
   memory: "이 봇의 메모리 찾기·기록",
   task: "세션 작업 보드 등록·수정",
+  set_status: "지금 하는 일 한 줄 알리기",
   message_agent: "봇끼리 말하는 통로라 늘 켜져 있습니다",
 };
 

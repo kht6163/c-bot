@@ -13,6 +13,12 @@ export function protocolSection(me: BotRecord, roster: readonly BotRecord[], sou
   });
   // A bot without the task tool is not told to use it.
   const board = (paragraph: string) => (botToolEnabled(me.tools, "task") ? [paragraph, ""] : []);
+  const status = botToolEnabled(me.tools, "set_status")
+    ? [
+        "Call `set_status` with one short line whenever what you are working on changes: the user watches that line on your node in the team graph. Pass an empty string once you are idle.",
+        "",
+      ]
+    : [];
   if (me.role === "leader") {
     return [
       PROTOCOL_HEADING,
@@ -26,6 +32,7 @@ export function protocolSection(me: BotRecord, roster: readonly BotRecord[], sou
       ...board(
         "Register session work with the `task` tool so teammates and the user can see who owns what. When you ask a specialist, add a task owned by them. Break a job into pieces by adding tasks with parent set to the job — the board is two levels deep. Specialists should `task` list assigned=true to see requests they have not finished.",
       ),
+      ...status,
     ].join("\n");
   }
   return [
@@ -40,6 +47,7 @@ export function protocolSection(me: BotRecord, roster: readonly BotRecord[], sou
     ...board(
       "Use the `task` tool for the shared session board. List assigned=true to see work requested of you that is not done. Update status as you go.",
     ),
+    ...status,
   ].join("\n");
 }
 

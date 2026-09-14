@@ -153,6 +153,22 @@ export interface SystemNoticeEvent extends EventEnvelope {
   text: string;
 }
 
+/** One line fits a graph node without wrapping past two rows. */
+export const AGENT_STATUS_MAX = 80;
+
+/**
+ * What a bot says it is doing right now. Its own event on purpose: the session
+ * title names the session and the board names the work, while this names the
+ * moment. The newest one wins; they do not accumulate.
+ */
+export interface AgentStatusEvent extends EventEnvelope {
+  type: "agent/status";
+  botId: BotId;
+  handle: string;
+  /** Empty when the bot cleared the line. */
+  text: string;
+}
+
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface TaskChangeEvent extends EventEnvelope {
@@ -178,9 +194,27 @@ export type SessionEvent =
   | BotDeliveryEvent
   | MemoryRecallEvent
   | TaskChangeEvent
+  | AgentStatusEvent
   | ContextCompactEvent
   | ContextClearEvent
   | SystemNoticeEvent;
+
+/** Folds a status line to one row and clips it, so a node never has to. */
+export function normalizeAgentStatus(text: string): string {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > AGENT_STATUS_MAX ? `${line.slice(0, AGENT_STATUS_MAX - 1)}…` : line;
+}
+
+/** The line a bot last set here, or undefined when it never set one or cleared it. */
+export function latestAgentStatus(events: readonly SessionEvent[]): AgentStatusEvent | undefined {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (event?.type === "agent/status") {
+      return event.text.length > 0 ? event : undefined;
+    }
+  }
+  return undefined;
+}
 
 /** True while a turn has started in this log and not yet ended. */
 export function hasOpenTurn(events: readonly SessionEvent[]): boolean {

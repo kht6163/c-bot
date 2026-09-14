@@ -84,6 +84,7 @@ export function deriveMessages(events: readonly SessionEvent[]): ChatMessage[] {
       case "tool/call":
       case "bot/delivery":
       case "task/change":
+      case "agent/status":
       case "context/compact":
       case "context/clear":
       case "system/notice":

@@ -37,6 +37,7 @@ import {
   protocolSection,
   recallIntoSession,
   skillsSection,
+  statusTool,
   taskTool,
   workspaceForMailbox,
   withProtocol,
@@ -276,6 +277,9 @@ async function pump(runtime: Runtime, sessionId: SessionId): Promise<void> {
                   roster,
                 }),
               ]
+            : []),
+          ...(enabled("set_status")
+            ? [statusTool({ store: runtime.store, sessionId, actor: me })]
             : []),
         ];
         codingTools = CODING_TOOLS.filter((tool) => enabled(tool.name));

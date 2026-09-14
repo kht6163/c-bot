@@ -14,6 +14,7 @@ export const BOT_TOOLS = [
   "todo_write",
   "memory",
   "task",
+  "set_status",
   "github_create_pr",
 ] as const;
 

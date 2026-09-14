@@ -63,8 +63,12 @@ export {
   type DeliveryReason,
 } from "./reasons.ts";
 export {
+  AGENT_STATUS_MAX,
   SESSION_FORMAT_VERSION,
   hasOpenTurn,
+  latestAgentStatus,
+  normalizeAgentStatus,
+  type AgentStatusEvent,
   type AssistantChunkEvent,
   type ContextClearEvent,
   type ContextCompactEvent,
