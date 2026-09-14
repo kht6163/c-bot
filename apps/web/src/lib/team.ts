@@ -2,6 +2,12 @@ import { sessionProject, type SessionEvent, type SessionId, type SessionWorktree
 
 export type ViewMode = "agent" | "graph";
 
+/**
+ * The lead is always on the board, so a session has a graph to show from its
+ * first turn and opens on it.
+ */
+export const DEFAULT_VIEW_MODE: ViewMode = "graph";
+
 /** Map a stored or legacy value onto a live view mode (`"split"` → `"agent"`). */
 export function normalizeViewMode(raw: unknown): ViewMode {
   return raw === "graph" ? "graph" : "agent";

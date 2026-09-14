@@ -52,56 +52,54 @@ export function TeamStage({
     () => teamPanes(codingSessionId, bots, leadHandle, leadTitle),
     [bots, codingSessionId, leadHandle, leadTitle],
   );
-  const canTeam = panes.length > 1;
-  const mode: ViewMode = canTeam ? normalizeViewMode(viewMode) : "agent";
+  const mode: ViewMode = normalizeViewMode(viewMode);
+  // The lead alone is a board of one, so the graph stays available; only the
+  // tabs have nothing to switch between.
+  const solo = panes.length < 2;
   const focused = panes.find((pane) => pane.key === focusedKey) ?? panes[0];
 
   return (
     <div className="team-stage">
-      {canTeam || barEnd ? (
-        <div className="stage-bar">
-          {!canTeam ? (
-            <div className="stage-fill" />
-          ) : mode !== "agent" ? (
-            <p className="stage-mode-label">그래프 · {panes.length} 봇</p>
-          ) : (
-            <div className="agent-tabs" role="tablist" aria-label="봇 세션">
-              {panes.map((pane) => (
-                <button
-                  key={pane.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={pane.key === focused?.key}
-                  className={pane.key === focused?.key ? "agent-tab active" : "agent-tab"}
-                  onClick={() => onFocus(pane.key)}
-                >
-                  <span className={`agent-dot${paneBusy(pane, codingEvents, botEvents) ? " live" : ""}`} />
-                  @{pane.handle}
-                  {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
-                </button>
-              ))}
-            </div>
-          )}
-          {canTeam ? (
-            <div className="view-modes" role="group" aria-label="보기">
-              {VIEW_MODES.map((item) => (
-                <button
-                  key={item.mode}
-                  type="button"
-                  className={mode === item.mode ? "view-mode is-on" : "view-mode"}
-                  aria-pressed={mode === item.mode}
-                  aria-label={item.label}
-                  onClick={() => onViewMode(item.mode)}
-                >
-                  <ModeIcon mode={item.mode} />
-                  <span className="view-mode-label">{item.label}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {barEnd}
+      <div className="stage-bar">
+        {mode !== "agent" ? (
+          <p className="stage-mode-label">그래프 · {panes.length} 봇</p>
+        ) : solo ? (
+          <div className="stage-fill" />
+        ) : (
+          <div className="agent-tabs" role="tablist" aria-label="봇 세션">
+            {panes.map((pane) => (
+              <button
+                key={pane.key}
+                type="button"
+                role="tab"
+                aria-selected={pane.key === focused?.key}
+                className={pane.key === focused?.key ? "agent-tab active" : "agent-tab"}
+                onClick={() => onFocus(pane.key)}
+              >
+                <span className={`agent-dot${paneBusy(pane, codingEvents, botEvents) ? " live" : ""}`} />
+                @{pane.handle}
+                {pane.role === "lead" ? <span className="agent-lead">Lead</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="view-modes" role="group" aria-label="보기">
+          {VIEW_MODES.map((item) => (
+            <button
+              key={item.mode}
+              type="button"
+              className={mode === item.mode ? "view-mode is-on" : "view-mode"}
+              aria-pressed={mode === item.mode}
+              aria-label={item.label}
+              onClick={() => onViewMode(item.mode)}
+            >
+              <ModeIcon mode={item.mode} />
+              <span className="view-mode-label">{item.label}</span>
+            </button>
+          ))}
         </div>
-      ) : null}
+        {barEnd}
+      </div>
       {mode === "graph" ? (
         <TeamGraph
           key={codingSessionId}

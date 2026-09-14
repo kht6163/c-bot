@@ -44,6 +44,7 @@ import {
   type BotView,
 } from "./lib/api.ts";
 import {
+  DEFAULT_VIEW_MODE,
   fallbackAfterDelete,
   mergeEventList,
   normalizeViewMode,
@@ -94,7 +95,7 @@ export function App() {
   const [project, setProject] = useState<ProjectView | undefined>();
   const [pendingSend, setPendingSend] = useState(false);
   const [queues, setQueues] = useState<Queues>({});
-  const [viewMode, setViewModeState] = useState<ViewMode>("agent");
+  const [viewMode, setViewModeState] = useState<ViewMode>(DEFAULT_VIEW_MODE);
   const setViewMode = (mode: ViewMode) => setViewModeState(normalizeViewMode(mode));
   const [focusedKey, setFocusedKey] = useState("lead");
   const [team, setTeam] = useState<SessionTeamMember[]>([]);

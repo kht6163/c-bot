@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { asSessionId, type SessionEvent, type SessionWorktree } from "@cbot/shared";
 import {
+  DEFAULT_VIEW_MODE,
   fallbackAfterDelete,
   mergeEventList,
   normalizeViewMode,
@@ -35,6 +36,10 @@ describe("normalizeViewMode", () => {
     expect(normalizeViewMode("graph")).toBe("graph");
     expect(normalizeViewMode("split")).toBe("agent");
     expect(normalizeViewMode(undefined)).toBe("agent");
+  });
+
+  test("a session opens on the graph, which the lead alone already fills", () => {
+    expect(normalizeViewMode(DEFAULT_VIEW_MODE)).toBe("graph");
   });
 });
 
