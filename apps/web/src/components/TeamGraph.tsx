@@ -33,6 +33,7 @@ import {
   messageFlights,
   nodeActivity,
   nodeLog,
+  nodeStatus,
   nodeTaskLanes,
   placeSlots,
   placedLayout,
@@ -219,6 +220,7 @@ export function TeamGraph({ sessionId, panes, codingEvents, botEvents, codingBus
         return {
           pane,
           busy: pane.role === "lead" ? codingBusy : hasOpenTurn(events),
+          status: nodeStatus(events),
           activity: nodeActivity(pane, events),
           log: nodeLog(events),
           lanes,
@@ -715,6 +717,7 @@ function GraphSparks({ sparks, scale }: { sparks: Spark[]; scale: number }) {
 type GraphNodeData = {
   pane: TeamPane;
   busy: boolean;
+  status: ReturnType<typeof nodeStatus>;
   activity: ReturnType<typeof nodeActivity>;
   log: ReturnType<typeof nodeLog>;
   lanes: ReturnType<typeof nodeTaskLanes>;
@@ -773,9 +776,21 @@ function GraphNode({
               </span>
             ) : null}
           </span>
-          <span className="graph-handle">@{pane.handle}</span>
-          <span className="graph-role">{pane.role === "lead" ? "Lead" : pane.title}</span>
+          <span className="graph-who">
+            <span className="graph-handle">@{pane.handle}</span>
+            <span className="graph-role">{pane.role === "lead" ? "Lead" : pane.title}</span>
+          </span>
         </button>
+      </div>
+      {/* The bot's own line, the largest text on the node: the board should
+          answer "who is holding what" before anything else, whichever tab a
+          node is left on. Only set_status writes it; nothing is inferred. */}
+      <div className={`graph-doing${node.status ? "" : " is-idle"}`}>
+        <span className="graph-doing-dot" aria-hidden="true" />
+        <span className="graph-doing-text" title={node.status?.text}>
+          {node.status?.text ?? "대기 중"}
+        </span>
+        {node.status ? <span className="graph-doing-age">{timeAgo(node.status.time)}</span> : null}
       </div>
       <div className="graph-tabs" role="tablist" aria-label={`@${pane.handle} 보기`}>
         {GRAPH_TABS.map((name) => (

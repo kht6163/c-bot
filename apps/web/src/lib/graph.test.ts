@@ -23,6 +23,7 @@ import {
   messageFlights,
   nodeActivity,
   nodeLog,
+  nodeStatus,
   nodeTaskLanes,
   parseGraphPlacements,
   parseGraphTabs,
@@ -75,6 +76,28 @@ function task(partial: Partial<TaskView> & Pick<TaskView, "id" | "ownerHandle" |
     ...partial,
   };
 }
+
+describe("nodeStatus", () => {
+  function status(seq: number, text: string, time?: string): SessionEvent {
+    return { ...at(seq, time), type: "agent/status", botId: asBotId("bot_dev"), handle: "dev", text };
+  }
+
+  test("takes the line the bot set last", () => {
+    expect(nodeStatus([])).toBeNull();
+    expect(
+      nodeStatus([status(1, "테스트 고치는 중"), status(2, "CI 기다리는 중", "2026-09-11T09:05:00.000Z")]),
+    ).toEqual({ text: "CI 기다리는 중", time: "2026-09-11T09:05:00.000Z" });
+  });
+
+  test("a cleared line leaves nothing behind", () => {
+    expect(nodeStatus([status(1, "빌드 도는 중"), status(2, "")])).toBeNull();
+  });
+
+  test("nothing is inferred from the rest of the log", () => {
+    // Traffic on its own says the bot is busy, not what it is busy with.
+    expect(nodeStatus([delivery(1, "dev", "dlv_1")])).toBeNull();
+  });
+});
 
 describe("nodeActivity", () => {
   test("lists what went through the mailbox, newest first, without the attribution line", () => {

@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@cbot/shared";
+import { latestAgentStatus, type SessionEvent } from "@cbot/shared";
 import type { TaskView } from "./api.ts";
 import { laneOf, type Lane } from "./task-tree.ts";
 import type { NoteStorage, TeamPane } from "./team.ts";
@@ -24,7 +24,7 @@ export const GRAPH_COL_PAD = 8;
  * user placed by hand.
  */
 export const GRAPH_SLOT_W = GRAPH_COL_W + 2 * GRAPH_COL_PAD;
-export const GRAPH_SLOT_H = 292;
+export const GRAPH_SLOT_H = 312;
 export const GRAPH_SLOT_GAP = 40;
 export const GRAPH_ROW_GAP = 88;
 export const GRAPH_PAD = 28;
@@ -133,6 +133,21 @@ export function stripAttribution(text: string): string {
 function oneLine(text: string, max = 160): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+export interface GraphStatus {
+  text: string;
+  time: string;
+}
+
+/**
+ * The line the bot last set with `set_status`, or null when it never set one or
+ * cleared it. Only what the bot said about itself: nothing is inferred from the
+ * log, so a stale line is the bot's to replace.
+ */
+export function nodeStatus(events: readonly SessionEvent[]): GraphStatus | null {
+  const event = latestAgentStatus(events);
+  return event ? { text: event.text, time: event.time } : null;
 }
 
 /**
