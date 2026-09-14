@@ -1,17 +1,21 @@
 import { useEffect, useId, useRef, useState } from "react";
+import {
+  IDLE_UNIT_MS,
+  autoCompactIdleMsOf,
+  autoCompactIdleParts,
+  isIdleUnit,
+  type IdleUnit,
+} from "@cbot/shared";
 import { createBot, fetchSettings, updateBot, type BotView, type SettingsView } from "../lib/api.ts";
 import { avatarText } from "../lib/graph.ts";
 import {
-  AUTO_COMPACT_IDLE_PRESETS,
+  IDLE_UNIT_LABELS,
   NEW_BOT,
-  autoCompactIdleFromPreset,
-  autoCompactIdlePresetOf,
   draftChanges,
   draftOf,
   emptyDraft,
   isDirty,
   lineCount,
-  parseAutoCompactIdlePreset,
   rosterMeta,
   shortSkillsPath,
   type BotDraft,
@@ -361,27 +365,29 @@ export function TeamPanel({ target, bots, onClose, onSaved, onCreated }: Props) 
                 <div className="team-sec-head">
                   <h3 className="team-sec-title">자동 요약</h3>
                   {changes.autoCompact ? <span className="team-dirty" title="저장하지 않은 변경" /> : null}
+                  <label className="team-switch team-sec-switch">
+                    <span>유휴 시 컨텍스트 요약</span>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={draft.autoCompactIdle}
+                      onChange={(event) => edit({ autoCompactIdle: event.target.checked })}
+                    />
+                    <span className="team-switch-track" aria-hidden="true" />
+                  </label>
                 </div>
-                <label className="team-field">
-                  유휴 시 컨텍스트 요약
-                  <select
-                    className="team-input"
-                    value={autoCompactIdlePresetOf(draft)}
-                    onChange={(event) =>
-                      edit(autoCompactIdleFromPreset(parseAutoCompactIdlePreset(event.target.value)))
-                    }
-                  >
-                    {AUTO_COMPACT_IDLE_PRESETS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {draft.autoCompactIdle ? (
+                  <IdleWait
+                    key={key}
+                    ms={draft.autoCompactIdleMs}
+                    onChange={(autoCompactIdleMs) => edit({ autoCompactIdleMs })}
+                  />
+                ) : null}
                 <p className="team-note">
-                  끔이 기본입니다. 켜면 이 봇 세션만, 유휴 시간과 컨텍스트 한도(
+                  끔이 기본입니다. 켜면 이 봇 세션만, 적어 둔 유휴 시간과 컨텍스트 한도(
                   <span className="team-mono">compactAt</span>)를 함께 넘길 때{" "}
-                  <span className="team-mono">/compact</span>와 같은 요약을 합니다.
+                  <span className="team-mono">/compact</span>와 같은 요약을 합니다. 5초부터 24시간까지 적을 수
+                  있고, 확인은 몇 초 간격이라 그만큼 늦게 돌 수 있습니다.
                 </p>
               </section>
             </div>
@@ -440,6 +446,63 @@ export function TeamPanel({ target, bots, onClose, onSaved, onCreated }: Props) 
             )}
           </footer>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The idle wait as a number the user types beside its unit. The typed text is
+ * local so a half-typed or emptied field keeps the last valid wait; blur shows
+ * back what was stored, which is where a wait out of range reads as clamped.
+ */
+function IdleWait({ ms, onChange }: { ms: number; onChange: (ms: number) => void }) {
+  const parts = autoCompactIdleParts(ms);
+  const [unit, setUnit] = useState<IdleUnit>(parts.unit);
+  const [text, setText] = useState(String(parts.value));
+
+  function commit(nextText: string, nextUnit: IdleUnit): void {
+    const typed = Number(nextText.trim());
+    if (nextText.trim() === "" || !Number.isFinite(typed) || typed <= 0) {
+      return;
+    }
+    onChange(autoCompactIdleMsOf(typed, nextUnit));
+  }
+
+  return (
+    <div className="team-field" role="group" aria-label="유휴 시간">
+      <span>유휴 시간</span>
+      <div className="team-duration">
+        <input
+          className="team-input is-mono"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          step={1}
+          value={text}
+          aria-label="유휴 시간 값"
+          onChange={(event) => {
+            setText(event.target.value);
+            commit(event.target.value, unit);
+          }}
+          onBlur={() => setText(String(Math.max(1, Math.round(ms / IDLE_UNIT_MS[unit]))))}
+        />
+        <select
+          className="team-input team-duration-unit"
+          value={unit}
+          aria-label="유휴 시간 단위"
+          onChange={(event) => {
+            const next = isIdleUnit(event.target.value) ? event.target.value : unit;
+            setUnit(next);
+            commit(text, next);
+          }}
+        >
+          {IDLE_UNIT_LABELS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   );

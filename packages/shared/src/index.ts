@@ -14,6 +14,17 @@ export {
 export { atTokens, findActiveAt } from "./at.ts";
 export { brand, type Brand } from "./brand.ts";
 export {
+  AUTO_COMPACT_IDLE_MAX_MS,
+  AUTO_COMPACT_IDLE_MIN_MS,
+  DEFAULT_AUTO_COMPACT_IDLE_MS,
+  IDLE_UNIT_MS,
+  autoCompactIdleMsOf,
+  autoCompactIdleParts,
+  clampAutoCompactIdleMs,
+  isIdleUnit,
+  type IdleUnit,
+} from "./compact.ts";
+export {
   SLASH_COMMANDS,
   filterSlashCommands,
   findActiveSlash,

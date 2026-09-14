@@ -3068,6 +3068,10 @@ select.field-input {
   color: var(--quiet);
 }
 
+.team-sec-switch {
+  margin-left: auto;
+}
+
 .team-mono {
   font-family: var(--mono);
   font-size: 11px;
@@ -3143,6 +3147,27 @@ select.field-input {
   line-height: 18px;
   font-weight: 500;
   color: var(--muted);
+}
+
+/* A count and its unit read as one control, so they sit on one row. */
+.team-duration {
+  display: flex;
+  gap: 8px;
+}
+
+.team-duration .team-input {
+  width: 108px;
+}
+
+/* `.team-input` paints a background shorthand, so the unit keeps its own chevron. */
+.team-duration .team-duration-unit {
+  width: 92px;
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
 }
 
 .team-input,

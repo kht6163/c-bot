@@ -51,7 +51,13 @@ describe("team panel drafts", () => {
     const draft = emptyDraft();
     expect(draft.tools).toBeNull();
     expect(draft.model).toBeNull();
+    expect(draft.autoCompactIdle).toBe(false);
     expect(rosterMeta(draft)).toBe("기본 모델");
+  });
+
+  test("a stored idle wait out of range opens as a wait the panel can show", () => {
+    expect(draftOf({ ...bot, autoCompactIdleMs: 0 }).autoCompactIdleMs).toBe(5_000);
+    expect(draftOf({ ...bot, autoCompactIdleMs: 90_000 }).autoCompactIdleMs).toBe(90_000);
   });
 });
 

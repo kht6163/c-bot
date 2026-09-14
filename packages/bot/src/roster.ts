@@ -1,8 +1,10 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  DEFAULT_AUTO_COMPACT_IDLE_MS,
   asBotId,
   asSessionId,
+  clampAutoCompactIdleMs,
   newBotId,
   normalizeBotTools,
   type BotId,
@@ -12,7 +14,6 @@ import type { SessionStore } from "@cbot/agent";
 import { loadSkills } from "./skills.ts";
 import {
   BOT_CHAT_TITLE,
-  DEFAULT_AUTO_COMPACT_IDLE_MS,
   LEADER_HANDLE,
   type BotProfile,
   type BotRecord,
@@ -199,7 +200,7 @@ export async function updateBot(
       patch.autoCompactIdle !== undefined ? patch.autoCompactIdle : loaded.autoCompactIdle,
     autoCompactIdleMs:
       patch.autoCompactIdleMs !== undefined
-        ? Math.max(0, Math.round(patch.autoCompactIdleMs))
+        ? clampAutoCompactIdleMs(patch.autoCompactIdleMs)
         : loaded.autoCompactIdleMs,
   };
   await writeRecord(home, record);
@@ -285,8 +286,8 @@ function parseProfileYaml(raw: string): BotRecord | undefined {
   const role: BotRole =
     parsed.role === "leader" || handle === LEADER_HANDLE ? "leader" : "specialist";
   const idleMs =
-    typeof parsed.autoCompactIdleMs === "number" && Number.isFinite(parsed.autoCompactIdleMs)
-      ? Math.max(0, Math.round(parsed.autoCompactIdleMs))
+    typeof parsed.autoCompactIdleMs === "number"
+      ? clampAutoCompactIdleMs(parsed.autoCompactIdleMs)
       : DEFAULT_AUTO_COMPACT_IDLE_MS;
   return {
     id: asBotId(parsed.id),

@@ -43,14 +43,4 @@ export { TaskStore, taskBoardId, tasksDbPath, type TaskEntry } from "./task-stor
 export { taskTool } from "./task-tool.ts";
 export { statusTool } from "./status-tool.ts";
 export { cjkTokens, cjkSearchText, cjkMatchQuery } from "./cjk-tokenize.ts";
-export {
-  AUTO_COMPACT_IDLE_PRESETS,
-  autoCompactIdleFromPreset,
-  autoCompactIdlePresetOf,
-  idleCompactReady,
-  lastActivityMs,
-  maxEventSeq,
-  parseAutoCompactIdlePreset,
-  type AutoCompactIdlePreset,
-} from "./idle-compact.ts";
-export { DEFAULT_AUTO_COMPACT_IDLE_MS } from "./types.ts";
+export { idleCompactReady, lastActivityMs, maxEventSeq } from "./idle-compact.ts";

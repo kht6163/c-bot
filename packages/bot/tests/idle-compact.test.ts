@@ -1,28 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  autoCompactIdleFromPreset,
-  autoCompactIdlePresetOf,
-  idleCompactReady,
-  lastActivityMs,
-  maxEventSeq,
-  parseAutoCompactIdlePreset,
-} from "../src/idle-compact.ts";
-
-describe("idle compact presets", () => {
-  test("off is the default parse and disables the feature", () => {
-    expect(parseAutoCompactIdlePreset("nope")).toBe("off");
-    expect(autoCompactIdleFromPreset("off")).toEqual({
-      autoCompactIdle: false,
-      autoCompactIdleMs: 60_000,
-    });
-    expect(autoCompactIdleFromPreset("30s")).toEqual({
-      autoCompactIdle: true,
-      autoCompactIdleMs: 30_000,
-    });
-    expect(autoCompactIdlePresetOf({ autoCompactIdle: false, autoCompactIdleMs: 30_000 })).toBe("off");
-    expect(autoCompactIdlePresetOf({ autoCompactIdle: true, autoCompactIdleMs: 300_000 })).toBe("5m");
-  });
-});
+import { idleCompactReady, lastActivityMs, maxEventSeq } from "../src/idle-compact.ts";
 
 describe("idleCompactReady", () => {
   test("requires enabled + idle elapsed + compactAt threshold", () => {

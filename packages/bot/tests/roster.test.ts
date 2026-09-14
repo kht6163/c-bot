@@ -55,6 +55,9 @@ describe("roster", () => {
     await updateBot(home, pinned.id, { autoCompactIdle: true, autoCompactIdleMs: 30_000 });
     expect((await loadBot(home, pinned.id))?.autoCompactIdle).toBe(true);
     expect((await loadBot(home, pinned.id))?.autoCompactIdleMs).toBe(30_000);
+    // A wait the user typed too short would read as off to the watcher, so it lands on the floor.
+    await updateBot(home, pinned.id, { autoCompactIdleMs: 0 });
+    expect((await loadBot(home, pinned.id))?.autoCompactIdleMs).toBe(5_000);
     expect(await deleteBot(home, writer.id)).toBe(true);
     expect((await listBots(home)).map((b) => b.handle)).toEqual(["coder", "researcher"]);
     store.close();
